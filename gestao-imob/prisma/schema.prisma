@@ -1,0 +1,821 @@
+// =============================================================================
+// SCHEMA DO BANCO DE DADOS - Sistema de Gestao Financeira
+// Imobiliaria Moinhos de Vento (Auxiliadora Predial)
+// =============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum UserRole {
+  ADMIN
+  MANAGER
+}
+
+enum EmployeeType {
+  CLT
+  CONTRACT
+}
+
+enum PersonType {
+  PF
+  PJ
+}
+
+enum Position {
+  CONSULTOR
+  CAPTADOR
+  GERENTE
+  RECEPCAO
+  ESTAGIARIO
+  MANUTENCAO
+  MKT
+}
+
+enum Department {
+  VENDA
+  LOCACAO
+  ADMIN
+  AMBOS
+}
+
+enum PropertyType {
+  APARTAMENTO
+  CASA
+  COMERCIAL
+  SALA
+  TERRENO
+  OUTRO
+}
+
+enum PropertyStatus {
+  DISPONIVEL
+  LOCADO
+  VENDIDO
+  INATIVO
+}
+
+enum ContractType {
+  LOCACAO
+  VENDA
+}
+
+enum ContractStatus {
+  PENDENTE
+  ATIVO
+  ENCERRADO
+  CANCELADO
+  RENOVADO
+}
+
+enum GuaranteeType {
+  CAUCAO
+  FIADOR
+  SEGURO_FIANCA
+  TITULO_CAPITALIZACAO
+  NENHUMA
+}
+
+enum InspectionStatus {
+  PENDENTE
+  AGENDADA
+  REALIZADA
+}
+
+enum KeyStatus {
+  PENDENTE
+  ENTREGUE
+}
+
+enum RevenueCategory {
+  INTERMEDIACAO
+  AGENCIAMENTO
+  CAMPANHA_SUCESSO
+  CAMPANHA_CAPTACAO
+  NFSE_ALUGUEL
+  ROYALTY
+  OUTRO
+}
+
+enum PaymentMethod {
+  PIX
+  BOLETO
+  CARTAO
+  DINHEIRO
+  DEBITO_AUTOMATICO
+  TRANSFERENCIA
+}
+
+enum ExpenseStatus {
+  PENDENTE
+  PAGO
+  VENCIDO
+  CANCELADO
+}
+
+enum BankAccountType {
+  CORRENTE
+  POUPANCA
+  PLATAFORMA
+}
+
+enum ReconciliationType {
+  REVENUE
+  EXPENSE
+  ADVANCE
+  ROYALTY
+}
+
+enum CommissionRuleType {
+  CONSULTOR_INTERMEDIACAO
+  CAPTADOR_INTERMEDIACAO
+  CAPTADOR_BONUS
+  VENDA
+  CAMPANHA_SUCESSO
+  CAMPANHA_CAPTACAO
+}
+
+enum CommissionStatus {
+  CALCULADO
+  APROVADO
+  PAGO
+}
+
+enum AdvanceSource {
+  FIDC_PIPEIMOB
+  PIX
+  OUTRO
+}
+
+enum AdvanceStatus {
+  PENDENTE
+  PARCIALMENTE_QUITADO
+  QUITADO
+  VENCIDO
+}
+
+enum InvoiceServiceType {
+  INTERMEDIACAO
+  AGENCIAMENTO
+  ADMINISTRACAO
+}
+
+enum InvoiceStatus {
+  PENDENTE
+  EMITIDA
+  ENVIADA
+  PAGA
+  CANCELADA
+}
+
+enum CampaignType {
+  SUCESSO_LOCACAO
+  CAPTACAO
+  LOCACAO_SEMESTRAL
+}
+
+enum CampaignStatus {
+  ATIVA
+  ENCERRADA
+  CANCELADA
+}
+
+enum CampaignEntryStatus {
+  PENDENTE
+  APROVADO
+  PAGO
+}
+
+enum PayrollStatus {
+  RASCUNHO
+  CALCULADO
+  APROVADO
+  PAGO
+}
+
+enum DocumentType {
+  NOTA_FISCAL
+  RECIBO
+  EXTRATO_BANCARIO
+  PLANILHA
+  COMPROVANTE
+  CONTRATO
+  OUTRO
+}
+
+enum ProcessingStatus {
+  PENDENTE
+  PROCESSANDO
+  PROCESSADO
+  ERRO
+}
+
+enum RelatedEntityType {
+  EXPENSE
+  REVENUE
+  CONTRACT
+  BANK_TRANSACTION
+}
+
+enum RoyaltyStatus {
+  PENDENTE
+  PAGO
+  RECONCILIADO
+}
+
+enum RewardType {
+  FIXO
+  PERCENTUAL
+}
+
+// =============================================================================
+// TABELAS
+// =============================================================================
+
+// --------------- USUARIOS E ACESSO ---------------
+
+model User {
+  id            String   @id @default(uuid())
+  name          String
+  email         String   @unique
+  password_hash String
+  role          UserRole @default(MANAGER)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  employee             Employee?
+  contracts_created    Contract[]              @relation("ContractCreatedBy")
+  revenues_created     Revenue[]               @relation("RevenueCreatedBy")
+  expenses_created     Expense[]               @relation("ExpenseCreatedBy")
+  commissions_approved CommissionCalculation[] @relation("CommissionApprovedBy")
+  commissions_created  CommissionCalculation[] @relation("CommissionCreatedBy")
+  campaigns_created    Campaign[]              @relation("CampaignCreatedBy")
+  entries_approved     CampaignEntry[]         @relation("CampaignEntryApprovedBy")
+  invoices_created     Invoice[]               @relation("InvoiceCreatedBy")
+  payrolls_approved    PayrollEntry[]          @relation("PayrollApprovedBy")
+  payrolls_created     PayrollEntry[]          @relation("PayrollCreatedBy")
+  documents_uploaded   Document[]              @relation("DocumentUploadedBy")
+  documents_reviewed   Document[]              @relation("DocumentReviewedBy")
+
+  @@map("users")
+}
+
+model Employee {
+  id            String       @id @default(uuid())
+  user_id       String       @unique
+  cpf           String       @unique
+  position      Position
+  department    Department
+  hire_date     DateTime     @db.Date
+  contract_type EmployeeType
+  base_salary   Decimal?     @db.Decimal(12, 2)
+  bank_name     String?
+  bank_agency   String?
+  bank_account  String?
+  bank_pix      String?
+  is_active     Boolean      @default(true)
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+
+  user                    User                    @relation(fields: [user_id], references: [id])
+  contracts_as_consultant Contract[]              @relation("ContractConsultant")
+  contracts_as_captador   Contract[]              @relation("ContractCaptador")
+  commission_calculations CommissionCalculation[]
+  commission_advances     CommissionAdvance[]
+  campaign_entries        CampaignEntry[]
+  payroll_entries         PayrollEntry[]
+
+  @@map("employees")
+}
+
+// --------------- PROPRIETARIOS E CLIENTES ---------------
+
+model PropertyOwner {
+  id           String     @id @default(uuid())
+  name         String
+  cpf_cnpj     String     @unique
+  person_type  PersonType
+  email        String?
+  phone        String?
+  address      String?
+  bank_name    String?
+  bank_agency  String?
+  bank_account String?
+  bank_pix     String?
+  notes        String?    @db.Text
+  is_active    Boolean    @default(true)
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
+
+  properties Property[]
+
+  @@map("property_owners")
+}
+
+model Client {
+  id          String     @id @default(uuid())
+  name        String
+  cpf_cnpj    String     @unique
+  person_type PersonType
+  email       String?
+  phone       String?
+  address     String?
+  notes       String?    @db.Text
+  is_active   Boolean    @default(true)
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
+
+  contracts Contract[]
+
+  @@map("clients")
+}
+
+// --------------- IMOVEIS ---------------
+
+model Property {
+  id                   String         @id @default(uuid())
+  via_code             String?
+  vista_code           String?
+  owner_id             String
+  address_street       String
+  address_number       String?
+  address_complement   String?
+  address_neighborhood String
+  address_city         String         @default("Porto Alegre")
+  address_state        String         @default("RS")
+  address_cep          String?
+  property_type        PropertyType
+  status               PropertyStatus @default(DISPONIVEL)
+  rent_value           Decimal?       @db.Decimal(12, 2)
+  sale_value           Decimal?       @db.Decimal(14, 2)
+  area_m2              Decimal?       @db.Decimal(10, 2)
+  bedrooms             Int?
+  parking_spots        Int?
+  notes                String?        @db.Text
+  is_active            Boolean        @default(true)
+  created_at           DateTime       @default(now())
+  updated_at           DateTime       @updatedAt
+
+  owner            PropertyOwner   @relation(fields: [owner_id], references: [id])
+  contracts        Contract[]
+  campaign_entries CampaignEntry[]
+
+  @@index([via_code])
+  @@index([vista_code])
+  @@index([status])
+  @@map("properties")
+}
+
+// --------------- CONTRATOS ---------------
+
+model Contract {
+  id                             String            @id @default(uuid())
+  contract_number                String            @unique
+  via_code                       String?
+  property_id                    String
+  client_id                      String
+  consultant_id                  String?
+  captador_id                    String?
+  contract_type                  ContractType
+  status                         ContractStatus    @default(PENDENTE)
+  start_date                     DateTime          @db.Date
+  end_date                       DateTime?         @db.Date
+  rent_value                     Decimal?          @db.Decimal(12, 2)
+  sale_value                     Decimal?          @db.Decimal(14, 2)
+  intermediation_value           Decimal?          @db.Decimal(12, 2)
+  agency_value                   Decimal?          @db.Decimal(12, 2)
+  franchise_intermediation_value Decimal?          @db.Decimal(12, 2)
+  admin_fee_percentage           Decimal           @default(10.0) @db.Decimal(5, 2)
+  guarantee_type                 GuaranteeType?
+  inspection_status              InspectionStatus?
+  inspection_date                DateTime?         @db.Date
+  key_status                     KeyStatus?
+  key_delivery_date              DateTime?         @db.Date
+  notes                          String?           @db.Text
+  created_by                     String
+  created_at                     DateTime          @default(now())
+  updated_at                     DateTime          @updatedAt
+
+  property         Property        @relation(fields: [property_id], references: [id])
+  client           Client          @relation(fields: [client_id], references: [id])
+  consultant       Employee?       @relation("ContractConsultant", fields: [consultant_id], references: [id])
+  captador         Employee?       @relation("ContractCaptador", fields: [captador_id], references: [id])
+  creator          User            @relation("ContractCreatedBy", fields: [created_by], references: [id])
+  revenues         Revenue[]
+  invoices         Invoice[]
+  campaign_entries CampaignEntry[]
+
+  @@index([status])
+  @@index([start_date, end_date])
+  @@index([consultant_id])
+  @@index([captador_id])
+  @@index([via_code])
+  @@map("contracts")
+}
+
+// --------------- CATEGORIAS DE DESPESA ---------------
+
+model ExpenseCategory {
+  id         String     @id @default(uuid())
+  parent_id  String?
+  name       String
+  code       String?    @unique
+  department Department
+  is_active  Boolean    @default(true)
+  sort_order Int        @default(0)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+
+  parent   ExpenseCategory?  @relation("CategoryHierarchy", fields: [parent_id], references: [id])
+  children ExpenseCategory[] @relation("CategoryHierarchy")
+
+  expenses          Expense[]
+  bank_transactions BankTransaction[]
+
+  @@map("expense_categories")
+}
+
+// --------------- RECEITAS ---------------
+
+model Revenue {
+  id              String          @id @default(uuid())
+  contract_id     String?
+  category        RevenueCategory
+  description     String
+  amount          Decimal         @db.Decimal(12, 2)
+  date            DateTime        @db.Date
+  department      Department
+  reference_month Int
+  reference_year  Int
+  notes           String?         @db.Text
+  document_id     String?
+  created_by      String
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  contract Contract? @relation(fields: [contract_id], references: [id])
+  document Document? @relation(fields: [document_id], references: [id])
+  creator  User      @relation("RevenueCreatedBy", fields: [created_by], references: [id])
+
+  @@index([date])
+  @@index([reference_year, reference_month])
+  @@index([category])
+  @@map("revenues")
+}
+
+// --------------- DESPESAS ---------------
+
+model Expense {
+  id              String         @id @default(uuid())
+  category_id     String
+  description     String
+  amount          Decimal        @db.Decimal(12, 2)
+  date            DateTime       @db.Date
+  due_date        DateTime?      @db.Date
+  paid_date       DateTime?      @db.Date
+  department      Department
+  payment_method  PaymentMethod?
+  status          ExpenseStatus  @default(PENDENTE)
+  reference_month Int
+  reference_year  Int
+  supplier        String?
+  notes           String?        @db.Text
+  document_id     String?
+  created_by      String
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt
+
+  category ExpenseCategory @relation(fields: [category_id], references: [id])
+  document Document?       @relation(fields: [document_id], references: [id])
+  creator  User            @relation("ExpenseCreatedBy", fields: [created_by], references: [id])
+
+  @@index([date])
+  @@index([category_id])
+  @@index([reference_year, reference_month])
+  @@index([status])
+  @@map("expenses")
+}
+
+// --------------- CONTAS BANCARIAS ---------------
+
+model BankAccount {
+  id              String          @id @default(uuid())
+  bank_name       String
+  bank_code       String?
+  account_number  String
+  account_type    BankAccountType
+  current_balance Decimal         @default(0) @db.Decimal(14, 2)
+  is_active       Boolean         @default(true)
+  created_at      DateTime        @default(now())
+  updated_at      DateTime        @updatedAt
+
+  transactions BankTransaction[]
+
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id                   String              @id @default(uuid())
+  bank_account_id      String
+  external_id          String?
+  operation_type       String
+  date                 DateTime            @db.Date
+  time                 DateTime?           @db.Time()
+  doc_number           String?
+  description          String
+  amount               Decimal             @db.Decimal(14, 2)
+  balance              Decimal?            @db.Decimal(14, 2)
+  category_id          String?
+  is_credit            Boolean
+  is_reconciled        Boolean             @default(false)
+  reconciled_with_type ReconciliationType?
+  reconciled_with_id   String?
+  source_document_id   String?
+  import_batch_id      String?
+  notes                String?             @db.Text
+  created_at           DateTime            @default(now())
+  updated_at           DateTime            @updatedAt
+
+  bank_account    BankAccount      @relation(fields: [bank_account_id], references: [id])
+  category        ExpenseCategory? @relation(fields: [category_id], references: [id])
+  source_document Document?        @relation(fields: [source_document_id], references: [id])
+  royalty_payment RoyaltyPayment?
+
+  @@unique([bank_account_id, date, doc_number, amount], name: "unique_bank_transaction")
+  @@index([date])
+  @@index([bank_account_id])
+  @@index([is_reconciled])
+  @@index([import_batch_id])
+  @@map("bank_transactions")
+}
+
+// --------------- REGRAS DE COMISSAO ---------------
+
+model CommissionRule {
+  id             String             @id @default(uuid())
+  rule_type      CommissionRuleType
+  employee_type  EmployeeType?
+  min_threshold  Int
+  max_threshold  Int?
+  percentage     Decimal?           @db.Decimal(5, 2)
+  fixed_amount   Decimal?           @db.Decimal(12, 2)
+  effective_from DateTime           @db.Date
+  effective_to   DateTime?          @db.Date
+  description    String?
+  created_at     DateTime           @default(now())
+  updated_at     DateTime           @updatedAt
+
+  @@map("commission_rules")
+}
+
+model CommissionCalculation {
+  id                         String           @id @default(uuid())
+  employee_id                String
+  reference_month            Int
+  reference_year             Int
+  rental_count               Int              @default(0)
+  capture_count              Int              @default(0)
+  total_intermediation_value Decimal          @default(0) @db.Decimal(14, 2)
+  tier_applied               String
+  intermediation_commission  Decimal          @default(0) @db.Decimal(12, 2)
+  campaign_success_amount    Decimal          @default(0) @db.Decimal(12, 2)
+  campaign_capture_amount    Decimal          @default(0) @db.Decimal(12, 2)
+  sale_commission            Decimal          @default(0) @db.Decimal(12, 2)
+  total_commission           Decimal          @db.Decimal(12, 2)
+  status                     CommissionStatus @default(CALCULADO)
+  approved_by                String?
+  approved_at                DateTime?
+  paid_at                    DateTime?
+  notes                      String?          @db.Text
+  created_by                 String
+  created_at                 DateTime         @default(now())
+  updated_at                 DateTime         @updatedAt
+
+  employee Employee @relation(fields: [employee_id], references: [id])
+  approver User?    @relation("CommissionApprovedBy", fields: [approved_by], references: [id])
+  creator  User     @relation("CommissionCreatedBy", fields: [created_by], references: [id])
+
+  @@unique([employee_id, reference_month, reference_year])
+  @@index([reference_year, reference_month])
+  @@map("commission_calculations")
+}
+
+// --------------- ADIANTAMENTOS ---------------
+
+model CommissionAdvance {
+  id                        String        @id @default(uuid())
+  employee_id               String
+  pipeimob_uuid             String?       @unique
+  ccb_id                    String?
+  advance_date              DateTime      @db.Date
+  amount                    Decimal       @db.Decimal(12, 2)
+  source                    AdvanceSource
+  property_code             String?
+  property_address          String?
+  total_commission_expected Decimal?      @db.Decimal(12, 2)
+  expected_settlement_date  DateTime?     @db.Date
+  settlement_amount         Decimal?      @db.Decimal(12, 2)
+  settlement_date           DateTime?     @db.Date
+  status                    AdvanceStatus @default(PENDENTE)
+  notes                     String?       @db.Text
+  created_at                DateTime      @default(now())
+  updated_at                DateTime      @updatedAt
+
+  employee Employee @relation(fields: [employee_id], references: [id])
+
+  @@index([status])
+  @@index([employee_id])
+  @@map("commission_advances")
+}
+
+// --------------- NOTAS FISCAIS ---------------
+
+model Invoice {
+  id                String             @id @default(uuid())
+  contract_id       String?
+  nfse_number       Int?
+  year_sequence     Int?
+  reference_year    Int
+  property_code     String?
+  property_address  String?
+  client_name       String
+  client_cpf_cnpj   String
+  client_contact    String?
+  service_type      InvoiceServiceType
+  title_number      String?
+  amount            Decimal            @db.Decimal(12, 2)
+  description_title String
+  description_body  String             @db.Text
+  status            InvoiceStatus      @default(PENDENTE)
+  issued_at         DateTime?
+  sent_at           DateTime?
+  paid_at           DateTime?
+  notes             String?            @db.Text
+  created_by        String
+  created_at        DateTime           @default(now())
+  updated_at        DateTime           @updatedAt
+
+  contract Contract? @relation(fields: [contract_id], references: [id])
+  creator  User      @relation("InvoiceCreatedBy", fields: [created_by], references: [id])
+
+  @@index([status])
+  @@index([reference_year])
+  @@map("invoices")
+}
+
+// --------------- CAMPANHAS ---------------
+
+model Campaign {
+  id            String         @id @default(uuid())
+  name          String
+  campaign_type CampaignType
+  start_date    DateTime       @db.Date
+  end_date      DateTime?      @db.Date
+  reward_type   RewardType
+  reward_amount Decimal        @db.Decimal(12, 2)
+  description   String?        @db.Text
+  status        CampaignStatus @default(ATIVA)
+  created_by    String
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  creator User            @relation("CampaignCreatedBy", fields: [created_by], references: [id])
+  entries CampaignEntry[]
+
+  @@map("campaigns")
+}
+
+model CampaignEntry {
+  id              String              @id @default(uuid())
+  campaign_id     String
+  employee_id     String
+  contract_id     String?
+  property_id     String?
+  amount          Decimal             @db.Decimal(12, 2)
+  reference_month Int
+  reference_year  Int
+  status          CampaignEntryStatus @default(PENDENTE)
+  approved_by     String?
+  paid_at         DateTime?
+  notes           String?             @db.Text
+  created_at      DateTime            @default(now())
+  updated_at      DateTime            @updatedAt
+
+  campaign Campaign  @relation(fields: [campaign_id], references: [id])
+  employee Employee  @relation(fields: [employee_id], references: [id])
+  contract Contract? @relation(fields: [contract_id], references: [id])
+  property Property? @relation(fields: [property_id], references: [id])
+  approver User?     @relation("CampaignEntryApprovedBy", fields: [approved_by], references: [id])
+
+  @@index([campaign_id])
+  @@index([employee_id])
+  @@map("campaign_entries")
+}
+
+// --------------- FOLHA DE PAGAMENTO ---------------
+
+model PayrollEntry {
+  id                      String        @id @default(uuid())
+  employee_id             String
+  reference_month         Int
+  reference_year          Int
+  base_salary             Decimal       @default(0) @db.Decimal(12, 2)
+  commission              Decimal       @default(0) @db.Decimal(12, 2)
+  food_allowance          Decimal       @default(0) @db.Decimal(12, 2)
+  transport_allowance     Decimal       @default(0) @db.Decimal(12, 2)
+  vacation_pay            Decimal       @default(0) @db.Decimal(12, 2)
+  thirteenth_salary       Decimal       @default(0) @db.Decimal(12, 2)
+  other_earnings          Decimal       @default(0) @db.Decimal(12, 2)
+  inss_deduction          Decimal       @default(0) @db.Decimal(12, 2)
+  irrf_deduction          Decimal       @default(0) @db.Decimal(12, 2)
+  fgts                    Decimal       @default(0) @db.Decimal(12, 2)
+  other_deductions        Decimal       @default(0) @db.Decimal(12, 2)
+  advance_deductions      Decimal       @default(0) @db.Decimal(12, 2)
+  total_gross             Decimal       @db.Decimal(12, 2)
+  total_deductions        Decimal       @db.Decimal(12, 2)
+  total_net               Decimal       @db.Decimal(12, 2)
+  department_split_sale   Decimal       @default(0) @db.Decimal(5, 2)
+  department_split_rental Decimal       @default(0) @db.Decimal(5, 2)
+  status                  PayrollStatus @default(RASCUNHO)
+  approved_by             String?
+  paid_at                 DateTime?
+  notes                   String?       @db.Text
+  created_by              String
+  created_at              DateTime      @default(now())
+  updated_at              DateTime      @updatedAt
+
+  employee Employee @relation(fields: [employee_id], references: [id])
+  approver User?    @relation("PayrollApprovedBy", fields: [approved_by], references: [id])
+  creator  User     @relation("PayrollCreatedBy", fields: [created_by], references: [id])
+
+  @@unique([employee_id, reference_month, reference_year])
+  @@index([reference_year, reference_month])
+  @@map("payroll_entries")
+}
+
+// --------------- DOCUMENTOS ---------------
+
+model Document {
+  id                  String             @id @default(uuid())
+  filename            String
+  original_filename   String
+  mime_type           String
+  file_size           Int
+  storage_url         String
+  uploaded_by         String
+  document_type       DocumentType
+  ai_extracted_data   Json?
+  ai_classification   String?
+  ai_confidence       Decimal?           @db.Decimal(3, 2)
+  processing_status   ProcessingStatus   @default(PENDENTE)
+  processing_error    String?
+  related_entity_type RelatedEntityType?
+  related_entity_id   String?
+  is_reviewed         Boolean            @default(false)
+  reviewed_by         String?
+  reviewed_at         DateTime?
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
+
+  uploader          User              @relation("DocumentUploadedBy", fields: [uploaded_by], references: [id])
+  reviewer          User?             @relation("DocumentReviewedBy", fields: [reviewed_by], references: [id])
+  revenues          Revenue[]
+  expenses          Expense[]
+  bank_transactions BankTransaction[]
+
+  @@index([processing_status])
+  @@index([document_type])
+  @@map("documents")
+}
+
+// --------------- ROYALTIES ---------------
+
+model RoyaltyPayment {
+  id                      String        @id @default(uuid())
+  contract_code           String?
+  pipeimob_transaction_id String?
+  amount                  Decimal       @db.Decimal(12, 2)
+  date                    DateTime      @db.Date
+  reference_month         Int
+  reference_year          Int
+  bank_transaction_id     String?       @unique
+  description             String?
+  status                  RoyaltyStatus @default(PENDENTE)
+  created_at              DateTime      @default(now())
+  updated_at              DateTime      @updatedAt
+
+  bank_transaction BankTransaction? @relation(fields: [bank_transaction_id], references: [id])
+
+  @@index([reference_year, reference_month])
+  @@map("royalty_payments")
+}

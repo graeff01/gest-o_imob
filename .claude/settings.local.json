@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3)",
+      "Bash(pip3 list:*)",
+      "Bash(unzip -l \"1 - Moinhos Janeiro 26.xlsx\")",
+      "Bash(unzip -q \"/c/Users/PICHAU/OneDrive/Área de Trabalho/gestão_imob/recursos/1 - Moinhos Janeiro 26.xlsx\" -d \"Moinhos Janeiro 26\")",
+      "Bash(unzip -q \"/c/Users/PICHAU/OneDrive/Área de Trabalho/gestão_imob/recursos/Campanha Sucesso Locação.xlsx\" -d \"Campanha Sucesso Locação\")",
+      "Bash(unzip -q \"/c/Users/PICHAU/OneDrive/Área de Trabalho/gestão_imob/recursos/Controle de Adiantamentos.xlsx\" -d \"Controle de Adiantamentos\")",
+      "Bash(unzip -q \"/c/Users/PICHAU/OneDrive/Área de Trabalho/gestão_imob/recursos/Estrutura de receita.xlsx\" -d \"Estrutura de receita\")",
+      "Bash(unzip -q \"/c/Users/PICHAU/OneDrive/Área de Trabalho/gestão_imob/recursos/Extrato Pipeimob 2026 03 15.xlsx\" -d \"Extrato Pipeimob\")",
+      "Bash(mkdir -p \"Comissionamentos\" \"Sistema de Gestão\")",
+      "Bash(unzip -q \"/c/Users/PICHAU/OneDrive/Área de Trabalho/gestão_imob/recursos/Comissionamentos.docx\" -d \"Comissionamentos\")",
+      "Bash(unzip -q \"/c/Users/PICHAU/OneDrive/Área de Trabalho/gestão_imob/recursos/Sistema de Gestão - Pacotes.docx\" -d \"Sistema de Gestão\")",
+      "Bash(sed 's/<[^>]*>//g')",
+      "Bash(grep -v '^$')",
+      "Bash(python3 -c ':*)"
+    ]
+  }
+}
