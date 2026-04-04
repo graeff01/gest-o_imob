@@ -17,6 +17,11 @@ import {
   FileOutput,
   Calculator,
   Building2,
+  CreditCard,
+  Receipt,
+  Trophy,
+  Users,
+  Building,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navigationItems } from "@/lib/constants/navigation";
@@ -32,6 +37,11 @@ const iconMap: Record<string, React.ElementType> = {
   BarChart3,
   FileOutput,
   Calculator,
+  CreditCard,
+  Receipt,
+  Trophy,
+  Users,
+  Building,
 };
 
 interface SidebarProps {
