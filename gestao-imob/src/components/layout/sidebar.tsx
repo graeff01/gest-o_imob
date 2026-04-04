@@ -8,16 +8,15 @@ import {
   FileText,
   DollarSign,
   Percent,
-  Receipt,
   Wallet,
-  Trophy,
-  Users,
-  Building2,
   Upload,
   BarChart3,
   LogOut,
   Menu,
   X,
+  FileOutput,
+  Calculator,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navigationItems } from "@/lib/constants/navigation";
@@ -28,13 +27,11 @@ const iconMap: Record<string, React.ElementType> = {
   FileText,
   DollarSign,
   Percent,
-  Receipt,
   Wallet,
-  Trophy,
-  Users,
-  Building2,
   Upload,
   BarChart3,
+  FileOutput,
+  Calculator,
 };
 
 interface SidebarProps {
@@ -47,14 +44,22 @@ export function Sidebar({ userName }: SidebarProps) {
 
   const sidebarContent = (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-bold text-gray-900">Gestao Financeira</h2>
-        <p className="text-xs text-gray-500 mt-0.5">Moinhos de Vento</p>
+      {/* Brand */}
+      <div className="p-5 border-b border-gray-800">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-600 rounded-lg">
+            <Building2 className="h-5 w-5 text-white" />
+          </div>
+          <div>
+            <h2 className="text-sm font-bold text-white">Moinhos de Vento</h2>
+            <p className="text-[11px] text-gray-400">Gestão Financeira</p>
+          </div>
+        </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+      <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
+        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider px-3 pt-3 pb-2">Menu</p>
         {navigationItems.map((item) => {
           const Icon = iconMap[item.icon] || LayoutDashboard;
           const isActive =
@@ -69,27 +74,38 @@ export function Sidebar({ userName }: SidebarProps) {
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-400 hover:bg-gray-800 hover:text-white"
               )}
             >
-              <Icon className="h-5 w-5 flex-shrink-0" />
-              {item.title}
+              <Icon className="h-[18px] w-[18px] flex-shrink-0" />
+              <span className="flex-1">{item.title}</span>
+              {item.badge && (
+                <span className="text-[10px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full">
+                  {item.badge}
+                </span>
+              )}
             </Link>
           );
         })}
       </nav>
 
       {/* User & Logout */}
-      <div className="p-3 border-t border-gray-200">
-        <div className="px-3 py-2 text-sm text-gray-600 truncate">
-          {userName}
+      <div className="p-3 border-t border-gray-800">
+        <div className="px-3 py-2 flex items-center gap-3">
+          <div className="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center text-xs font-bold text-gray-300">
+            {userName.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-gray-300 font-medium truncate">{userName}</p>
+            <p className="text-[11px] text-gray-500">Administrador</p>
+          </div>
         </div>
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 transition-colors w-full"
+          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:bg-red-900/30 hover:text-red-400 transition-colors w-full mt-1"
         >
-          <LogOut className="h-5 w-5 flex-shrink-0" />
+          <LogOut className="h-[18px] w-[18px] flex-shrink-0" />
           Sair
         </button>
       </div>
@@ -117,7 +133,7 @@ export function Sidebar({ userName }: SidebarProps) {
       {/* Sidebar - mobile */}
       <aside
         className={cn(
-          "lg:hidden fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200",
+          "lg:hidden fixed inset-y-0 left-0 z-40 w-64 bg-gray-900 transform transition-transform duration-200",
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -125,7 +141,7 @@ export function Sidebar({ userName }: SidebarProps) {
       </aside>
 
       {/* Sidebar - desktop */}
-      <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 bg-white border-r border-gray-200">
+      <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 bg-gray-900">
         {sidebarContent}
       </aside>
     </>

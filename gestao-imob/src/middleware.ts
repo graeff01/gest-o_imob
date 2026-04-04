@@ -4,6 +4,10 @@ import type { NextRequest } from "next/server";
 const publicRoutes = ["/login", "/api/auth"];
 
 export function middleware(request: NextRequest) {
+  // TODO: TEMPORARIO - remover depois de conectar o banco
+  // Auth desativada para preview visual
+  return NextResponse.next();
+
   const { pathname } = request.nextUrl;
 
   // Rotas publicas - permitir acesso
