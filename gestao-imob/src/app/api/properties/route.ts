@@ -37,9 +37,31 @@ export async function GET(request: Request) {
       prisma.property.count({ where }),
     ]);
 
-    return NextResponse.json({ properties, total, page, limit });
-  } catch (error) {
-    return NextResponse.json({ properties: [], total: 0, page, limit });
+    if (properties.length > 0 || total > 0) {
+      return NextResponse.json({ properties, total, page, limit });
+    }
+    throw new Error("empty_db");
+  } catch {
+    const { MOCK_PROPERTIES } = await import("@/lib/mock-data");
+    let filtered = MOCK_PROPERTIES;
+    if (search) {
+      const s = search.toLowerCase();
+      filtered = filtered.filter(
+        (p) =>
+          p.address_street.toLowerCase().includes(s) ||
+          (p.via_code && p.via_code.toLowerCase().includes(s)) ||
+          p.address_neighborhood.toLowerCase().includes(s)
+      );
+    }
+    if (status) {
+      filtered = filtered.filter((p) => p.status === status);
+    }
+    return NextResponse.json({
+      properties: filtered.slice(skip, skip + limit),
+      total: filtered.length,
+      page,
+      limit,
+    });
   }
 }
 

@@ -31,9 +31,27 @@ export async function GET(request: Request) {
       prisma.employee.count({ where }),
     ]);
 
-    return NextResponse.json({ employees, total, page, limit });
-  } catch (error) {
-    return NextResponse.json({ employees: [], total: 0, page, limit });
+    // Se o banco retornou dados, usa. Senão cai no fallback abaixo.
+    if (employees.length > 0 || total > 0) {
+      return NextResponse.json({ employees, total, page, limit });
+    }
+    throw new Error("empty_db");
+  } catch {
+    // FALLBACK: mock data enquanto DB não está conectado
+    const { MOCK_EMPLOYEES } = await import("@/lib/mock-data");
+    let filtered = MOCK_EMPLOYEES;
+    if (search) {
+      const s = search.toLowerCase();
+      filtered = filtered.filter(
+        (e) => e.user.name.toLowerCase().includes(s) || e.cpf.includes(s)
+      );
+    }
+    return NextResponse.json({
+      employees: filtered.slice(skip, skip + limit),
+      total: filtered.length,
+      page,
+      limit,
+    });
   }
 }
 

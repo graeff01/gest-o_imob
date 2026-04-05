@@ -32,9 +32,25 @@ export async function GET(request: Request) {
       prisma.client.count({ where }),
     ]);
 
-    return NextResponse.json({ clients, total, page, limit });
-  } catch (error) {
-    return NextResponse.json({ clients: [], total: 0, page, limit });
+    if (clients.length > 0 || total > 0) {
+      return NextResponse.json({ clients, total, page, limit });
+    }
+    throw new Error("empty_db");
+  } catch {
+    const { MOCK_CLIENTS } = await import("@/lib/mock-data");
+    let filtered = MOCK_CLIENTS;
+    if (search) {
+      const s = search.toLowerCase();
+      filtered = filtered.filter(
+        (c) => c.name.toLowerCase().includes(s) || c.cpf_cnpj.includes(s)
+      );
+    }
+    return NextResponse.json({
+      clients: filtered.slice(skip, skip + limit),
+      total: filtered.length,
+      page,
+      limit,
+    });
   }
 }
 
