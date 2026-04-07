@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { navigationItems } from "@/lib/constants/navigation";
 import { Bell } from "lucide-react";
+import { GlobalSearch } from "@/components/shared/global-search";
 
 export function Header() {
   const pathname = usePathname();
@@ -21,6 +22,7 @@ export function Header() {
         {title}
       </h1>
       <div className="flex items-center gap-3">
+        <GlobalSearch />
         <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors relative">
           <Bell className="h-5 w-5" />
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />

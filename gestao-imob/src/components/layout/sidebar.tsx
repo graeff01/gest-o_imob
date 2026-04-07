@@ -23,6 +23,12 @@ import {
   Users,
   Building,
   Sparkles,
+  Inbox,
+  HeartPulse,
+  Store,
+  UserSquare,
+  Settings2,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navigationItems } from "@/lib/constants/navigation";
@@ -44,6 +50,12 @@ const iconMap: Record<string, React.ElementType> = {
   Users,
   Building,
   Sparkles,
+  Inbox,
+  HeartPulse,
+  Store,
+  UserSquare,
+  Settings2,
+  Shield,
 };
 
 interface SidebarProps {
