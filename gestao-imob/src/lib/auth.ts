@@ -1,7 +1,37 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { compare } from "bcryptjs";
-import { prisma } from "@/lib/prisma";
+
+/**
+ * Auth — 2 perfis reais (hardcoded até o banco ser conectado).
+ *
+ * - Admin Master: visão completa do sistema, segurança e auditoria
+ * - Dono: visão executiva, operação e resultados
+ */
+
+interface HardcodedUser {
+  id: string;
+  name: string;
+  email: string;
+  password: string;
+  role: "ADMIN_MASTER" | "DONO";
+}
+
+const USERS: HardcodedUser[] = [
+  {
+    id: "user-admin",
+    name: "Admin Master",
+    email: "admin@moinhos.com",
+    password: "admin2026",
+    role: "ADMIN_MASTER",
+  },
+  {
+    id: "user-dono",
+    name: "Proprietário",
+    email: "dono@moinhos.com",
+    password: "dono2026",
+    role: "DONO",
+  },
+];
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -11,12 +41,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         password: { label: "Senha", type: "password" },
       },
       async authorize(credentials) {
-        // MOCK LOGIN PARA FINS DE TESTE VISUAL (DB PGLite em conflito/lock)
+        const email = String(credentials?.email || "").toLowerCase().trim();
+        const password = String(credentials?.password || "");
+        const user = USERS.find(
+          (u) => u.email === email && u.password === password
+        );
+        if (!user) return null;
         return {
-          id: "mock-admin",
-          name: "Administrador",
-          email: credentials?.email as string || "admin@moinhos.com",
-          role: "ADMIN",
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
         };
       },
     }),
@@ -46,10 +81,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
 });
 
-// Tipo da sessao para usar nos componentes server-side
+export type Role = "ADMIN_MASTER" | "DONO";
+
 export type SessionUser = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "MANAGER";
+  role: Role;
 };

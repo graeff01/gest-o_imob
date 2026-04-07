@@ -12,8 +12,6 @@ import {
   Wallet,
   Users,
   Building,
-  Store,
-  UserSquare,
   Settings2,
   Shield,
   Inbox,
@@ -26,16 +24,12 @@ import {
   BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  getFornecedores,
-  getProprietarios,
-} from "@/lib/stores/core-store";
-import { useRole } from "@/lib/hooks/use-role";
+import { useSession } from "next-auth/react";
 import type { Role } from "@/lib/constants/navigation";
 
 interface SearchResult {
   id: string;
-  type: "page" | "fornecedor" | "proprietario" | "action";
+  type: "page" | "action";
   title: string;
   subtitle?: string;
   href: string;
@@ -56,8 +50,6 @@ const PAGES: SearchResult[] = [
   { id: "p-folha", type: "page", title: "Folha de Pagamento", href: "/folha-corretores", icon: Wallet },
   { id: "p-campanhas", type: "page", title: "Campanhas", href: "/campanhas", icon: Trophy },
   { id: "p-pessoas", type: "page", title: "Pessoas", href: "/pessoas", icon: Users },
-  { id: "p-fornecedores", type: "page", title: "Fornecedores", href: "/fornecedores", icon: Store },
-  { id: "p-proprietarios", type: "page", title: "Proprietários", href: "/proprietarios", icon: UserSquare },
   { id: "p-imoveis", type: "page", title: "Imóveis", href: "/imoveis", icon: Building },
   { id: "p-config", type: "page", title: "Parâmetros do Sistema", subtitle: "Configurações", href: "/configuracoes", icon: Settings2, roles: ["ADMIN_MASTER"] },
   { id: "p-auditoria", type: "page", title: "Auditoria", subtitle: "Log imutável", href: "/auditoria", icon: Shield, roles: ["ADMIN_MASTER"] },
@@ -67,7 +59,8 @@ const PAGES: SearchResult[] = [
 
 export function GlobalSearch() {
   const router = useRouter();
-  const [role] = useRole();
+  const { data: session } = useSession();
+  const role: Role = ((session?.user as { role?: Role })?.role) || "DONO";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -89,34 +82,8 @@ export function GlobalSearch() {
     if (!open) return [];
     const q = query.toLowerCase().trim();
 
-    const dynamic: SearchResult[] = [];
-    try {
-      getFornecedores().forEach((f) =>
-        dynamic.push({
-          id: `f-${f.id}`,
-          type: "fornecedor",
-          title: f.nome,
-          subtitle: `Fornecedor · ${f.cpfCnpj}`,
-          href: "/fornecedores",
-          icon: Store,
-        })
-      );
-      getProprietarios().forEach((p) =>
-        dynamic.push({
-          id: `pr-${p.id}`,
-          type: "proprietario",
-          title: p.nome,
-          subtitle: `Proprietário · ${p.cpfCnpj}`,
-          href: "/proprietarios",
-          icon: UserSquare,
-        })
-      );
-    } catch {
-      /* ignore */
-    }
-
     const visiblePages = PAGES.filter((p) => !p.roles || p.roles.includes(role));
-    const all = [...visiblePages, ...dynamic];
+    const all = [...visiblePages];
     if (!q) return all.slice(0, 8);
     return all
       .filter(

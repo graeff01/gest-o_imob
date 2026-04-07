@@ -31,10 +31,9 @@ import {
   Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { navigationItems, SECTION_LABELS, type NavItem } from "@/lib/constants/navigation";
+import { navigationItems, SECTION_LABELS, type NavItem, type Role } from "@/lib/constants/navigation";
 import { useState } from "react";
-import { useRole } from "@/lib/hooks/use-role";
-import { Crown, ShieldCheck, ChevronsUpDown } from "lucide-react";
+import { Crown, ShieldCheck } from "lucide-react";
 
 const iconMap: Record<string, React.ElementType> = {
   LayoutDashboard,
@@ -62,13 +61,12 @@ const iconMap: Record<string, React.ElementType> = {
 
 interface SidebarProps {
   userName: string;
+  role: Role;
 }
 
-export function Sidebar({ userName }: SidebarProps) {
+export function Sidebar({ userName, role }: SidebarProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [role, setRole] = useRole();
-  const [roleMenuOpen, setRoleMenuOpen] = useState(false);
 
   // Filtra itens conforme o perfil ativo
   const visibleItems = navigationItems.filter(
@@ -174,67 +172,20 @@ export function Sidebar({ userName }: SidebarProps) {
         ))}
       </nav>
 
-      {/* Role switcher + User */}
+      {/* User & Logout */}
       <div className="p-3 border-t border-gray-800">
-        {/* Switcher de perfil */}
-        <div className="relative mb-2">
-          <button
-            onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/60 hover:bg-gray-800 transition-colors"
-          >
-            {role === "ADMIN_MASTER" ? (
-              <ShieldCheck className="h-4 w-4 text-amber-400" />
-            ) : (
-              <Crown className="h-4 w-4 text-emerald-400" />
-            )}
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-[10px] text-gray-500 uppercase tracking-wider">Perfil ativo</p>
-              <p className="text-xs font-semibold text-white truncate">
-                {role === "ADMIN_MASTER" ? "Admin Master" : "Dono"}
-              </p>
-            </div>
-            <ChevronsUpDown className="h-3.5 w-3.5 text-gray-500" />
-          </button>
-          {roleMenuOpen && (
-            <div className="absolute bottom-full left-0 right-0 mb-1 bg-gray-800 border border-gray-700 rounded-lg shadow-xl overflow-hidden z-10">
-              <button
-                onClick={() => {
-                  setRole("ADMIN_MASTER");
-                  setRoleMenuOpen(false);
-                }}
-                className={cn(
-                  "w-full flex items-start gap-2 px-3 py-2.5 hover:bg-gray-700 text-left transition-colors",
-                  role === "ADMIN_MASTER" && "bg-gray-700/50"
-                )}
-              >
-                <ShieldCheck className="h-4 w-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-semibold text-white">Admin Master</p>
-                  <p className="text-[10px] text-gray-400">
-                    Visão completa: sistema, segurança, auditoria
-                  </p>
-                </div>
-              </button>
-              <button
-                onClick={() => {
-                  setRole("DONO");
-                  setRoleMenuOpen(false);
-                }}
-                className={cn(
-                  "w-full flex items-start gap-2 px-3 py-2.5 hover:bg-gray-700 text-left transition-colors border-t border-gray-700",
-                  role === "DONO" && "bg-gray-700/50"
-                )}
-              >
-                <Crown className="h-4 w-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-semibold text-white">Dono</p>
-                  <p className="text-[10px] text-gray-400">
-                    Visão executiva: operação e resultados
-                  </p>
-                </div>
-              </button>
-            </div>
+        <div className="px-3 py-2 mb-1 flex items-center gap-2 rounded-lg bg-gray-800/40">
+          {role === "ADMIN_MASTER" ? (
+            <ShieldCheck className="h-4 w-4 text-amber-400 flex-shrink-0" />
+          ) : (
+            <Crown className="h-4 w-4 text-emerald-400 flex-shrink-0" />
           )}
+          <div className="min-w-0">
+            <p className="text-[9px] text-gray-500 uppercase tracking-wider">Perfil</p>
+            <p className="text-xs font-semibold text-white truncate">
+              {role === "ADMIN_MASTER" ? "Admin Master" : "Dono"}
+            </p>
+          </div>
         </div>
 
         <div className="px-3 py-2 flex items-center gap-3">

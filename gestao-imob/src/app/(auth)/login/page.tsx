@@ -184,12 +184,17 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Demo credentials hint */}
-            <div className="mt-6 p-3 bg-gray-50 rounded-xl border border-gray-100">
-              <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider mb-1">Acesso de demonstracao</p>
-              <p className="text-xs text-gray-500">
-                <span className="font-mono">admin@moinhos.com</span> / <span className="font-mono">admin123</span>
-              </p>
+            {/* Credenciais */}
+            <div className="mt-6 p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
+              <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Perfis de acesso</p>
+              <div className="text-xs text-gray-600">
+                <p className="font-semibold text-gray-700">Admin Master</p>
+                <p className="font-mono text-gray-500">admin@moinhos.com / admin2026</p>
+              </div>
+              <div className="text-xs text-gray-600">
+                <p className="font-semibold text-gray-700">Dono</p>
+                <p className="font-mono text-gray-500">dono@moinhos.com / dono2026</p>
+              </div>
             </div>
           </div>
 

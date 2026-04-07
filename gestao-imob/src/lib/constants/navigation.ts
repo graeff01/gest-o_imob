@@ -30,8 +30,6 @@ export const navigationItems: NavItem[] = [
   // ─── Cadastros — todos veem ───
   { title: "Pessoas", href: "/pessoas", icon: "Users", section: "cadastros" },
   { title: "Imóveis", href: "/imoveis", icon: "Building", section: "cadastros" },
-  { title: "Proprietários", href: "/proprietarios", icon: "UserSquare", section: "cadastros" },
-  { title: "Fornecedores", href: "/fornecedores", icon: "Store", section: "cadastros" },
   { title: "DIMOB", href: "/dimob", icon: "FileOutput", section: "cadastros" },
 
   // ─── Sistema — só ADMIN_MASTER ───
