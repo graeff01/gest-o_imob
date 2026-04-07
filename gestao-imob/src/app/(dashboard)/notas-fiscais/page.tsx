@@ -3,22 +3,19 @@
 import { useState } from "react";
 import {
   FileText,
-  Plus,
   Search,
   Send,
   CheckCircle2,
   Clock,
-  X,
   Ban,
   DollarSign,
-  Eye,
   Printer,
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
-type Tab = "todas" | "pendentes" | "nova";
+type Tab = "todas" | "pendentes";
 type InvoiceStatus = "PENDENTE" | "EMITIDA" | "ENVIADA" | "PAGA" | "CANCELADA";
 type ServiceType = "INTERMEDIACAO" | "AGENCIAMENTO" | "ADMINISTRACAO";
 
@@ -106,21 +103,6 @@ export default function NotasFiscaisPage() {
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterService, setFilterService] = useState<string>("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-
-  // Form state
-  const [form, setForm] = useState({
-    clientName: "",
-    clientCpfCnpj: "",
-    clientContact: "",
-    propertyAddress: "",
-    serviceType: "INTERMEDIACAO" as ServiceType,
-    amount: "",
-    descriptionTitle: "",
-    descriptionBody: "",
-    notes: "",
-    corretorName: "",
-  });
 
   const filtered = invoices.filter((inv) => {
     if (search && !inv.clientName.toLowerCase().includes(search.toLowerCase()) &&
@@ -148,48 +130,12 @@ export default function NotasFiscaisPage() {
     }));
   };
 
-  const handleSubmit = () => {
-    if (!form.clientName || !form.clientCpfCnpj || !form.amount || !form.descriptionTitle || !form.descriptionBody) return;
-
-    const newInvoice: MockInvoice = {
-      id: Math.random().toString(36).substr(2, 9),
-      yearSequence: invoices.length + 1,
-      referenceYear: 2026,
-      clientName: form.clientName,
-      clientCpfCnpj: form.clientCpfCnpj,
-      clientContact: form.clientContact || undefined,
-      propertyAddress: form.propertyAddress || undefined,
-      serviceType: form.serviceType,
-      amount: parseFloat(form.amount),
-      descriptionTitle: form.descriptionTitle,
-      descriptionBody: form.descriptionBody,
-      status: "PENDENTE",
-      createdAt: new Date().toISOString().split("T")[0],
-      notes: form.notes || undefined,
-      corretorName: form.corretorName || undefined,
-    };
-
-    setInvoices([newInvoice, ...invoices]);
-    setForm({ clientName: "", clientCpfCnpj: "", clientContact: "", propertyAddress: "", serviceType: "INTERMEDIACAO", amount: "", descriptionTitle: "", descriptionBody: "", notes: "", corretorName: "" });
-    setShowForm(false);
-    setActiveTab("todas");
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notas Fiscais</h1>
-          <p className="text-sm text-gray-500">Controle de NFs emitidas, enviadas e pagas.</p>
-        </div>
-        <button
-          onClick={() => { setShowForm(!showForm); setActiveTab("nova"); }}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Nova NF
-        </button>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Notas Fiscais</h1>
+        <p className="text-sm text-gray-500">Controle de NFs emitidas, enviadas e pagas. Novas NFs são criadas automaticamente pela Central IA.</p>
       </div>
 
       {/* Summary Cards */}
@@ -223,11 +169,10 @@ export default function NotasFiscaisPage() {
         {([
           { id: "todas" as Tab, label: "Todas" },
           { id: "pendentes" as Tab, label: `Pendentes (${invoices.filter((i) => i.status === "PENDENTE").length})` },
-          { id: "nova" as Tab, label: "Nova NF" },
         ]).map((tab) => (
           <button
             key={tab.id}
-            onClick={() => { setActiveTab(tab.id); if (tab.id === "nova") setShowForm(true); }}
+            onClick={() => setActiveTab(tab.id)}
             className={cn(
               "px-4 py-2 rounded-md text-sm font-medium transition-colors",
               activeTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
@@ -238,84 +183,8 @@ export default function NotasFiscaisPage() {
         ))}
       </div>
 
-      {/* Form */}
-      {activeTab === "nova" && showForm && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="font-semibold text-gray-900 mb-4">Criar Nota Fiscal</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Cliente *</label>
-              <input type="text" value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">CPF/CNPJ *</label>
-              <input type="text" value={form.clientCpfCnpj} onChange={(e) => setForm({ ...form, clientCpfCnpj: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contato</label>
-              <input type="text" value={form.clientContact} onChange={(e) => setForm({ ...form, clientContact: e.target.value })}
-                placeholder="Telefone ou email"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Serviço *</label>
-              <select value={form.serviceType} onChange={(e) => setForm({ ...form, serviceType: e.target.value as ServiceType })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <option value="INTERMEDIACAO">Intermediação</option>
-                <option value="AGENCIAMENTO">Agenciamento</option>
-                <option value="ADMINISTRACAO">Administração</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Valor *</label>
-              <input type="number" step="0.01" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                placeholder="0,00"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Corretor vinculado</label>
-              <input type="text" value={form.corretorName} onChange={(e) => setForm({ ...form, corretorName: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="md:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Endereço do Imóvel</label>
-              <input type="text" value={form.propertyAddress} onChange={(e) => setForm({ ...form, propertyAddress: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="md:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Título da NF *</label>
-              <input type="text" value={form.descriptionTitle} onChange={(e) => setForm({ ...form, descriptionTitle: e.target.value })}
-                placeholder="Ex: Intermediação de Locação Residencial"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="md:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição dos Serviços *</label>
-              <textarea rows={3} value={form.descriptionBody} onChange={(e) => setForm({ ...form, descriptionBody: e.target.value })}
-                placeholder="Descreva os serviços prestados..."
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-            <div className="md:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Observações internas</label>
-              <input type="text" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 mt-6">
-            <button onClick={() => { setShowForm(false); setActiveTab("todas"); }}
-              className="px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-            <button onClick={handleSubmit}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700">
-              Criar Nota Fiscal
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Table */}
-      {(activeTab === "todas" || activeTab === "pendentes") && (
-        <div className="space-y-4">
+      <div className="space-y-4">
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 max-w-md">
@@ -461,7 +330,6 @@ export default function NotasFiscaisPage() {
             </div>
           </div>
         </div>
-      )}
     </div>
   );
 }

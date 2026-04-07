@@ -1,1009 +1,836 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import {
-  UploadCloud,
-  Search,
+  Upload,
+  Bot,
+  User,
   FileText,
-  CheckCircle,
-  X,
-  Eye,
-  ImageIcon,
-  History,
-  Download,
-  ScanLine,
-  Shield,
-  Cpu,
-  AlertTriangle,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Paperclip,
   ArrowRight,
-  TrendingUp,
+  Sparkles,
   TrendingDown,
+  TrendingUp,
   Receipt,
-  Landmark,
-  Percent,
-  FileQuestion,
-  Zap,
   CreditCard,
-  FileSignature,
-  BadgeCheck,
+  Edit3,
+  PenLine,
+  ChevronDown,
+  X,
+  Send,
+  Plus,
 } from "lucide-react";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
-import type { AIExtractionResult, DocumentType } from "@/lib/utils/ai-processor";
+import { cn, formatCurrency } from "@/lib/utils";
+import {
+  type AIExtractionResult,
+  type DocumentType,
+  getDestinoLabel,
+  getDocTypeColor,
+  getDocTypeLabel,
+} from "@/lib/utils/ai-processor";
 
-// ═══════════════════════════════════════════
-// TIPOS LOCAIS
-// ═══════════════════════════════════════════
+// ─── Constants ─────────────────────────────────────
 
-interface ProcessedDocument {
-  id: string;
-  extraction: AIExtractionResult;
-  previewUrl: string;
-  fileName: string;
-  processedAt: string;
-  mode: "ai" | "mock";
-  inserted: boolean;
-  insertedTable?: string;
-}
-
-// ═══════════════════════════════════════════
-// MAPAS DE VISUAL
-// ═══════════════════════════════════════════
-
-const DOC_TYPE_CONFIG: Record<
-  DocumentType,
-  { label: string; color: string; bg: string; icon: React.ElementType }
-> = {
-  DESPESA: { label: "Despesa", color: "text-red-700", bg: "bg-red-50", icon: TrendingDown },
-  RECEITA: { label: "Receita", color: "text-green-700", bg: "bg-green-50", icon: TrendingUp },
-  NOTA_FISCAL: { label: "Nota Fiscal", color: "text-blue-700", bg: "bg-blue-50", icon: Receipt },
-  EXTRATO_BANCARIO: { label: "Extrato", color: "text-gray-700", bg: "bg-gray-100", icon: Landmark },
-  COMISSAO: { label: "Comissão", color: "text-purple-700", bg: "bg-purple-50", icon: Percent },
-  IMPOSTO: { label: "Imposto", color: "text-amber-700", bg: "bg-amber-50", icon: FileText },
-  COMPROVANTE_PIX: { label: "PIX", color: "text-emerald-700", bg: "bg-emerald-50", icon: CreditCard },
-  CONTRATO: { label: "Contrato", color: "text-indigo-700", bg: "bg-indigo-50", icon: FileSignature },
-  OUTROS: { label: "Outros", color: "text-gray-600", bg: "bg-gray-50", icon: FileQuestion },
-};
-
-const DESTINO_CONFIG: Record<string, { label: string; color: string }> = {
-  expenses: { label: "Despesas (Financeiro)", color: "text-red-600" },
-  revenues: { label: "Receitas (Financeiro)", color: "text-green-600" },
-  invoices: { label: "Notas Fiscais", color: "text-blue-600" },
-  bank_transactions: { label: "Extratos Bancários", color: "text-gray-600" },
-  manual: { label: "Classificação Manual", color: "text-orange-600" },
-};
-
-const SCAN_STEPS = [
-  "Detectando bordas do documento...",
-  "Aplicando correção de perspectiva...",
-  "Executando OCR sobre o texto...",
-  "Extraindo campos numéricos...",
-  "Identificando CNPJ e razão social...",
-  "Classificando tipo de documento...",
-  "Validando dados extraídos...",
+const DOCUMENT_TYPES: { value: DocumentType; label: string }[] = [
+  { value: "DESPESA", label: "Despesa" },
+  { value: "RECEITA", label: "Receita" },
+  { value: "NOTA_FISCAL", label: "Nota Fiscal" },
+  { value: "EXTRATO_BANCARIO", label: "Extrato Bancário" },
+  { value: "COMISSAO", label: "Comissão" },
+  { value: "IMPOSTO", label: "Imposto/Tributo" },
+  { value: "COMPROVANTE_PIX", label: "Comprovante PIX" },
+  { value: "CONTRATO", label: "Contrato" },
+  { value: "OUTROS", label: "Outros" },
 ];
 
-function getConfidenceColor(conf: number) {
-  if (conf >= 85) return { text: "text-green-700", bg: "bg-green-50", bar: "bg-green-500" };
-  if (conf >= 60) return { text: "text-amber-700", bg: "bg-amber-50", bar: "bg-amber-500" };
-  return { text: "text-red-700", bg: "bg-red-50", bar: "bg-red-500" };
+const CATEGORIAS_DESPESA = [
+  "Contas de Consumo", "Material", "Manutenção", "Contas Operacionais Venda",
+  "Contas Operacionais Locação", "Folha de Pagamentos", "Tarifas Bancárias",
+  "Impostos e Tributos", "Gastos Espaço Físico", "Marketing",
+];
+
+const SUBCATEGORIAS: Record<string, string[]> = {
+  "Contas de Consumo": ["Luz/Energia", "Água", "Telefone/Internet", "Gás", "Condomínio escritório"],
+  "Material": ["Escritório", "Limpeza", "Copa/Cozinha", "Informática", "Impressão"],
+  "Manutenção": ["Predial", "Equipamentos", "Ar condicionado", "Elétrica", "Hidráulica", "Pintura"],
+  "Contas Operacionais Venda": ["Publicidade venda", "Placas", "Fotos imóveis", "CRECI", "Cartório"],
+  "Contas Operacionais Locação": ["Publicidade locação", "Placas locação", "Vistorias", "Seguros", "Marketing digital"],
+  "Folha de Pagamentos": ["Salários locação", "Salários venda", "Comissões locação", "Comissões venda", "FGTS", "INSS", "Vale transporte", "Vale refeição"],
+  "Tarifas Bancárias": ["Manutenção conta", "DOC/TED", "Boletos emitidos", "Anuidade cartão", "Juros/Multas"],
+  "Impostos e Tributos": ["ISS", "IRPJ", "CSLL", "PIS", "COFINS", "IPTU escritório", "Alvará", "Simples Nacional"],
+  "Gastos Espaço Físico": ["Aluguel escritório", "Condomínio", "IPTU", "Seguro predial", "Limpeza terceirizada"],
+  "Marketing": ["Marketing digital", "Impulsionamento", "Material impresso", "Eventos"],
+};
+
+const CATEGORIAS_RECEITA = [
+  "Intermediação", "Agenciamento", "Administração", "NFSe Aluguel",
+  "Campanha Sucesso", "Multa Contratual", "Outro",
+];
+
+const DESTINOS = [
+  { value: "expenses", label: "Despesas (Financeiro)" },
+  { value: "revenues", label: "Receitas (Financeiro)" },
+  { value: "invoices", label: "Notas Fiscais" },
+  { value: "bank_transactions", label: "Extratos Bancários" },
+  { value: "manual", label: "Classificação Manual" },
+];
+
+const DESTINO_ICONS: Record<string, React.ElementType> = {
+  expenses: TrendingDown,
+  revenues: TrendingUp,
+  invoices: Receipt,
+  bank_transactions: CreditCard,
+  manual: FileText,
+};
+
+// ─── Types ─────────────────────────────────────────
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
+  file?: { name: string; size: number; type: string };
+  extraction?: AIExtractionResult;
+  status?: "processing" | "success" | "error" | "confirmed";
+  editing?: boolean;
 }
 
-// ═══════════════════════════════════════════
-// COMPONENTE PRINCIPAL
-// ═══════════════════════════════════════════
+type ViewMode = "chat" | "manual";
 
-export default function DocumentosPage() {
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanStep, setScanStep] = useState(0);
-  const [scanMessage, setScanMessage] = useState("");
-  const [extractedData, setExtractedData] = useState<AIExtractionResult | null>(null);
-  const [aiMode, setAiMode] = useState<"ai" | "mock">("mock");
-  const [showScanner, setShowScanner] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [history, setHistory] = useState<ProcessedDocument[]>([]);
-  const [viewingDoc, setViewingDoc] = useState<ProcessedDocument | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [dragActive, setDragActive] = useState(false);
-  const [isInserting, setIsInserting] = useState(false);
+// ─── Component ─────────────────────────────────────
 
+export default function CentralIAPage() {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("chat");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
-  const handleFileSelect = (file: File) => {
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
-    setScanStep(0);
-    setScanMessage("");
-    setExtractedData(null);
+  // Manual entry state
+  const [manualForm, setManualForm] = useState<Partial<AIExtractionResult>>({
+    tipo_documento: "DESPESA",
+    valor: 0,
+    data_documento: new Date().toLocaleDateString("pt-BR"),
+    descricao: "",
+    emissor_nome: "",
+    emissor_cnpj_cpf: "",
+    categoria_sugerida: "",
+    subcategoria_sugerida: "",
+    departamento: "AMBOS",
+    destino: "expenses",
+    destino_descricao: "",
+    confianca: 100,
+    observacoes: "Inserção manual",
+  });
+
+  const scrollToBottom = useCallback(() => {
+    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+  }, []);
+
+  const addMessage = useCallback(
+    (msg: Omit<ChatMessage, "id" | "timestamp">) => {
+      const newMsg = { ...msg, id: crypto.randomUUID(), timestamp: new Date() };
+      setMessages((prev) => [...prev, newMsg]);
+      scrollToBottom();
+      return newMsg.id;
+    },
+    [scrollToBottom]
+  );
+
+  const updateMessage = useCallback((id: string, updates: Partial<ChatMessage>) => {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
+  }, []);
+
+  // ─── Process File ────────────────────────────────
+
+  const processFile = async (file: File) => {
+    if (isProcessing) return;
+    setViewMode("chat");
+
+    const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    if (!allowed.includes(file.type)) {
+      addMessage({ role: "assistant", content: `Formato não suportado. Envie JPG, PNG, WebP ou PDF.`, status: "error" });
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      addMessage({ role: "assistant", content: "Arquivo muito grande (max 20MB).", status: "error" });
+      return;
+    }
+
+    addMessage({
+      role: "user",
+      content: file.name,
+      file: { name: file.name, size: file.size, type: file.type },
+    });
+
+    const processingId = addMessage({ role: "assistant", content: "Analisando documento com IA...", status: "processing" });
+    setIsProcessing(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/ocr", { method: "POST", body: formData });
+      const result = await res.json();
+
+      if (!result.success) {
+        updateMessage(processingId, { content: `Erro: ${result.error || "Falha desconhecida"}`, status: "error" });
+        return;
+      }
+
+      updateMessage(processingId, {
+        content: `Documento analisado (${result.mode === "ai" ? "GPT-4o" : "mock"})`,
+        extraction: result.data as AIExtractionResult,
+        status: "success",
+      });
+    } catch {
+      updateMessage(processingId, { content: "Erro de conexão. Tente novamente.", status: "error" });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ─── Confirm & Route ────────────────────────────
+
+  const confirmAndRoute = async (messageId: string, extraction: AIExtractionResult) => {
+    updateMessage(messageId, { status: "confirmed", editing: false });
+
+    const confirmId = addMessage({ role: "assistant", content: "Lançando no sistema...", status: "processing" });
+
+    try {
+      const res = await fetch("/api/process-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extraction }),
+      });
+      const result = await res.json();
+
+      if (result.success) {
+        updateMessage(confirmId, {
+          content: `Lançado com sucesso em ${getDestinoLabel(extraction.destino)}!`,
+          status: "success",
+        });
+      } else {
+        updateMessage(confirmId, { content: `Erro ao lançar: ${result.error}`, status: "error" });
+      }
+    } catch {
+      updateMessage(confirmId, { content: "Erro de conexão ao lançar.", status: "error" });
+    }
+  };
+
+  // ─── Manual Submit ───────────────────────────────
+
+  const handleManualSubmit = async () => {
+    if (!manualForm.descricao || !manualForm.valor) return;
+
+    const extraction = { ...manualForm } as AIExtractionResult;
+
+    addMessage({ role: "user", content: `Inserção manual: ${manualForm.descricao}` });
+    const confirmId = addMessage({ role: "assistant", content: "Lançando registro manual...", status: "processing" });
+
+    try {
+      const res = await fetch("/api/process-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extraction }),
+      });
+      const result = await res.json();
+
+      if (result.success) {
+        updateMessage(confirmId, {
+          content: `Registro manual lançado em ${getDestinoLabel(extraction.destino)}!`,
+          status: "success",
+        });
+        setManualForm({
+          tipo_documento: "DESPESA", valor: 0, data_documento: new Date().toLocaleDateString("pt-BR"),
+          descricao: "", emissor_nome: "", emissor_cnpj_cpf: "", categoria_sugerida: "",
+          subcategoria_sugerida: "", departamento: "AMBOS", destino: "expenses",
+          destino_descricao: "", confianca: 100, observacoes: "Inserção manual",
+        });
+        setViewMode("chat");
+      } else {
+        updateMessage(confirmId, { content: `Erro: ${result.error}`, status: "error" });
+      }
+    } catch {
+      updateMessage(confirmId, { content: "Erro de conexão.", status: "error" });
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) handleFileSelect(file);
+    if (file) processFile(file);
+    e.target.value = "";
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setDragActive(false);
+    setDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) handleFileSelect(file);
+    if (file) processFile(file);
   };
 
-  // ── ETAPA 1: Escanear com IA ──
-  const startAIProcessing = async () => {
-    if (!selectedFile || !previewUrl) return;
-    setIsScanning(true);
-    setScanStep(1);
+  const processedCount = messages.filter((m) => m.status === "success" || m.status === "confirmed").length;
 
-    let stepIndex = 0;
-    const stepInterval = setInterval(() => {
-      if (stepIndex < SCAN_STEPS.length) {
-        setScanMessage(SCAN_STEPS[stepIndex]);
-        stepIndex++;
-      }
-    }, 800);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
-      const response = await fetch("/api/ocr", { method: "POST", body: formData });
-      const result = await response.json();
-      clearInterval(stepInterval);
-
-      if (result.success && result.data) {
-        setScanMessage("Análise concluída!");
-        setAiMode(result.mode || "mock");
-        setTimeout(() => {
-          setExtractedData(result.data);
-          setScanStep(2);
-          setIsScanning(false);
-        }, 600);
-      } else {
-        alert(result.error || "Erro no processamento");
-        setIsScanning(false);
-        setScanStep(0);
-        setScanMessage("");
-      }
-    } catch {
-      clearInterval(stepInterval);
-      alert("Erro de conexão com o servidor.");
-      setScanStep(0);
-      setScanMessage("");
-      setIsScanning(false);
-    }
-  };
-
-  // ── ETAPA 2: Confirmar e lançar no sistema ──
-  const confirmAndInsert = async () => {
-    if (!extractedData || !selectedFile) return;
-    setIsInserting(true);
-
-    try {
-      const response = await fetch("/api/process-document", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          extraction: extractedData,
-          file_name: selectedFile.name,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        const doc: ProcessedDocument = {
-          id: result.record?.id || crypto.randomUUID(),
-          extraction: extractedData,
-          previewUrl: previewUrl || "",
-          fileName: selectedFile.name,
-          processedAt: new Date().toISOString(),
-          mode: aiMode,
-          inserted: true,
-          insertedTable: result.table,
-        };
-        setHistory([doc, ...history]);
-        resetScanner();
-        setShowScanner(false);
-      } else {
-        alert(result.error || "Erro ao inserir no sistema");
-      }
-    } catch {
-      alert("Erro de conexão ao confirmar lançamento.");
-    } finally {
-      setIsInserting(false);
-    }
-  };
-
-  const resetScanner = () => {
-    setSelectedFile(null);
-    setPreviewUrl(null);
-    setScanStep(0);
-    setScanMessage("");
-    setExtractedData(null);
-  };
-
-  const filteredHistory = history.filter(
-    (doc) =>
-      doc.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.extraction.emissor_nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.extraction.emissor_cnpj_cpf.includes(searchTerm)
-  );
-
-  // ── Contadores para summary cards ──
-  const totalDocs = history.length;
-  const totalDespesas = history.filter((h) => h.extraction.destino === "expenses").length;
-  const totalReceitas = history.filter((h) => h.extraction.destino === "revenues").length;
-  const totalNFs = history.filter((h) => h.extraction.destino === "invoices").length;
+  // ─── Render ──────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col h-[calc(100vh-6rem)]">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Triagem de Documentos</h1>
-          <p className="text-sm text-gray-500">
-            Escaneie documentos com IA — classifique e lance automaticamente no sistema.
-          </p>
+      <div className="flex items-center gap-3 pb-4 border-b border-gray-200 mb-4">
+        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-600/20">
+          <Sparkles className="h-5 w-5 text-white" />
         </div>
-        <button
-          onClick={() => setShowScanner(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-        >
-          <ScanLine className="h-4 w-4" />
-          Escanear Documento
-        </button>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {[
-          { label: "Documentos triados", value: totalDocs, icon: History, color: "text-gray-900" },
-          { label: "Despesas lançadas", value: totalDespesas, icon: TrendingDown, color: "text-red-600" },
-          { label: "Receitas lançadas", value: totalReceitas, icon: TrendingUp, color: "text-green-600" },
-          { label: "NFs registradas", value: totalNFs, icon: Receipt, color: "text-blue-600" },
-        ].map((stat, i) => (
-          <div key={i} className="bg-white p-4 rounded-xl border border-gray-200">
-            <div className="flex items-center gap-2 mb-2 text-gray-400">
-              <stat.icon className="h-4 w-4" />
-              <span className="text-xs text-gray-500">{stat.label}</span>
-            </div>
-            <p className={cn("text-2xl font-bold", stat.color)}>{stat.value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Audit Log Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b border-gray-200 flex justify-between items-center">
-          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-            <Shield className="h-5 w-5 text-gray-400" />
-            Registro de Documentos
-          </h3>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Pesquisar..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
-            />
-          </div>
+        <div className="flex-1">
+          <h1 className="text-xl font-bold text-gray-900">Central IA</h1>
+          <p className="text-xs text-gray-500">Ponto único de entrada de dados do sistema</p>
         </div>
-
-        {history.length === 0 ? (
-          <div className="px-6 py-16 text-center">
-            <FileText className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-400">Nenhum documento processado ainda.</p>
-            <p className="text-xs text-gray-400 mt-1">
-              Clique em &quot;Escanear Documento&quot; para começar.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Documento</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Categoria</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Valor</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Destino</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">Confiança</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredHistory.map((doc) => {
-                  const typeConf = DOC_TYPE_CONFIG[doc.extraction.tipo_documento] || DOC_TYPE_CONFIG.OUTROS;
-                  const confColor = getConfidenceColor(doc.extraction.confianca);
-                  const destConf = DESTINO_CONFIG[doc.extraction.destino] || DESTINO_CONFIG.manual;
-                  return (
-                    <tr
-                      key={doc.id}
-                      className="hover:bg-gray-50 transition-colors cursor-pointer"
-                      onClick={() => setViewingDoc(doc)}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 flex-shrink-0">
-                            <img src={doc.previewUrl} className="w-full h-full object-cover" alt="" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900 truncate max-w-[160px]">
-                              {doc.fileName}
-                            </p>
-                            <p className="text-xs text-gray-400">{doc.extraction.emissor_nome}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={cn(
-                            "px-2 py-0.5 rounded-full text-xs font-medium inline-flex items-center gap-1",
-                            typeConf.bg,
-                            typeConf.color
-                          )}
-                        >
-                          <typeConf.icon className="h-3 w-3" />
-                          {typeConf.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <p className="text-xs text-gray-700 font-medium">
-                          {doc.extraction.categoria_sugerida}
-                        </p>
-                        <p className="text-[10px] text-gray-400">
-                          {doc.extraction.subcategoria_sugerida}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                        {formatCurrency(doc.extraction.valor)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={cn("text-xs font-medium", destConf.color)}>
-                          {destConf.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <div className="w-12 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className={cn("h-full rounded-full", confColor.bar)}
-                              style={{ width: `${doc.extraction.confianca}%` }}
-                            />
-                          </div>
-                          <span className={cn("text-xs font-medium", confColor.text)}>
-                            {doc.extraction.confianca}%
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          {doc.inserted && (
-                            <span className="p-1 text-green-500" title="Lançado no sistema">
-                              <BadgeCheck className="h-4 w-4" />
-                            </span>
-                          )}
-                          <button className="p-1.5 border border-gray-200 rounded-lg text-gray-400 hover:text-blue-600 hover:border-blue-200 transition-colors">
-                            <Eye className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ═══════════════════════════════════════════ */}
-      {/* SCANNER MODAL                              */}
-      {/* ═══════════════════════════════════════════ */}
-      {showScanner && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div
-            className="bg-white rounded-2xl w-full max-w-5xl overflow-hidden flex shadow-2xl"
-            style={{ height: "680px" }}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setViewMode("chat")}
+            className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+              viewMode === "chat" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            )}
           >
-            {/* Left - Document Preview + Scanner Animation */}
-            <div className="w-3/5 bg-gray-950 flex items-center justify-center relative overflow-hidden">
-              <input
-                type="file"
-                ref={fileInputRef}
-                className="hidden"
-                accept="image/*,.pdf"
-                onChange={handleFileChange}
-              />
+            <Upload className="h-3.5 w-3.5 inline mr-1.5" />Upload IA
+          </button>
+          <button
+            onClick={() => setViewMode("manual")}
+            className={cn("px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+              viewMode === "manual" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            )}
+          >
+            <PenLine className="h-3.5 w-3.5 inline mr-1.5" />Manual
+          </button>
+          {processedCount > 0 && (
+            <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-1 rounded-full ml-1">
+              {processedCount} processados
+            </span>
+          )}
+        </div>
+      </div>
 
-              {/* Grid overlay */}
-              <div
-                className="absolute inset-0 opacity-[0.03] pointer-events-none"
-                style={{
-                  backgroundImage:
-                    "linear-gradient(rgba(255,255,255,.5) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)",
-                  backgroundSize: "40px 40px",
-                }}
-              />
+      {/* ═══ MANUAL ENTRY MODE ═══ */}
+      {viewMode === "manual" && (
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-2xl mx-auto">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
+              <div className="flex items-center gap-2 mb-2">
+                <PenLine className="h-5 w-5 text-blue-600" />
+                <h2 className="font-semibold text-gray-900">Inserção Manual</h2>
+                <span className="text-xs text-gray-400 ml-auto">Preencha os campos abaixo</span>
+              </div>
 
-              {!selectedFile ? (
-                <div
-                  className={cn(
-                    "w-[85%] h-[85%] border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all duration-300",
-                    dragActive
-                      ? "border-blue-400 bg-blue-500/10"
-                      : "border-gray-700 hover:border-gray-500 hover:bg-white/5"
-                  )}
-                  onClick={() => fileInputRef.current?.click()}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragActive(true);
-                  }}
-                  onDragLeave={() => setDragActive(false)}
-                  onDrop={handleDrop}
-                >
-                  <div className="p-5 bg-gray-800 rounded-2xl mb-5">
-                    <UploadCloud
-                      className={cn(
-                        "h-10 w-10 transition-colors",
-                        dragActive ? "text-blue-400" : "text-gray-500"
-                      )}
-                    />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Documento</label>
+                  <select value={manualForm.tipo_documento} onChange={(e) => {
+                    const tipo = e.target.value as DocumentType;
+                    setManualForm({ ...manualForm, tipo_documento: tipo,
+                      destino: tipo === "RECEITA" || tipo === "COMISSAO" ? "revenues" : tipo === "NOTA_FISCAL" ? "invoices" : tipo === "EXTRATO_BANCARIO" ? "bank_transactions" : "expenses",
+                    });
+                  }} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    {DOCUMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Departamento</label>
+                  <select value={manualForm.departamento} onChange={(e) => setManualForm({ ...manualForm, departamento: e.target.value as "LOCACAO" | "VENDA" | "AMBOS" })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="LOCACAO">Locação</option>
+                    <option value="VENDA">Venda</option>
+                    <option value="AMBOS">Ambos</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Valor (R$) *</label>
+                  <input type="number" step="0.01" value={manualForm.valor || ""} onChange={(e) => setManualForm({ ...manualForm, valor: parseFloat(e.target.value) || 0 })}
+                    placeholder="0,00" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Data</label>
+                  <input type="text" value={manualForm.data_documento} onChange={(e) => setManualForm({ ...manualForm, data_documento: e.target.value })}
+                    placeholder="DD/MM/AAAA" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Descrição *</label>
+                <input type="text" value={manualForm.descricao} onChange={(e) => setManualForm({ ...manualForm, descricao: e.target.value })}
+                  placeholder="Ex: Conta de energia do escritório" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Emissor / Fornecedor</label>
+                  <input type="text" value={manualForm.emissor_nome} onChange={(e) => setManualForm({ ...manualForm, emissor_nome: e.target.value })}
+                    placeholder="Nome" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">CPF/CNPJ</label>
+                  <input type="text" value={manualForm.emissor_cnpj_cpf} onChange={(e) => setManualForm({ ...manualForm, emissor_cnpj_cpf: e.target.value })}
+                    placeholder="XX.XXX.XXX/XXXX-XX" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Categoria</label>
+                  <select value={manualForm.categoria_sugerida} onChange={(e) => setManualForm({ ...manualForm, categoria_sugerida: e.target.value, subcategoria_sugerida: "" })}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <option value="">Selecione...</option>
+                    {(manualForm.tipo_documento === "RECEITA" ? CATEGORIAS_RECEITA : CATEGORIAS_DESPESA).map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Subcategoria</label>
+                  <select value={manualForm.subcategoria_sugerida} onChange={(e) => setManualForm({ ...manualForm, subcategoria_sugerida: e.target.value })}
+                    disabled={!manualForm.categoria_sugerida || !SUBCATEGORIAS[manualForm.categoria_sugerida || ""]}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400">
+                    <option value="">Selecione...</option>
+                    {(SUBCATEGORIAS[manualForm.categoria_sugerida || ""] || []).map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Destino no Sistema</label>
+                <select value={manualForm.destino} onChange={(e) => setManualForm({ ...manualForm, destino: e.target.value as AIExtractionResult["destino"] })}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                  {DESTINOS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
+                <button onClick={() => setViewMode("chat")}
+                  className="px-4 py-2 border border-gray-200 text-gray-600 rounded-lg text-sm hover:bg-gray-50 transition-colors">
+                  Cancelar
+                </button>
+                <button onClick={handleManualSubmit}
+                  disabled={!manualForm.descricao || !manualForm.valor}
+                  className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                  <Send className="h-4 w-4" />
+                  Lançar no Sistema
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ CHAT / UPLOAD MODE ═══ */}
+      {viewMode === "chat" && (
+        <>
+          <div
+            className={cn(
+              "flex-1 overflow-y-auto transition-colors rounded-xl",
+              dragOver && "bg-blue-50/50 ring-2 ring-blue-300 ring-inset"
+            )}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDrop}
+          >
+            {/* Empty state / Drop zone */}
+            {dragOver ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <Upload className="h-12 w-12 text-blue-400 mx-auto mb-3 animate-bounce" />
+                  <p className="text-blue-600 font-medium">Solte o arquivo aqui</p>
+                  <p className="text-xs text-blue-400 mt-1">JPG, PNG, WebP ou PDF (max 20MB)</p>
+                </div>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center max-w-md">
+                  <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center mx-auto mb-6">
+                    <Sparkles className="h-10 w-10 text-blue-600" />
                   </div>
-                  <p className="text-lg font-semibold text-gray-300">
-                    Solte o documento aqui
+                  <h2 className="text-lg font-bold text-gray-900 mb-2">Envie seu primeiro documento</h2>
+                  <p className="text-sm text-gray-500 mb-6">
+                    A IA vai analisar, classificar e lançar automaticamente na aba correta do sistema.
+                    Você poderá revisar e corrigir antes de confirmar.
                   </p>
-                  <p className="text-sm text-gray-600 mt-2">
-                    JPG, PNG ou PDF - Nota fiscal, recibo, comprovante
+
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-600/25 transition-all hover:shadow-xl hover:shadow-blue-600/30"
+                  >
+                    <Upload className="h-5 w-5" />
+                    Enviar Documento
+                  </button>
+
+                  <p className="text-[11px] text-gray-400 mt-4">
+                    Ou arraste e solte na tela &middot; JPG, PNG, WebP, PDF (max 20MB)
                   </p>
-                  <div className="flex gap-2 mt-6">
-                    {["NF-e", "Recibo", "Boleto", "Extrato", "PIX"].map((tag) => (
-                      <span
-                        key={tag}
-                        className="px-3 py-1 bg-gray-800 text-gray-500 rounded-full text-xs"
-                      >
-                        {tag}
-                      </span>
+
+                  <div className="flex items-center justify-center gap-3 mt-6">
+                    {[
+                      { icon: TrendingDown, label: "Despesas", color: "text-red-400 bg-red-50" },
+                      { icon: TrendingUp, label: "Receitas", color: "text-green-400 bg-green-50" },
+                      { icon: Receipt, label: "Notas Fiscais", color: "text-blue-400 bg-blue-50" },
+                      { icon: CreditCard, label: "Extratos", color: "text-purple-400 bg-purple-50" },
+                      { icon: FileText, label: "Contratos", color: "text-indigo-400 bg-indigo-50" },
+                    ].map((t) => (
+                      <div key={t.label} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium", t.color)}>
+                        <t.icon className="h-3.5 w-3.5" /> {t.label}
+                      </div>
                     ))}
                   </div>
                 </div>
-              ) : (
-                <div className="relative w-[85%] h-[85%] flex items-center justify-center">
-                  <div className="relative rounded-lg overflow-hidden shadow-2xl border border-gray-800">
-                    <img
-                      src={previewUrl || ""}
-                      className={cn(
-                        "max-w-full max-h-[580px] object-contain transition-all duration-500",
-                        isScanning && "brightness-110"
-                      )}
-                      alt="Documento"
-                    />
-
-                    {/* Scanner Laser Animation */}
-                    {isScanning && (
-                      <>
-                        <div
-                          className="absolute left-0 right-0 h-[2px] z-20"
-                          style={{
-                            background:
-                              "linear-gradient(90deg, transparent, #3b82f6 20%, #60a5fa 50%, #3b82f6 80%, transparent)",
-                            boxShadow:
-                              "0 0 15px 3px rgba(59,130,246,0.6), 0 0 40px 8px rgba(59,130,246,0.3)",
-                            animation: "scanLine 2.5s ease-in-out infinite",
-                          }}
-                        />
-                        <div
-                          className="absolute left-0 right-0 h-16 z-10 pointer-events-none"
-                          style={{
-                            background:
-                              "linear-gradient(180deg, rgba(59,130,246,0.12) 0%, transparent 100%)",
-                            animation: "scanLine 2.5s ease-in-out infinite",
-                          }}
-                        />
-                        <div className="absolute top-3 left-3 w-6 h-6 border-t-2 border-l-2 border-blue-400 rounded-tl-sm z-20 animate-pulse" />
-                        <div className="absolute top-3 right-3 w-6 h-6 border-t-2 border-r-2 border-blue-400 rounded-tr-sm z-20 animate-pulse" />
-                        <div className="absolute bottom-3 left-3 w-6 h-6 border-b-2 border-l-2 border-blue-400 rounded-bl-sm z-20 animate-pulse" />
-                        <div className="absolute bottom-3 right-3 w-6 h-6 border-b-2 border-r-2 border-blue-400 rounded-br-sm z-20 animate-pulse" />
-                        <div className="absolute inset-0 bg-blue-500/5 z-10 pointer-events-none" />
-                      </>
-                    )}
-
-                    {/* Scan complete checkmark */}
-                    {scanStep === 2 && !isScanning && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-20">
-                        <div className="p-4 bg-green-500 rounded-full shadow-lg shadow-green-500/30 animate-[scaleIn_0.3s_ease-out]">
-                          <CheckCircle className="h-10 w-10 text-white" />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {!isScanning && scanStep === 0 && (
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="absolute bottom-3 right-3 px-3 py-1.5 bg-gray-800/90 text-gray-300 rounded-lg text-xs hover:bg-gray-700 transition-colors"
-                    >
-                      Trocar arquivo
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Right - Processing Panel */}
-            <div className="w-2/5 p-6 flex flex-col bg-white overflow-y-auto">
-              <div className="flex justify-between items-center mb-5">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={cn(
-                      "w-2.5 h-2.5 rounded-full",
-                      isScanning
-                        ? "bg-blue-500 animate-pulse"
-                        : scanStep === 2
-                          ? "bg-green-500"
-                          : "bg-gray-300"
-                    )}
-                  />
-                  <h3 className="text-lg font-bold text-gray-900">
-                    {isScanning
-                      ? "Escaneando..."
-                      : scanStep === 2
-                        ? "Análise Concluída"
-                        : "Scanner IA"}
-                  </h3>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowScanner(false);
-                    resetScanner();
-                  }}
-                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <X className="h-5 w-5" />
-                </button>
               </div>
-
-              {/* Estado: Nenhum arquivo */}
-              {!selectedFile ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center">
-                  <div className="p-4 bg-gray-50 rounded-2xl mb-4">
-                    <ImageIcon className="h-8 w-8 text-gray-300" />
-                  </div>
-                  <p className="text-sm text-gray-400">Aguardando documento...</p>
-                  <p className="text-xs text-gray-300 mt-1">
-                    Arraste um arquivo ou clique na área à esquerda
-                  </p>
-                </div>
-              ) : scanStep === 0 ? (
-                <div className="flex-1 flex flex-col justify-center">
-                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 mb-4">
-                    <div className="flex items-center gap-3">
-                      <FileText className="h-5 w-5 text-blue-600 flex-shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs text-blue-600 font-medium">Arquivo carregado</p>
-                        <p className="text-sm font-semibold text-blue-900 truncate">
-                          {selectedFile.name}
-                        </p>
-                        <p className="text-xs text-blue-400">
-                          {(selectedFile.size / 1024).toFixed(0)} KB
-                        </p>
+            ) : (
+              /* Message list */
+              <div className="space-y-4 py-2">
+                {messages.map((msg) => (
+                  <div key={msg.id} className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}>
+                    {msg.role === "assistant" && (
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center flex-shrink-0 mt-1">
+                        <Bot className="h-4 w-4 text-white" />
                       </div>
-                    </div>
-                  </div>
+                    )}
 
-                  <div className="bg-gray-50 rounded-xl p-4 mb-6">
-                    <p className="text-xs text-gray-500 font-medium mb-2">
-                      O que a IA vai extrair:
-                    </p>
-                    <div className="space-y-1.5">
-                      {[
-                        "Tipo do documento e classificação",
-                        "Valor, data e método de pagamento",
-                        "CNPJ/CPF e razão social do emissor",
-                        "Categoria e subcategoria financeira",
-                        "Destino correto no sistema (despesa, receita, NF...)",
-                      ].map((item) => (
-                        <div key={item} className="flex items-center gap-2 text-xs text-gray-600">
-                          <div className="w-1 h-1 bg-blue-500 rounded-full" />
-                          {item}
+                    <div className={cn(
+                      "max-w-[80%] rounded-2xl px-4 py-3 text-sm",
+                      msg.role === "user"
+                        ? "bg-blue-600 text-white rounded-br-md"
+                        : "bg-white border border-gray-200 text-gray-700 rounded-bl-md shadow-sm"
+                    )}>
+                      {/* Processing */}
+                      {msg.status === "processing" && (
+                        <div className="flex items-center gap-2 text-blue-600">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>{msg.content}</span>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={startAIProcessing}
-                    className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
-                  >
-                    <ScanLine className="h-4 w-4" />
-                    Iniciar Escaneamento
-                  </button>
-                </div>
-              ) : scanStep === 1 ? (
-                <div className="flex-1 flex flex-col justify-center">
-                  <div className="flex items-center justify-center mb-8">
-                    <div className="relative">
-                      <div className="w-20 h-20 rounded-full border-[3px] border-gray-100" />
-                      <div
-                        className="absolute inset-0 w-20 h-20 rounded-full border-[3px] border-transparent border-t-blue-500"
-                        style={{ animation: "spin 1s linear infinite" }}
-                      />
-                      <Cpu className="absolute inset-0 m-auto h-7 w-7 text-blue-600" />
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50 rounded-xl p-4 space-y-2">
-                    <p className="text-xs font-semibold text-gray-500 mb-3">
-                      Log de processamento
-                    </p>
-                    {SCAN_STEPS.map((step, i) => {
-                      const currentIdx = SCAN_STEPS.indexOf(scanMessage);
-                      const isDone = i < currentIdx;
-                      const isCurrent = i === currentIdx;
-                      const isPending = i > currentIdx;
-                      return (
-                        <div
-                          key={i}
-                          className={cn(
-                            "flex items-center gap-2 text-xs transition-all duration-300",
-                            isDone && "text-green-600",
-                            isCurrent && "text-blue-600 font-medium",
-                            isPending && "text-gray-300"
-                          )}
-                        >
-                          {isDone ? (
-                            <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                          ) : isCurrent ? (
-                            <div className="w-3.5 h-3.5 flex-shrink-0 flex items-center justify-center">
-                              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                            </div>
-                          ) : (
-                            <div className="w-3.5 h-3.5 flex-shrink-0 flex items-center justify-center">
-                              <div className="w-1.5 h-1.5 bg-gray-300 rounded-full" />
-                            </div>
-                          )}
-                          {step}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : extractedData ? (
-                <div className="flex-1 flex flex-col">
-                  {/* Mode badge */}
-                  <div className="flex items-center gap-2 mb-3">
-                    <span
-                      className={cn(
-                        "px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide",
-                        aiMode === "ai"
-                          ? "bg-green-50 text-green-700"
-                          : "bg-amber-50 text-amber-700"
                       )}
-                    >
-                      <Zap className="h-2.5 w-2.5 inline mr-0.5" />
-                      {aiMode === "ai" ? "GPT-4o Vision" : "Modo Simulação"}
-                    </span>
-                  </div>
 
-                  {/* Document Type Badge */}
-                  {(() => {
-                    const tc = DOC_TYPE_CONFIG[extractedData.tipo_documento] || DOC_TYPE_CONFIG.OUTROS;
-                    return (
-                      <div className={cn("p-3 rounded-xl border mb-3 flex items-center gap-3", tc.bg)}>
-                        <tc.icon className={cn("h-5 w-5", tc.color)} />
-                        <div>
-                          <p className="text-[10px] text-gray-500">Tipo identificado</p>
-                          <p className={cn("text-sm font-semibold", tc.color)}>{tc.label}</p>
+                      {/* Error */}
+                      {msg.status === "error" && (
+                        <div className="flex items-start gap-2 text-red-600">
+                          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                          <span>{msg.content}</span>
                         </div>
-                      </div>
-                    );
-                  })()}
+                      )}
 
-                  {/* Confidence bar */}
-                  {(() => {
-                    const cc = getConfidenceColor(extractedData.confianca);
-                    return (
-                      <div className={cn("p-3 rounded-xl border mb-3", cc.bg)}>
-                        <div className="flex items-center justify-between mb-1.5">
-                          <p className="text-[10px] text-gray-500">Confiança da IA</p>
-                          <span className={cn("text-sm font-bold", cc.text)}>
-                            {extractedData.confianca}%
-                          </span>
+                      {/* User file */}
+                      {msg.file && (
+                        <div className="flex items-center gap-2">
+                          <Paperclip className="h-3.5 w-3.5" />
+                          <span className="font-medium">{msg.file.name}</span>
+                          <span className="text-[10px] opacity-70">({(msg.file.size / 1024).toFixed(0)}KB)</span>
                         </div>
-                        <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden">
-                          <div
-                            className={cn("h-full rounded-full transition-all", cc.bar)}
-                            style={{ width: `${extractedData.confianca}%` }}
+                      )}
+
+                      {/* Normal text */}
+                      {!msg.status && !msg.extraction && !msg.file && <p>{msg.content}</p>}
+
+                      {/* Confirmed */}
+                      {msg.status === "confirmed" && msg.extraction && (
+                        <div className="space-y-1 opacity-60">
+                          <div className="flex items-center gap-2 text-green-600 text-xs font-medium">
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Confirmado e lançado
+                          </div>
+                          <CompactCard data={msg.extraction} />
+                        </div>
+                      )}
+
+                      {/* Success with extraction — editable */}
+                      {msg.status === "success" && msg.extraction && (
+                        msg.editing ? (
+                          <EditableExtraction
+                            data={msg.extraction}
+                            onSave={(updated) => {
+                              updateMessage(msg.id, { extraction: updated, editing: false });
+                            }}
+                            onCancel={() => updateMessage(msg.id, { editing: false })}
+                            onConfirm={(updated) => confirmAndRoute(msg.id, updated)}
                           />
+                        ) : (
+                          <div className="space-y-3">
+                            <ExtractionCard data={msg.extraction} />
+                            <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                              <button onClick={() => confirmAndRoute(msg.id, msg.extraction!)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar e Lançar
+                              </button>
+                              <button onClick={() => updateMessage(msg.id, { editing: true })}
+                                className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50 transition-colors">
+                                <Edit3 className="h-3.5 w-3.5" /> Corrigir
+                              </button>
+                              <button onClick={() => updateMessage(msg.id, { status: undefined, extraction: undefined, content: "Documento descartado." })}
+                                className="px-3 py-1.5 text-gray-400 rounded-lg text-xs hover:text-red-500 transition-colors ml-auto">
+                                Descartar
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      )}
+
+                      {/* Success without extraction */}
+                      {msg.status === "success" && !msg.extraction && (
+                        <div className="flex items-start gap-2 text-green-700">
+                          <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                          <span>{msg.content}</span>
                         </div>
-                        {extractedData.confianca < 60 && (
-                          <p className="text-[10px] text-red-600 mt-1 flex items-center gap-1">
-                            <AlertTriangle className="h-3 w-3" />
-                            Confiança baixa — revise os dados antes de confirmar
-                          </p>
-                        )}
-                      </div>
-                    );
-                  })()}
+                      )}
 
-                  {/* Extracted Fields */}
-                  <div className="space-y-2 mb-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">
-                          Valor
-                        </p>
-                        <p className="text-base font-bold text-gray-900">
-                          {formatCurrency(extractedData.valor)}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">
-                          Data
-                        </p>
-                        <p className="text-base font-bold text-gray-900">
-                          {extractedData.data_documento}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">
-                        Emissor
-                      </p>
-                      <p className="text-sm font-medium text-gray-700">
-                        {extractedData.emissor_nome}
-                      </p>
-                      <p className="text-xs text-gray-400 font-mono">
-                        {extractedData.emissor_cnpj_cpf}
+                      <p className={cn("text-[10px] mt-1.5", msg.role === "user" ? "text-blue-200" : "text-gray-300")}>
+                        {msg.timestamp.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                       </p>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">
-                          Categoria
-                        </p>
-                        <p className="text-xs font-medium text-gray-700">
-                          {extractedData.categoria_sugerida}
-                        </p>
-                        <p className="text-[10px] text-gray-400">
-                          {extractedData.subcategoria_sugerida}
-                        </p>
+
+                    {msg.role === "user" && (
+                      <div className="w-8 h-8 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0 mt-1">
+                        <User className="h-4 w-4 text-gray-600" />
                       </div>
-                      <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-100">
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wide mb-0.5">
-                          Departamento
-                        </p>
-                        <p className="text-xs font-medium text-gray-700">
-                          {extractedData.departamento}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Destination */}
-                  {(() => {
-                    const dc = DESTINO_CONFIG[extractedData.destino] || DESTINO_CONFIG.manual;
-                    return (
-                      <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 mb-3">
-                        <div className="flex items-center gap-2 mb-1">
-                          <ArrowRight className="h-3.5 w-3.5 text-blue-600" />
-                          <p className="text-[10px] text-blue-600 font-semibold uppercase tracking-wide">
-                            Destino no sistema
-                          </p>
-                        </div>
-                        <p className={cn("text-sm font-semibold", dc.color)}>{dc.label}</p>
-                        <p className="text-[10px] text-gray-500 mt-0.5">
-                          {extractedData.destino_descricao}
-                        </p>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Observations */}
-                  {extractedData.observacoes && (
-                    <p className="text-[10px] text-gray-400 italic mb-3 px-1">
-                      {extractedData.observacoes}
-                    </p>
-                  )}
-
-                  {/* Action buttons */}
-                  <div className="flex gap-3 mt-auto">
-                    <button
-                      onClick={resetScanner}
-                      className="flex-1 py-3 border border-gray-300 text-gray-600 rounded-xl font-medium hover:bg-gray-50 transition-colors text-sm"
-                    >
-                      Descartar
-                    </button>
-                    <button
-                      onClick={confirmAndInsert}
-                      disabled={isInserting}
-                      className="flex-[2] py-3 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isInserting ? (
-                        <>
-                          <div
-                            className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
-                            style={{ animation: "spin 0.6s linear infinite" }}
-                          />
-                          Lançando...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="h-4 w-4" />
-                          Confirmar e Lançar
-                        </>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ═══════════════════════════════════════════ */}
-      {/* DOCUMENT DETAIL MODAL                      */}
-      {/* ═══════════════════════════════════════════ */}
-      {viewingDoc && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-6">
-          <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[90vh] flex overflow-hidden shadow-2xl">
-            <div className="w-[60%] bg-gray-950 p-6 flex items-center justify-center overflow-hidden border-r border-gray-200">
-              <img
-                src={viewingDoc.previewUrl}
-                className="max-h-full max-w-full rounded-lg shadow-2xl"
-                alt=""
-              />
-            </div>
-            <div className="w-[40%] p-6 bg-white flex flex-col overflow-y-auto">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-bold text-gray-900">Detalhes do Documento</h3>
-                <button
-                  onClick={() => setViewingDoc(null)}
-                  className="p-2 rounded-lg hover:bg-gray-100 text-gray-400"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Type + Confidence */}
-              <div className="flex items-center gap-2 mb-4">
-                {(() => {
-                  const tc =
-                    DOC_TYPE_CONFIG[viewingDoc.extraction.tipo_documento] || DOC_TYPE_CONFIG.OUTROS;
-                  return (
-                    <span
-                      className={cn(
-                        "px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1",
-                        tc.bg,
-                        tc.color
-                      )}
-                    >
-                      <tc.icon className="h-3 w-3" />
-                      {tc.label}
-                    </span>
-                  );
-                })()}
-                {(() => {
-                  const cc = getConfidenceColor(viewingDoc.extraction.confianca);
-                  return (
-                    <span
-                      className={cn(
-                        "px-2.5 py-1 rounded-full text-xs font-medium",
-                        cc.bg,
-                        cc.text
-                      )}
-                    >
-                      {viewingDoc.extraction.confianca}% confiança
-                    </span>
-                  );
-                })()}
-                {viewingDoc.inserted && (
-                  <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700 inline-flex items-center gap-1">
-                    <BadgeCheck className="h-3 w-3" />
-                    Lançado
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-3 flex-1">
-                {[
-                  { l: "Valor", v: formatCurrency(viewingDoc.extraction.valor), bold: true },
-                  { l: "Data", v: viewingDoc.extraction.data_documento },
-                  { l: "Emissor", v: viewingDoc.extraction.emissor_nome },
-                  { l: "CNPJ/CPF", v: viewingDoc.extraction.emissor_cnpj_cpf },
-                  { l: "Descrição", v: viewingDoc.extraction.descricao },
-                  {
-                    l: "Categoria",
-                    v: `${viewingDoc.extraction.categoria_sugerida} > ${viewingDoc.extraction.subcategoria_sugerida}`,
-                  },
-                  { l: "Departamento", v: viewingDoc.extraction.departamento },
-                  {
-                    l: "Destino",
-                    v:
-                      DESTINO_CONFIG[viewingDoc.extraction.destino]?.label ||
-                      viewingDoc.extraction.destino,
-                  },
-                  {
-                    l: "Método pagamento",
-                    v: viewingDoc.extraction.metodo_pagamento || "—",
-                  },
-                  {
-                    l: "Corretor vinculado",
-                    v: viewingDoc.extraction.corretor_vinculado || "—",
-                  },
-                  { l: "Processado em", v: formatDate(viewingDoc.processedAt) },
-                  {
-                    l: "Modo",
-                    v: viewingDoc.mode === "ai" ? "GPT-4o Vision" : "Simulação (mock)",
-                  },
-                ].map((it, i) => (
-                  <div key={i} className="pb-2 border-b border-gray-100 last:border-0">
-                    <p className="text-[10px] text-gray-500 mb-0.5">{it.l}</p>
-                    <p
-                      className={cn(
-                        "text-sm font-medium text-gray-800",
-                        it.bold && "text-lg font-bold text-blue-700"
-                      )}
-                    >
-                      {it.v}
-                    </p>
+                    )}
                   </div>
                 ))}
-
-                {viewingDoc.extraction.observacoes && (
-                  <div className="pb-2">
-                    <p className="text-[10px] text-gray-500 mb-0.5">Observações da IA</p>
-                    <p className="text-xs text-gray-600 italic">
-                      {viewingDoc.extraction.observacoes}
-                    </p>
-                  </div>
-                )}
+                <div ref={chatEndRef} />
               </div>
-
-              <button className="w-full py-2.5 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium flex items-center justify-center gap-2 hover:bg-gray-200 transition-colors mt-4">
-                <Download className="h-4 w-4" />
-                Baixar comprovante original
-              </button>
-            </div>
+            )}
           </div>
+
+          {/* Bottom bar — only when messages exist */}
+          {messages.length > 0 && (
+            <div className="border-t border-gray-200 pt-3 pb-1 flex items-center gap-3">
+              <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={handleFileSelect} />
+              <button onClick={() => fileInputRef.current?.click()} disabled={isProcessing}
+                className={cn("flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium transition-all",
+                  isProcessing ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-md"
+                )}>
+                {isProcessing ? <><Loader2 className="h-4 w-4 animate-spin" /> Processando...</> : <><Upload className="h-4 w-4" /> Enviar outro</>}
+              </button>
+              <span className="text-xs text-gray-400 flex items-center gap-1">
+                <Paperclip className="h-3 w-3" /> Arraste ou clique &middot; JPG, PNG, WebP, PDF
+              </span>
+            </div>
+          )}
+
+          {/* Hidden file input for empty state */}
+          {messages.length === 0 && (
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={handleFileSelect} />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Compact Card ──────────────────────────────────
+
+function CompactCard({ data }: { data: AIExtractionResult }) {
+  const typeColor = getDocTypeColor(data.tipo_documento);
+  return (
+    <div className="flex items-center gap-2 text-xs flex-wrap">
+      <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", typeColor.bg, typeColor.text)}>
+        {getDocTypeLabel(data.tipo_documento)}
+      </span>
+      <span className="font-medium text-gray-700">{formatCurrency(data.valor)}</span>
+      <ArrowRight className="h-3 w-3 text-gray-300" />
+      <span className="text-gray-500">{getDestinoLabel(data.destino)}</span>
+    </div>
+  );
+}
+
+// ─── Extraction Card (read-only) ───────────────────
+
+function ExtractionCard({ data }: { data: AIExtractionResult }) {
+  const typeColor = getDocTypeColor(data.tipo_documento);
+  const DestinoIcon = DESTINO_ICONS[data.destino] || FileText;
+  const confidenceColor = data.confianca >= 85 ? "text-green-600 bg-green-50" : data.confianca >= 60 ? "text-amber-600 bg-amber-50" : "text-red-600 bg-red-50";
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <span className={cn("px-2 py-0.5 rounded-md text-xs font-bold", typeColor.bg, typeColor.text)}>
+          {getDocTypeLabel(data.tipo_documento)}
+        </span>
+        <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-bold", confidenceColor)}>
+          {data.confianca}%
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+        <div>
+          <p className="text-gray-400 text-[10px]">Valor</p>
+          <p className="font-bold text-gray-900 text-sm">{formatCurrency(data.valor)}</p>
+        </div>
+        <div>
+          <p className="text-gray-400 text-[10px]">Data</p>
+          <p className="font-medium text-gray-700">{data.data_documento}</p>
+        </div>
+        <div className="col-span-2">
+          <p className="text-gray-400 text-[10px]">Descrição</p>
+          <p className="font-medium text-gray-700">{data.descricao}</p>
+        </div>
+        {data.emissor_nome && (
+          <div className="col-span-2">
+            <p className="text-gray-400 text-[10px]">Emissor</p>
+            <p className="text-gray-700">{data.emissor_nome} {data.emissor_cnpj_cpf && <span className="text-gray-400">({data.emissor_cnpj_cpf})</span>}</p>
+          </div>
+        )}
+        <div>
+          <p className="text-gray-400 text-[10px]">Categoria</p>
+          <p className="text-gray-700">{data.categoria_sugerida}</p>
+          {data.subcategoria_sugerida && <p className="text-[10px] text-gray-400">{data.subcategoria_sugerida}</p>}
+        </div>
+        <div>
+          <p className="text-gray-400 text-[10px]">Depto</p>
+          <p className="text-gray-700">{data.departamento}</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 bg-blue-50 rounded-lg px-3 py-2">
+        <DestinoIcon className="h-4 w-4 text-blue-600" />
+        <div className="flex-1">
+          <p className="text-[10px] text-blue-400">Destino</p>
+          <p className="text-xs font-medium text-blue-700">{getDestinoLabel(data.destino)}</p>
+        </div>
+        <ArrowRight className="h-3.5 w-3.5 text-blue-300" />
+      </div>
+
+      {(data.numero_nf || data.contrato_referencia || data.corretor_vinculado) && (
+        <div className="flex flex-wrap gap-1.5 text-[10px]">
+          {data.numero_nf && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">NF: {data.numero_nf}</span>}
+          {data.contrato_referencia && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Contrato: {data.contrato_referencia}</span>}
+          {data.corretor_vinculado && <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">Corretor: {data.corretor_vinculado}</span>}
         </div>
       )}
 
-      {/* Scanner CSS Animations */}
-      <style jsx global>{`
-        @keyframes scanLine {
-          0% {
-            top: 0%;
-          }
-          50% {
-            top: calc(100% - 2px);
-          }
-          100% {
-            top: 0%;
-          }
-        }
-        @keyframes spin {
-          from {
-            transform: rotate(0deg);
-          }
-          to {
-            transform: rotate(360deg);
-          }
-        }
-        @keyframes scaleIn {
-          from {
-            transform: scale(0);
-            opacity: 0;
-          }
-          to {
-            transform: scale(1);
-            opacity: 1;
-          }
-        }
-      `}</style>
+      {data.observacoes && <p className="text-[10px] text-gray-400 italic">{data.observacoes}</p>}
+    </div>
+  );
+}
+
+// ─── Editable Extraction ───────────────────────────
+
+function EditableExtraction({
+  data,
+  onSave,
+  onCancel,
+  onConfirm,
+}: {
+  data: AIExtractionResult;
+  onSave: (updated: AIExtractionResult) => void;
+  onCancel: () => void;
+  onConfirm: (updated: AIExtractionResult) => void;
+}) {
+  const [form, setForm] = useState<AIExtractionResult>({ ...data });
+
+  const isReceita = form.tipo_documento === "RECEITA" || form.tipo_documento === "COMISSAO" || form.tipo_documento === "COMPROVANTE_PIX";
+  const categorias = isReceita ? CATEGORIAS_RECEITA : CATEGORIAS_DESPESA;
+  const subcats = SUBCATEGORIAS[form.categoria_sugerida] || [];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 text-xs font-medium text-amber-600">
+        <Edit3 className="h-3.5 w-3.5" />
+        Modo de edição — corrija os dados abaixo
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Tipo</label>
+          <select value={form.tipo_documento} onChange={(e) => setForm({ ...form, tipo_documento: e.target.value as DocumentType })}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500">
+            {DOCUMENT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Departamento</label>
+          <select value={form.departamento} onChange={(e) => setForm({ ...form, departamento: e.target.value as "LOCACAO" | "VENDA" | "AMBOS" })}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500">
+            <option value="LOCACAO">Locação</option>
+            <option value="VENDA">Venda</option>
+            <option value="AMBOS">Ambos</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Valor (R$)</label>
+          <input type="number" step="0.01" value={form.valor} onChange={(e) => setForm({ ...form, valor: parseFloat(e.target.value) || 0 })}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Data</label>
+          <input type="text" value={form.data_documento} onChange={(e) => setForm({ ...form, data_documento: e.target.value })}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-[10px] text-gray-400 mb-0.5">Descrição</label>
+        <input type="text" value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+          className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Emissor</label>
+          <input type="text" value={form.emissor_nome} onChange={(e) => setForm({ ...form, emissor_nome: e.target.value })}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500" />
+        </div>
+        <div>
+          <label className="block text-[10px] text-gray-400 mb-0.5">CPF/CNPJ</label>
+          <input type="text" value={form.emissor_cnpj_cpf} onChange={(e) => setForm({ ...form, emissor_cnpj_cpf: e.target.value })}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Categoria</label>
+          <select value={form.categoria_sugerida} onChange={(e) => setForm({ ...form, categoria_sugerida: e.target.value, subcategoria_sugerida: "" })}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500">
+            <option value="">Selecione...</option>
+            {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] text-gray-400 mb-0.5">Subcategoria</label>
+          <select value={form.subcategoria_sugerida} onChange={(e) => setForm({ ...form, subcategoria_sugerida: e.target.value })}
+            disabled={subcats.length === 0}
+            className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50">
+            <option value="">Selecione...</option>
+            {subcats.map((s) => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-[10px] text-gray-400 mb-0.5">Destino no sistema</label>
+        <select value={form.destino} onChange={(e) => setForm({ ...form, destino: e.target.value as AIExtractionResult["destino"] })}
+          className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500">
+          {DESTINOS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
+        </select>
+      </div>
+
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+        <button onClick={() => onConfirm(form)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors">
+          <CheckCircle2 className="h-3.5 w-3.5" /> Salvar e Lançar
+        </button>
+        <button onClick={() => onSave(form)}
+          className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50 transition-colors">
+          Salvar alterações
+        </button>
+        <button onClick={onCancel}
+          className="px-3 py-1.5 text-gray-400 rounded-lg text-xs hover:text-gray-600 transition-colors ml-auto">
+          Cancelar
+        </button>
+      </div>
     </div>
   );
 }

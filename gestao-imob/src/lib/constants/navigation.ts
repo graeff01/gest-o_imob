@@ -3,10 +3,12 @@ export interface NavItem {
   href: string;
   icon: string;
   badge?: string;
+  highlight?: boolean;
 }
 
 export const navigationItems: NavItem[] = [
   { title: "Painel", href: "/", icon: "LayoutDashboard" },
+  { title: "Central IA", href: "/documentos", icon: "Sparkles", highlight: true },
   { title: "Contratos", href: "/contratos", icon: "FileText" },
   { title: "Financeiro", href: "/financeiro", icon: "DollarSign" },
   { title: "Extratos", href: "/extratos", icon: "CreditCard" },
@@ -16,7 +18,6 @@ export const navigationItems: NavItem[] = [
   { title: "Campanhas", href: "/campanhas", icon: "Trophy" },
   { title: "Pessoas", href: "/pessoas", icon: "Users" },
   { title: "Imóveis", href: "/imoveis", icon: "Building" },
-  { title: "Documentos", href: "/documentos", icon: "Upload" },
   { title: "DIMOB", href: "/dimob", icon: "FileOutput" },
   { title: "Relatórios", href: "/relatorios", icon: "BarChart3" },
 ];

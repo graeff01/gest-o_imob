@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, TrendingUp, TrendingDown, X, ScanLine, ArrowRight, Zap } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowRight, Zap } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import Link from "next/link";
 
@@ -58,20 +58,12 @@ export default function FinanceiroPage() {
   const [activeTab, setActiveTab] = useState<Tab>("despesas");
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [showForm, setShowForm] = useState(false);
-  const [saved, setSaved] = useState(false);
-
   const totalExpenses = MOCK_EXPENSES.reduce((s, e) => s + e.amount, 0);
   const totalRevenues = MOCK_REVENUES.reduce((s, r) => s + r.amount, 0);
   const aiExpenses = MOCK_EXPENSES.filter((e) => e.source === "ai");
   const aiRevenues = MOCK_REVENUES.filter((r) => r.source === "ai");
   const paidExpenses = MOCK_EXPENSES.filter((e) => e.status === "PAGO").reduce((s, e) => s + e.amount, 0);
   const pendingExpenses = MOCK_EXPENSES.filter((e) => e.status === "PENDENTE").reduce((s, e) => s + e.amount, 0);
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => { setSaved(false); setShowForm(false); }, 1800);
-  };
 
   return (
     <div className="space-y-4">
@@ -111,7 +103,7 @@ export default function FinanceiroPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
           <button
-            onClick={() => { setActiveTab("despesas"); setShowForm(false); }}
+            onClick={() => { setActiveTab("despesas"); }}
             className={cn("flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
               activeTab === "despesas" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
             )}
@@ -119,7 +111,7 @@ export default function FinanceiroPage() {
             <TrendingDown className="h-4 w-4" />Despesas
           </button>
           <button
-            onClick={() => { setActiveTab("receitas"); setShowForm(false); }}
+            onClick={() => { setActiveTab("receitas"); }}
             className={cn("flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
               activeTab === "receitas" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
             )}
@@ -135,69 +127,16 @@ export default function FinanceiroPage() {
           {[2024, 2025, 2026].map((y) => <option key={y} value={y}>{y}</option>)}
         </select>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto">
           <Link
             href="/documentos"
             className="flex items-center gap-2 px-3 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors"
           >
-            <ScanLine className="h-4 w-4" />
-            Escanear Nota
+            <Zap className="h-4 w-4" />
+            Lançar via Central IA
           </Link>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-          >
-            {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {showForm ? "Cancelar" : (activeTab === "despesas" ? "Nova Despesa" : "Nova Receita")}
-          </button>
         </div>
       </div>
-
-      {/* Form */}
-      {showForm && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-          <h3 className="font-semibold text-gray-900">{activeTab === "despesas" ? "Nova Despesa" : "Nova Receita"}</h3>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-              <input type="text" placeholder="Descreva o lançamento..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Valor (R$)</label>
-              <input type="number" placeholder="0,00" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
-              <input type="date" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-            </div>
-            {activeTab === "despesas" ? (
-              <>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fornecedor</label>
-                  <input type="text" placeholder="Nome do fornecedor" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                    <option>PENDENTE</option><option>PAGO</option>
-                  </select>
-                </div>
-              </>
-            ) : (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contrato Vinculado</label>
-                <input type="text" placeholder="Ex: MV-2026-0047" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-              </div>
-            )}
-          </div>
-          <div className="flex justify-end gap-3">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600">Cancelar</button>
-            <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">
-              {saved ? "✓ Salvo!" : "Salvar"}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

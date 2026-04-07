@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Search, FileText, X } from "lucide-react";
+import { Search, FileText } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 interface Contract {
@@ -41,23 +41,13 @@ const statusLabels: Record<string, { label: string; color: string }> = {
 export default function ContratosPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [showForm, setShowForm] = useState(false);
   const [selectedContract, setSelectedContract] = useState<Contract | null>(null);
-
-  // Form fields
-  const [formData, setFormData] = useState({ client: "", property: "", type: "LOCACAO", value: "", start: "", consultant: "" });
-  const [saved, setSaved] = useState(false);
 
   const filtered = MOCK_CONTRACTS.filter((c) => {
     const matchSearch = !search || c.client.toLowerCase().includes(search.toLowerCase()) || c.contract_number.toLowerCase().includes(search.toLowerCase()) || c.property.toLowerCase().includes(search.toLowerCase());
     const matchStatus = !statusFilter || c.status === statusFilter;
     return matchSearch && matchStatus;
   });
-
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => { setSaved(false); setShowForm(false); }, 2000);
-  };
 
   if (selectedContract) {
     const st = statusLabels[selectedContract.status];
@@ -127,63 +117,10 @@ export default function ContratosPage() {
           <option value="RENOVADO">Renovado</option>
           <option value="ENCERRADO">Encerrado</option>
         </select>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto">
           <span className="text-sm text-gray-500">{filtered.length} contratos</span>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-          >
-            {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-            {showForm ? "Cancelar" : "Novo Contrato"}
-          </button>
         </div>
       </div>
-
-      {showForm && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-          <h3 className="font-semibold text-gray-900">Novo Contrato de Locação</h3>
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: "Cliente / Locatário", key: "client", placeholder: "Ex: João Silva" },
-              { label: "Endereço do Imóvel", key: "property", placeholder: "Ex: R. XV de Novembro, 200" },
-              { label: "Valor do Aluguel (R$)", key: "value", placeholder: "Ex: 3500" },
-              { label: "Consultor Responsável", key: "consultant", placeholder: "Ex: Lucas Rodrigues" },
-              { label: "Data de Início", key: "start", placeholder: "", type: "date" },
-            ].map((f) => (
-              <div key={f.key}>
-                <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
-                <input
-                  type={f.type || "text"}
-                  placeholder={f.placeholder}
-                  value={(formData as any)[f.key]}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, [f.key]: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            ))}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Contrato</label>
-              <select
-                value={formData.type}
-                onChange={(e) => setFormData((prev) => ({ ...prev, type: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-              >
-                <option value="LOCACAO">Locação</option>
-                <option value="VENDA">Venda</option>
-              </select>
-            </div>
-          </div>
-          <div className="flex justify-end gap-3">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600">Cancelar</button>
-            <button
-              onClick={handleSave}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-            >
-              {saved ? "✓ Salvo!" : "Salvar Contrato"}
-            </button>
-          </div>
-        </div>
-      )}
 
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">

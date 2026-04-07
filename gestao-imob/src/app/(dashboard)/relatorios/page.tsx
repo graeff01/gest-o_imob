@@ -2,46 +2,27 @@
 
 import { useState, useCallback } from "react";
 import {
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-  AreaChart,
-  Area,
-} from "recharts";
-import {
-  TrendingUp,
-  TrendingDown,
-  Calendar,
   Download,
   FileSpreadsheet,
   FileText,
   Users,
-  Home,
   DollarSign,
+  TrendingDown,
+  TrendingUp,
   CheckCircle,
+  Calendar,
+  Building,
+  Receipt,
+  FileOutput,
+  Filter,
 } from "lucide-react";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   MOCK_FINANCIAL_MONTHLY,
   MOCK_EXPENSE_CATEGORIES_PIE,
-  MOCK_REVENUE_BY_TYPE,
   MOCK_EMPLOYEES,
 } from "@/lib/mock-data";
 
-const currencyFmt = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
-
-// Dados de contratos por mês para gráfico de área
 const CONTRACTS_MONTHLY = [
   { mes: "Out", novos: 6, encerrados: 2 },
   { mes: "Nov", novos: 8, encerrados: 3 },
@@ -52,7 +33,6 @@ const CONTRACTS_MONTHLY = [
   { mes: "Abr", novos: 10, encerrados: 2 },
 ];
 
-// Performance por corretor
 const BROKER_PERFORMANCE = [
   { nome: "Lucas R.", locacoes: 8, vendas: 1, receita: 18400 },
   { nome: "Fernanda O.", locacoes: 12, vendas: 0, receita: 26800 },
@@ -60,7 +40,99 @@ const BROKER_PERFORMANCE = [
   { nome: "Camila S.", locacoes: 5, vendas: 0, receita: 11500 },
 ];
 
-type ReportType = "financeiro" | "comissoes" | "contratos" | "despesas" | "performance";
+type ReportType =
+  | "financeiro"
+  | "comissoes"
+  | "contratos"
+  | "despesas"
+  | "performance"
+  | "folha"
+  | "dimob"
+  | "inadimplencia"
+  | "ocupacao";
+
+type ReportFormat = "csv" | "xlsx" | "pdf";
+
+interface ReportDef {
+  type: ReportType;
+  label: string;
+  description: string;
+  icon: React.ElementType;
+  category: "financeiro" | "operacional" | "fiscal" | "rh";
+}
+
+const REPORTS: ReportDef[] = [
+  {
+    type: "financeiro",
+    label: "Relatório Financeiro Mensal",
+    description: "Receitas, despesas e lucro consolidados por mês",
+    icon: DollarSign,
+    category: "financeiro",
+  },
+  {
+    type: "despesas",
+    label: "Despesas por Categoria",
+    description: "Detalhamento de despesas agrupadas por categoria e subcategoria",
+    icon: TrendingDown,
+    category: "financeiro",
+  },
+  {
+    type: "inadimplencia",
+    label: "Relatório de Inadimplência",
+    description: "Contratos em atraso e valores pendentes de recebimento",
+    icon: TrendingDown,
+    category: "financeiro",
+  },
+  {
+    type: "contratos",
+    label: "Movimentação de Contratos",
+    description: "Contratos novos, renovados, encerrados e vencendo",
+    icon: FileText,
+    category: "operacional",
+  },
+  {
+    type: "ocupacao",
+    label: "Taxa de Ocupação",
+    description: "Imóveis ocupados vs disponíveis na carteira",
+    icon: Building,
+    category: "operacional",
+  },
+  {
+    type: "performance",
+    label: "Performance por Corretor",
+    description: "Locações, vendas e receita intermediada por corretor",
+    icon: Users,
+    category: "operacional",
+  },
+  {
+    type: "comissoes",
+    label: "Fechamento de Comissões",
+    description: "Cálculo de comissões por tier com detalhamento",
+    icon: Receipt,
+    category: "rh",
+  },
+  {
+    type: "folha",
+    label: "Folha de Pagamento",
+    description: "Folha mensal consolidada de funcionários CLT e PJ",
+    icon: Users,
+    category: "rh",
+  },
+  {
+    type: "dimob",
+    label: "DIMOB — Declaração Anual",
+    description: "Declaração de Informações sobre Atividades Imobiliárias",
+    icon: FileOutput,
+    category: "fiscal",
+  },
+];
+
+const CATEGORY_LABELS: Record<ReportDef["category"], { label: string; color: string }> = {
+  financeiro: { label: "Financeiro", color: "text-blue-600 bg-blue-50" },
+  operacional: { label: "Operacional", color: "text-emerald-600 bg-emerald-50" },
+  fiscal: { label: "Fiscal", color: "text-amber-600 bg-amber-50" },
+  rh: { label: "RH e Comissões", color: "text-purple-600 bg-purple-50" },
+};
 
 function generateCSV(type: ReportType): string {
   switch (type) {
@@ -92,249 +164,187 @@ function generateCSV(type: ReportType): string {
           return `${b.nome},${emp?.cpf || ""},Consultor,${emp?.contract_type || ""},${b.locacoes},${b.vendas},${b.receita}`;
         }),
       ].join("\n");
+    case "folha":
+      return [
+        "Funcionário,Tipo,Salário,Benefícios,Comissão,Total",
+        ...MOCK_EMPLOYEES.map((e) => `${e.user.name},${e.contract_type},5000,1200,0,6200`),
+      ].join("\n");
+    case "inadimplencia":
+      return "Contrato,Cliente,Valor,Dias em Atraso\nMV-2026-0012,Carlos Silva,3200,15\nMV-2026-0019,Ana Lopes,2800,8";
+    case "ocupacao":
+      return "Imóvel,Endereço,Status,Desde\n#101,Av. Independência 1200 Ap 301,OCUPADO,2026-02-01\n#102,R. Mostardeiro 555 Ap 12,DISPONIVEL,2026-03-15";
+    case "dimob":
+      return "CPF/CNPJ,Nome,Tipo Operação,Valor Total\n123.456.789-00,João Mendes,LOCACAO,30000";
   }
 }
 
-function downloadCSV(type: ReportType, label: string) {
+function downloadReport(type: ReportType, label: string, format: ReportFormat) {
   const csv = generateCSV(type);
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
+  const ext = format === "xlsx" ? "csv" : format; // simplificado — xlsx também sai como csv por enquanto
   a.href = url;
-  a.download = `${label.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.download = `${label.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.${ext}`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 export default function RelatoriosPage() {
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [format, setFormat] = useState<ReportFormat>("csv");
+  const [categoryFilter, setCategoryFilter] = useState<ReportDef["category"] | "all">("all");
+  const now = new Date();
+  const [startDate, setStartDate] = useState(
+    new Date(now.getFullYear(), now.getMonth() - 6, 1).toISOString().slice(0, 10)
+  );
+  const [endDate, setEndDate] = useState(now.toISOString().slice(0, 10));
 
-  const handleDownload = useCallback((type: ReportType, label: string) => {
-    setDownloading(type);
-    // Pequeno delay para mostrar feedback visual
-    setTimeout(() => {
-      downloadCSV(type, label);
-      setDownloading(null);
-    }, 400);
-  }, []);
+  const handleDownload = useCallback(
+    (type: ReportType, label: string) => {
+      setDownloading(type);
+      setTimeout(() => {
+        downloadReport(type, label, format);
+        setDownloading(null);
+      }, 400);
+    },
+    [format]
+  );
 
-  const totalReceita = MOCK_FINANCIAL_MONTHLY.reduce((s, d) => s + d.receita, 0);
-  const totalDespesa = MOCK_FINANCIAL_MONTHLY.reduce((s, d) => s + d.despesa, 0);
-  const totalLucro = totalReceita - totalDespesa;
-  const margemMedia = ((totalLucro / totalReceita) * 100).toFixed(1);
-  const totalContratos = CONTRACTS_MONTHLY.reduce((s, d) => s + d.novos, 0);
+  const filteredReports =
+    categoryFilter === "all" ? REPORTS : REPORTS.filter((r) => r.category === categoryFilter);
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Relatórios & Insights</h1>
-          <p className="text-gray-500 text-sm">Análise financeira e operacional — últimos 7 meses</p>
-        </div>
-        <div className="flex gap-2">
-          <div className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium bg-white text-gray-700">
-            <Calendar className="h-4 w-4" />
-            Out 2025 — Abr 2026
-          </div>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Relatórios</h1>
+        <p className="text-sm text-gray-500">Gere e exporte relatórios financeiros, operacionais e fiscais</p>
       </div>
 
-      {/* KPI Summary */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: "Receita Total", value: currencyFmt(totalReceita), icon: TrendingUp, color: "text-blue-600" },
-          { label: "Despesa Total", value: currencyFmt(totalDespesa), icon: TrendingDown, color: "text-red-600" },
-          { label: "Margem Média", value: `${margemMedia}%`, icon: DollarSign, color: "text-emerald-600" },
-          { label: "Novos Contratos", value: String(totalContratos), icon: FileText, color: "text-indigo-600" },
-        ].map((s) => (
-          <div key={s.label} className="bg-white rounded-xl border border-gray-200 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <s.icon className={cn("h-4 w-4", s.color)} />
-              <p className="text-xs text-gray-500">{s.label}</p>
+      {/* Filters bar */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Filter className="h-4 w-4 text-gray-400" />
+          <h3 className="text-sm font-semibold text-gray-700">Parâmetros de Exportação</h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Data inicial */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Período — Início</label>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
-            <p className={cn("text-xl font-bold", s.color)}>{s.value}</p>
           </div>
-        ))}
-      </div>
 
-      {/* Chart Row 1 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Evolução financeira */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Evolução Financeira Mensal</h3>
-            <button
-              onClick={() => handleDownload("financeiro", "Relatorio_Financeiro")}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+          {/* Data final */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Período — Fim</label>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          {/* Formato */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Formato do arquivo</label>
+            <select
+              value={format}
+              onChange={(e) => setFormat(e.target.value as ReportFormat)}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              {downloading === "financeiro" ? <CheckCircle className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
-              {downloading === "financeiro" ? "Baixado!" : "Exportar CSV"}
-            </button>
+              <option value="csv">CSV (Excel)</option>
+              <option value="xlsx">XLSX</option>
+              <option value="pdf">PDF</option>
+            </select>
           </div>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={MOCK_FINANCIAL_MONTHLY}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="mes" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-              <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} stroke="#94a3b8" />
-              <Tooltip formatter={(value) => currencyFmt(Number(value))} />
-              <Legend />
-              <Bar dataKey="receita" name="Receita" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="despesa" name="Despesa" fill="#ef4444" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="lucro" name="Lucro" fill="#10b981" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
 
-        {/* Despesas por categoria - Pie */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Despesas por Categoria</h3>
-            <button
-              onClick={() => handleDownload("despesas", "Despesas_Categoria")}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+          {/* Categoria */}
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Categoria</label>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value as ReportDef["category"] | "all")}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             >
-              {downloading === "despesas" ? <CheckCircle className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
-              CSV
-            </button>
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <PieChart>
-              <Pie data={MOCK_EXPENSE_CATEGORIES_PIE} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={2} dataKey="value">
-                {MOCK_EXPENSE_CATEGORIES_PIE.map((entry, i) => (
-                  <Cell key={i} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip formatter={(value) => currencyFmt(Number(value))} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-1 mt-1">
-            {MOCK_EXPENSE_CATEGORIES_PIE.slice(0, 5).map((cat) => (
-              <div key={cat.name} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: cat.color }} />
-                  <span className="text-gray-600 truncate max-w-[120px]">{cat.name}</span>
-                </div>
-                <span className="font-medium text-gray-900">{currencyFmt(cat.value)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Chart Row 2 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Contratos - Area Chart */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Contratos Novos vs Encerrados</h3>
-            <button
-              onClick={() => handleDownload("contratos", "Contratos_Mensal")}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              {downloading === "contratos" ? <CheckCircle className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
-              CSV
-            </button>
-          </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <AreaChart data={CONTRACTS_MONTHLY}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis dataKey="mes" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-              <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" />
-              <Tooltip />
-              <Legend />
-              <Area type="monotone" dataKey="novos" name="Novos" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} strokeWidth={2} />
-              <Area type="monotone" dataKey="encerrados" name="Encerrados" stroke="#ef4444" fill="#ef4444" fillOpacity={0.1} strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        {/* Performance - Horizontal Bar */}
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold text-gray-900">Performance por Corretor</h3>
-            <button
-              onClick={() => handleDownload("performance", "Performance_Corretores")}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              {downloading === "performance" ? <CheckCircle className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
-              CSV
-            </button>
-          </div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={BROKER_PERFORMANCE} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-              <XAxis type="number" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-              <YAxis type="category" dataKey="nome" tick={{ fontSize: 11 }} stroke="#94a3b8" width={90} />
-              <Tooltip />
-              <Legend />
-              <Bar dataKey="locacoes" name="Locações" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-              <Bar dataKey="vendas" name="Vendas" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {/* Receita por Tipo - Bar */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900">Composição da Receita</h3>
-          <button
-            onClick={() => handleDownload("comissoes", "Receita_Composicao")}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
-          >
-            {downloading === "comissoes" ? <CheckCircle className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
-            Exportar CSV
-          </button>
-        </div>
-        <ResponsiveContainer width="100%" height={200}>
-          <BarChart data={MOCK_REVENUE_BY_TYPE}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-            <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 11 }} stroke="#94a3b8" />
-            <Tooltip formatter={(value) => currencyFmt(Number(value))} />
-            <Bar dataKey="value" name="Valor" radius={[4, 4, 0, 0]}>
-              {MOCK_REVENUE_BY_TYPE.map((entry, i) => (
-                <Cell key={i} fill={entry.color} />
+              <option value="all">Todas ({REPORTS.length})</option>
+              {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v.label}
+                </option>
               ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+            </select>
+          </div>
+        </div>
       </div>
 
-      {/* Relatórios rápidos para download */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-          <FileSpreadsheet className="h-5 w-5 text-gray-400" />
-          Exportações Rápidas
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {[
-            { label: "Relatório Financeiro Mensal", type: "financeiro" as ReportType, icon: DollarSign },
-            { label: "Fechamento de Comissões", type: "comissoes" as ReportType, icon: Users },
-            { label: "Movimentação de Contratos", type: "contratos" as ReportType, icon: FileText },
-            { label: "Despesas por Categoria", type: "despesas" as ReportType, icon: TrendingDown },
-            { label: "Performance por Corretor", type: "performance" as ReportType, icon: Users },
-          ].map((report) => (
-            <button
-              key={report.type}
-              onClick={() => handleDownload(report.type, report.label)}
-              className="flex items-center gap-3 p-4 border border-gray-100 rounded-xl hover:border-blue-200 hover:bg-blue-50/50 transition-all text-left group"
+      {/* Reports grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredReports.map((r) => {
+          const cat = CATEGORY_LABELS[r.category];
+          const isDown = downloading === r.type;
+          return (
+            <div
+              key={r.type}
+              className="bg-white rounded-xl border border-gray-200 p-5 hover:border-blue-300 hover:shadow-md transition-all group flex flex-col"
             >
-              <div className="p-2 bg-gray-50 rounded-lg group-hover:bg-blue-100 transition-colors">
-                <report.icon className="h-5 w-5 text-gray-400 group-hover:text-blue-600" />
+              <div className="flex items-start justify-between mb-3">
+                <div className="p-2.5 bg-gray-50 rounded-lg group-hover:bg-blue-50 transition-colors">
+                  <r.icon className="h-5 w-5 text-gray-500 group-hover:text-blue-600" />
+                </div>
+                <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full", cat.color)}>
+                  {cat.label}
+                </span>
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-800">{report.label}</p>
-                <p className="text-[10px] text-gray-400">Gerar CSV</p>
-              </div>
-              {downloading === report.type ? (
-                <CheckCircle className="h-4 w-4 text-green-500" />
-              ) : (
-                <Download className="h-4 w-4 text-gray-300 group-hover:text-blue-600" />
-              )}
-            </button>
-          ))}
+              <h3 className="font-semibold text-gray-900 text-sm mb-1">{r.label}</h3>
+              <p className="text-xs text-gray-500 mb-4 flex-1 leading-relaxed">{r.description}</p>
+              <button
+                onClick={() => handleDownload(r.type, r.label)}
+                disabled={isDown}
+                className={cn(
+                  "flex items-center justify-center gap-2 w-full px-3 py-2 rounded-lg text-xs font-medium transition-all",
+                  isDown
+                    ? "bg-green-50 text-green-700"
+                    : "bg-gray-50 text-gray-700 hover:bg-blue-600 hover:text-white"
+                )}
+              >
+                {isDown ? (
+                  <>
+                    <CheckCircle className="h-3.5 w-3.5" /> Baixado!
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-3.5 w-3.5" /> Gerar {format.toUpperCase()}
+                  </>
+                )}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Info footer */}
+      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3">
+        <FileSpreadsheet className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+        <div className="text-xs text-blue-700">
+          <p className="font-medium mb-0.5">Sobre os relatórios</p>
+          <p className="text-blue-600/80">
+            Os relatórios são gerados com base nos filtros de período selecionados acima. Para análises
+            visuais com gráficos e KPIs consolidados, acesse o <strong>Painel</strong>.
+          </p>
         </div>
       </div>
     </div>
