@@ -30,6 +30,8 @@ import {
   getFornecedores,
   getProprietarios,
 } from "@/lib/stores/core-store";
+import { useRole } from "@/lib/hooks/use-role";
+import type { Role } from "@/lib/constants/navigation";
 
 interface SearchResult {
   id: string;
@@ -38,13 +40,14 @@ interface SearchResult {
   subtitle?: string;
   href: string;
   icon: React.ElementType;
+  roles?: Role[];
 }
 
 const PAGES: SearchResult[] = [
   { id: "p-painel", type: "page", title: "Painel", subtitle: "Dashboard executivo", href: "/", icon: LayoutDashboard },
   { id: "p-ia", type: "page", title: "Central IA", subtitle: "Hub de upload e classificação", href: "/documentos", icon: Sparkles },
-  { id: "p-caixa", type: "page", title: "Caixa de Entrada", subtitle: "Fila de exceções", href: "/caixa-entrada", icon: Inbox },
-  { id: "p-saude", type: "page", title: "Saúde Operacional", subtitle: "Checagens automáticas", href: "/saude", icon: HeartPulse },
+  { id: "p-caixa", type: "page", title: "Caixa de Entrada", subtitle: "Fila de exceções", href: "/caixa-entrada", icon: Inbox, roles: ["ADMIN_MASTER"] },
+  { id: "p-saude", type: "page", title: "Saúde Operacional", subtitle: "Checagens automáticas", href: "/saude", icon: HeartPulse, roles: ["ADMIN_MASTER"] },
   { id: "p-contratos", type: "page", title: "Contratos", href: "/contratos", icon: FileText },
   { id: "p-financeiro", type: "page", title: "Financeiro", href: "/financeiro", icon: DollarSign },
   { id: "p-extratos", type: "page", title: "Extratos", subtitle: "Caixa e Pipeimob", href: "/extratos", icon: CreditCard },
@@ -56,14 +59,15 @@ const PAGES: SearchResult[] = [
   { id: "p-fornecedores", type: "page", title: "Fornecedores", href: "/fornecedores", icon: Store },
   { id: "p-proprietarios", type: "page", title: "Proprietários", href: "/proprietarios", icon: UserSquare },
   { id: "p-imoveis", type: "page", title: "Imóveis", href: "/imoveis", icon: Building },
-  { id: "p-config", type: "page", title: "Parâmetros do Sistema", subtitle: "Configurações", href: "/configuracoes", icon: Settings2 },
-  { id: "p-auditoria", type: "page", title: "Auditoria", subtitle: "Log imutável", href: "/auditoria", icon: Shield },
+  { id: "p-config", type: "page", title: "Parâmetros do Sistema", subtitle: "Configurações", href: "/configuracoes", icon: Settings2, roles: ["ADMIN_MASTER"] },
+  { id: "p-auditoria", type: "page", title: "Auditoria", subtitle: "Log imutável", href: "/auditoria", icon: Shield, roles: ["ADMIN_MASTER"] },
   { id: "p-dimob", type: "page", title: "DIMOB", href: "/dimob", icon: FileOutput },
   { id: "p-relatorios", type: "page", title: "Relatórios", href: "/relatorios", icon: BarChart3 },
 ];
 
 export function GlobalSearch() {
   const router = useRouter();
+  const [role] = useRole();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -111,7 +115,8 @@ export function GlobalSearch() {
       /* ignore */
     }
 
-    const all = [...PAGES, ...dynamic];
+    const visiblePages = PAGES.filter((p) => !p.roles || p.roles.includes(role));
+    const all = [...visiblePages, ...dynamic];
     if (!q) return all.slice(0, 8);
     return all
       .filter(
@@ -120,7 +125,7 @@ export function GlobalSearch() {
           (r.subtitle?.toLowerCase().includes(q) ?? false)
       )
       .slice(0, 12);
-  }, [query, open]);
+  }, [query, open, role]);
 
   useEffect(() => {
     setSelected(0);
