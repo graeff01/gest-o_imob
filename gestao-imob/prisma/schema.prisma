@@ -171,10 +171,12 @@ enum InvoiceServiceType {
 
 enum InvoiceStatus {
   PENDENTE
+  PROCESSANDO  // Enviando ao gateway — protege contra dupla emissão
   EMITIDA
   ENVIADA
   PAGA
   CANCELADA
+  ERRO         // Falha na emissão — ver last_emit_error
 }
 
 enum CampaignType {
@@ -643,23 +645,55 @@ model CommissionAdvance {
 model Invoice {
   id                String             @id @default(uuid())
   contract_id       String?
-  nfse_number       Int?
-  year_sequence     Int?
+
+  // --- Sequenciamento interno ---
+  nfse_number       Int?               // Número oficial retornado pela prefeitura via gateway
+  year_sequence     Int?               // Sequência interna por ano (NF-2026-001)
   reference_year    Int
+  reference_month   Int?               // Mês de competência (1-12)
+
+  // --- Dados do imóvel ---
   property_code     String?
   property_address  String?
+
+  // --- Dados do tomador (quem recebe a nota) ---
   client_name       String
   client_cpf_cnpj   String
   client_contact    String?
+
+  // --- Dados do serviço ---
   service_type      InvoiceServiceType
-  title_number      String?
+  title_number      String?            // Número do título no DW — usado para deduplicação na importação
+  due_date          DateTime?          @db.Date // Data de vencimento vinda do DW
   amount            Decimal            @db.Decimal(12, 2)
   description_title String
   description_body  String             @db.Text
+
+  // --- Origem dos dados ---
+  imported_from_dw  Boolean            @default(false) // true = veio de importação do DW
+  dw_agency_name    String?            // Nome da agência no DW (Moinhos de Vento etc.)
+
+  // --- Status e datas de ciclo de vida ---
   status            InvoiceStatus      @default(PENDENTE)
-  issued_at         DateTime?
-  sent_at           DateTime?
-  paid_at           DateTime?
+  issued_at         DateTime?          // Data de emissão confirmada
+  sent_at           DateTime?          // Data de envio ao tomador
+  paid_at           DateTime?          // Data de pagamento confirmado
+  cancelled_at      DateTime?
+
+  // --- Integração com gateway (NFe.io / Plugnotas / etc.) ---
+  // Estes campos ficam vazios até o gateway ser configurado.
+  // Quando configurado, apenas trocar as credenciais no .env — o código já está pronto.
+  gateway_id        String?            // ID retornado pelo gateway após emissão
+  gateway_provider  String?            // "nfeio" | "plugnotas" | "focusnfe"
+  gateway_status    String?            // Status raw retornado pelo gateway
+  gateway_pdf_url   String?            // URL do PDF da NFS-e emitida
+  gateway_xml_url   String?            // URL do XML para arquivo fiscal
+
+  // --- Controle de tentativas de emissão ---
+  emit_attempts     Int                @default(0)      // Quantas vezes tentou emitir
+  last_emit_error   String?            @db.Text         // Último erro retornado pelo gateway
+  last_emit_at      DateTime?                           // Última tentativa de emissão
+
   notes             String?            @db.Text
   created_by        String
   created_at        DateTime           @default(now())
@@ -668,8 +702,11 @@ model Invoice {
   contract Contract? @relation(fields: [contract_id], references: [id])
   creator  User      @relation("InvoiceCreatedBy", fields: [created_by], references: [id])
 
+  // Garante que o mesmo título do DW não seja importado duas vezes
+  @@unique([title_number, reference_year], name: "unique_dw_title_per_year")
   @@index([status])
-  @@index([reference_year])
+  @@index([reference_year, reference_month])
+  @@index([client_cpf_cnpj])
   @@map("invoices")
 }
 
