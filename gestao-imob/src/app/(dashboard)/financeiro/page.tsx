@@ -7,34 +7,11 @@ import Link from "next/link";
 
 type Tab = "despesas" | "receitas";
 
-// TODO: Em produção, estes dados vêm de /api/expenses e /api/revenues
-// Registros criados via IA terão document_id preenchido + source: "ai"
-const MOCK_EXPENSES = [
-  { id: "1", date: "2026-04-02", category: "Manutenção", subcategory: "Hidr��ulica", description: "Troca de torneira — Ap 301", supplier: "João Encanador", department: "LOCACAO", amount: 380, status: "PAGO", source: "manual" },
-  { id: "2", date: "2026-04-01", category: "Marketing", subcategory: "Marketing digital", description: "Impulsionamento Instagram — Abril", supplier: "Agência Digital XYZ", department: "AMBOS", amount: 1200, status: "PAGO", source: "manual" },
-  { id: "3", date: "2026-04-01", category: "Folha de Pagamentos", subcategory: "Salários locação", description: "Salário — Lucas Rodrigues (CLT)", supplier: null, department: "LOCACAO", amount: 5800, status: "PAGO", source: "manual" },
-  { id: "4", date: "2026-04-01", category: "Folha de Pagamentos", subcategory: "Salários venda", description: "Salário — Thiago Lima (CLT)", supplier: null, department: "VENDA", amount: 6200, status: "PAGO", source: "manual" },
-  { id: "5", date: "2026-03-28", category: "Impostos e Tributos", subcategory: "ISS", description: "ISSQN março/2026", supplier: "PMPA", department: "AMBOS", amount: 2340, status: "PAGO", source: "manual" },
-  { id: "6", date: "2026-03-25", category: "Contas de Consumo", subcategory: "Telefone/Internet", description: "Plano escritório — internet fibra ótica", supplier: "Claro Empresas", department: "AMBOS", amount: 490, status: "PAGO", source: "manual" },
-  { id: "7", date: "2026-03-20", category: "Manutenção", subcategory: "Pintura", description: "Pintura fachada — R. Padre Chagas", supplier: "Pintura Pro Ltda", department: "LOCACAO", amount: 4500, status: "PENDENTE", source: "manual" },
-  { id: "8", date: "2026-03-15", category: "Impostos e Tributos", subcategory: "CSLL", description: "CSLL — 1° trimestre 2026", supplier: "Receita Federal", department: "AMBOS", amount: 3120, status: "PENDENTE", source: "manual" },
-  // Estes foram criados via IA (escaneamento de documento)
-  { id: "ai-1", date: "2026-04-03", category: "Material", subcategory: "Copa/Cozinha", description: "Compra de suprimentos — Supermercado Zaffari", supplier: "ZAFFARI COMERCIO E INDUSTRIA", department: "AMBOS", amount: 287.45, status: "PAGO", source: "ai" },
-  { id: "ai-2", date: "2026-04-03", category: "Contas de Consumo", subcategory: "Luz/Energia", description: "Conta de energia elétrica — CEEE Equatorial", supplier: "CEEE EQUATORIAL", department: "AMBOS", amount: 847.50, status: "PENDENTE", source: "ai" },
-];
-
-const MOCK_REVENUES = [
-  { id: "1", date: "2026-04-01", category: "AGENCIAMENTO", description: "Taxa de administração — Ap. Goethe 77", contract: "MV-2026-0044", department: "LOCACAO", amount: 1200, source: "manual" },
-  { id: "2", date: "2026-04-01", category: "AGENCIAMENTO", description: "Taxa de administração — Av. Independência 1200", contract: "MV-2026-0047", department: "LOCACAO", amount: 420, source: "manual" },
-  { id: "3", date: "2026-04-01", category: "AGENCIAMENTO", description: "Taxa de administração — R. Padre Chagas", contract: "MV-2026-0046", department: "LOCACAO", amount: 850, source: "manual" },
-  { id: "4", date: "2026-04-01", category: "AGENCIAMENTO", description: "Taxa de administração — R. 24 de Outubro", contract: "MV-2025-0038", department: "LOCACAO", amount: 680, source: "manual" },
-  { id: "5", date: "2026-03-20", category: "INTERMEDIACAO", description: "Comissão de intermediação — MV-2026-0047", contract: "MV-2026-0047", department: "LOCACAO", amount: 8400, source: "manual" },
-  { id: "6", date: "2026-03-15", category: "INTERMEDIACAO", description: "Comissão de intermediação — MV-2026-0046", contract: "MV-2026-0046", department: "LOCACAO", amount: 17000, source: "manual" },
-  { id: "7", date: "2026-03-10", category: "NFSE_ALUGUEL", description: "NFSe emitida ref. fevereiro — Construtora Norte", contract: "MV-2026-0044", department: "LOCACAO", amount: 12000, source: "manual" },
-  { id: "8", date: "2026-02-28", category: "OUTRO", description: "Multa rescisória — MV-2025-0022", contract: "MV-2025-0022", department: "AMBOS", amount: 6400, source: "manual" },
-  // Via IA
-  { id: "ai-3", date: "2026-04-03", category: "OUTRO", description: "PIX Recebido — Aluguel Ap 301 Av. Independência", contract: "MV-2026-0001", department: "LOCACAO", amount: 3200, source: "ai" },
-];
+// Dados vazios — serão populados pelo banco de dados quando conectado
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const MOCK_EXPENSES: any[] = [];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const MOCK_REVENUES: any[] = [];
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   PENDENTE: { label: "Pendente", color: "bg-yellow-100 text-yellow-700" },

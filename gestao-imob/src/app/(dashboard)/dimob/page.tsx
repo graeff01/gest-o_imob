@@ -29,59 +29,8 @@ interface DimobEntry {
   contrato_numero: string;
 }
 
-// Dados mock para visualização
-const MOCK_ENTRIES: DimobEntry[] = [
-  {
-    locatario_nome: "João Carlos Mendes",
-    locatario_cpf: "123.456.789-00",
-    proprietario_nome: "Maria Aparecida Lima",
-    proprietario_cpf: "987.654.321-00",
-    imovel_endereco: "Av. Independência, 1200, Ap 301 - Moinhos de Vento",
-    valor_total: 48000,
-    meses: 12,
-    contrato_numero: "MV-2025-0001",
-  },
-  {
-    locatario_nome: "Empresa XYZ Ltda",
-    locatario_cpf: "12.345.678/0001-90",
-    proprietario_nome: "Carlos Eduardo Souza",
-    proprietario_cpf: "111.222.333-44",
-    imovel_endereco: "Rua Padre Chagas, 302, Sala 5 - Moinhos de Vento",
-    valor_total: 72000,
-    meses: 12,
-    contrato_numero: "MV-2025-0002",
-  },
-  {
-    locatario_nome: "Ana Paula Ferreira",
-    locatario_cpf: "555.666.777-88",
-    proprietario_nome: "Roberto Almeida Costa",
-    proprietario_cpf: "444.333.222-11",
-    imovel_endereco: "R. Mostardeiro, 555, Ap 12 - Moinhos de Vento",
-    valor_total: 36000,
-    meses: 10,
-    contrato_numero: "MV-2025-0003",
-  },
-  {
-    locatario_nome: "Construtora Delta S.A.",
-    locatario_cpf: "98.765.432/0001-10",
-    proprietario_nome: "Lucia Hoffmann",
-    proprietario_cpf: "212.121.212-12",
-    imovel_endereco: "Av. Goethe, 77, Cobertura - Moinhos de Vento",
-    valor_total: 120000,
-    meses: 12,
-    contrato_numero: "MV-2025-0004",
-  },
-  {
-    locatario_nome: "Fernando Henrique Dias",
-    locatario_cpf: "777.888.999-00",
-    proprietario_nome: "Imobiliária Moinhos de Vento Ltda",
-    proprietario_cpf: "00.000.000/0001-91",
-    imovel_endereco: "R. Ramiro Barcelos, 820, Ap 401 - Rio Branco",
-    valor_total: 28800,
-    meses: 8,
-    contrato_numero: "MV-2025-0005",
-  },
-];
+// Dados vazios — serão populados pelo banco de dados
+const MOCK_ENTRIES: DimobEntry[] = [];
 
 function gerarTextoDimob(entries: DimobEntry[], cnpj: string, ano: string): string {
   const lines: string[] = [];

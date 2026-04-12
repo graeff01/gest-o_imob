@@ -857,6 +857,14 @@ export default function NotasFiscaisPage() {
                     {importing ? "Lendo arquivo..." : "Clique ou arraste o arquivo Excel do DW"}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">Apenas .xlsx ou .xls · Máximo 10MB</p>
+                  <a
+                    href="/api/invoices/sample-dw"
+                    download
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-3 text-xs text-blue-500 hover:text-blue-700 underline underline-offset-2"
+                  >
+                    Baixar planilha de exemplo
+                  </a>
                 </label>
               )}
 

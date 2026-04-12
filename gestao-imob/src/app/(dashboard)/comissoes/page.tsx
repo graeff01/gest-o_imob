@@ -6,21 +6,11 @@ import { cn, formatCurrency } from "@/lib/utils";
 
 type Tab = "rules" | "historico";
 
-const MOCK_RULES = [
-  { id: "1", rule_type: "CONSULTOR_INTERMEDIACAO", employee_type: "CLT", min_threshold: 0, max_threshold: null, percentage: "30.00", fixed_amount: null, description: "Comissão padrão consultores CLT" },
-  { id: "2", rule_type: "CONSULTOR_INTERMEDIACAO", employee_type: "CONTRACT", min_threshold: 0, max_threshold: null, percentage: "35.00", fixed_amount: null, description: "Comissão consultores PJ/autônomos" },
-  { id: "3", rule_type: "CAPTADOR_INTERMEDIACAO", employee_type: null, min_threshold: 0, max_threshold: null, percentage: "20.00", fixed_amount: null, description: "Comissão padrão captadores" },
-  { id: "4", rule_type: "CAPTADOR_BONUS", employee_type: null, min_threshold: 5, max_threshold: null, percentage: null, fixed_amount: "500.00", description: "Bônus para captadores acima de 5 contratos/mês" },
-  { id: "5", rule_type: "VENDA", employee_type: null, min_threshold: 0, max_threshold: null, percentage: "6.00", fixed_amount: null, description: "Comissão sobre venda direta (imóvel próprio)" },
-];
-
-const MOCK_HISTORICO = [
-  { mes: "Março/2026", total: 108600, corretores: 5, status: "Exportado" },
-  { mes: "Fevereiro/2026", total: 97340, corretores: 5, status: "Exportado" },
-  { mes: "Janeiro/2026", total: 84200, corretores: 4, status: "Exportado" },
-  { mes: "Dezembro/2025", total: 132500, corretores: 5, status: "Exportado" },
-  { mes: "Novembro/2025", total: 91800, corretores: 4, status: "Exportado" },
-];
+// Dados vazios — serão populados pelo banco de dados
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const MOCK_RULES: any[] = [];
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const MOCK_HISTORICO: any[] = [];
 
 const ruleTypeLabels: Record<string, string> = {
   CONSULTOR_INTERMEDIACAO: "Intermediação — Consultor",

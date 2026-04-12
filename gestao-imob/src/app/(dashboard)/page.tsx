@@ -54,41 +54,27 @@ import {
 
 // ─── Mock Data ─────────────────────────────────────
 
+// Dados vazios — serão populados pelo banco de dados quando conectado
 const KPI = {
-  faturamentoBruto: 142000,
-  repasseMatriz: 99400,
-  receitaAgencia: 42600,
-  comissoesPagas: 16800,
-  lucroLiquido: 25800,
-  metaMensal: 150000,
-  contratosAtivos: 47,
-  imoveisCarteira: 82,
-  imoveisOcupados: 68,
-  corretoresAtivos: 6,
-  inadimplencia: 2.4,
-  inadimplenciaValor: 8400,
-  contratosVencendo: 5,
-  nfsPendentes: 3,
+  faturamentoBruto: 0,
+  repasseMatriz: 0,
+  receitaAgencia: 0,
+  comissoesPagas: 0,
+  lucroLiquido: 0,
+  metaMensal: 0,
+  contratosAtivos: 0,
+  imoveisCarteira: 0,
+  imoveisOcupados: 0,
+  corretoresAtivos: 0,
+  inadimplencia: 0,
+  inadimplenciaValor: 0,
+  contratosVencendo: 0,
+  nfsPendentes: 0,
 };
 
-const CORRETOR_STATS = [
-  { nome: "Lucas Rodrigues", locacoes: 8, tier: "11%", proximoTier: 10, valor: 18400, tipo: "CLT" },
-  { nome: "Fernanda Oliveira", locacoes: 12, tier: "13%", proximoTier: 15, valor: 26800, tipo: "PJ" },
-  { nome: "Rafael Souza", locacoes: 3, tier: "10%", proximoTier: 4, valor: 7200, tipo: "CLT" },
-  { nome: "Camila Santos", locacoes: 5, tier: "11%", proximoTier: 10, valor: 11500, tipo: "PJ" },
-];
-
-const CONTRATOS_VENCENDO = [
-  { numero: "MV-2025-0038", cliente: "Bruno H. Costa", vencimento: "2026-04-30", valor: 6800 },
-  { numero: "MV-2025-0030", cliente: "Mariana Santos", vencimento: "2026-05-01", valor: 4900 },
-  { numero: "MV-2026-0012", cliente: "Rafael Almeida", vencimento: "2026-05-05", valor: 3200 },
-];
-
-const INADIMPLENTES = [
-  { contrato: "MV-2026-0024", cliente: "Carlos Silva", valor: 3200, dias: 15 },
-  { contrato: "MV-2026-0019", cliente: "Ana Lopes", valor: 2800, dias: 8 },
-  { contrato: "MV-2026-0031", cliente: "Pedro Rocha", valor: 2400, dias: 22 },
-];
+const CORRETOR_STATS: { nome: string; locacoes: number; tier: string; proximoTier: number; valor: number; tipo: string }[] = [];
+const CONTRATOS_VENCENDO: { numero: string; cliente: string; vencimento: string; valor: number }[] = [];
+const INADIMPLENTES: { contrato: string; cliente: string; valor: number; dias: number }[] = [];
 
 const currencyFormatter = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value);

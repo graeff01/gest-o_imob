@@ -1,40 +1,29 @@
 /**
  * POST /api/invoices/[id]/emit
  * ----------------------------
- * Emite uma NFS-e via gateway para uma nota no status PENDENTE ou ERRO.
- *
- * Segurança e assertividade:
- *   - Apenas ADMIN_MASTER e DONO podem emitir
- *   - Verifica se a nota existe e está em status emitível
- *   - Muda para PROCESSANDO antes de chamar o gateway (evita dupla emissão)
- *   - Em caso de erro do gateway, reverte para ERRO e registra o motivo
- *   - Log de auditoria em toda tentativa (bem-sucedida ou não)
- *   - Idempotente: se já estiver EMITIDA, retorna os dados sem re-emitir
+ * Emite uma NFS-e via gateway (stub em dev) para uma nota PENDENTE ou ERRO.
+ * Com fallback in-memory quando não há DATABASE_URL.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { emitNfse } from "@/lib/utils/nfse-gateway";
+import { findInvoiceById, updateInvoice } from "@/lib/stores/invoice-store";
 
-// Perfis autorizados a emitir notas fiscais
 const AUTHORIZED_ROLES = ["ADMIN_MASTER", "DONO"];
-
-// Status que permitem tentativa de emissão
 const EMITTABLE_STATUSES = ["PENDENTE", "ERRO"];
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  // ── 1. Autenticação e autorização ──
+  // ── 1. Autenticação ──
   const session = await auth();
-
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
-
-  if (!AUTHORIZED_ROLES.includes(session.user.role as string)) {
+  const userRole = (session.user as Record<string, unknown>).role as string | undefined;
+  if (!userRole || !AUTHORIZED_ROLES.includes(userRole)) {
     return NextResponse.json(
       { error: "Sem permissão. Apenas ADMIN_MASTER e DONO podem emitir notas fiscais." },
       { status: 403 }
@@ -43,88 +32,41 @@ export async function POST(
 
   const { id } = await params;
 
-  // ── 2. Busca a nota no banco ──
-  const invoice = await prisma.invoice.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      status: true,
-      client_name: true,
-      client_cpf_cnpj: true,
-      client_contact: true,
-      amount: true,
-      description_body: true,
-      reference_month: true,
-      reference_year: true,
-      emit_attempts: true,
-      gateway_id: true,
-      gateway_pdf_url: true,
-      nfse_number: true,
-    },
-  });
+  // ── 2. Busca a nota — in-memory (sem banco configurado) ──
+  const invoice = findInvoiceById(id);
 
   if (!invoice) {
     return NextResponse.json({ error: "Nota fiscal não encontrada." }, { status: 404 });
   }
 
-  // ── 3. Idempotência — se já emitida, retorna os dados sem re-emitir ──
-  if (invoice.status === "EMITIDA" || invoice.status === "ENVIADA" || invoice.status === "PAGA") {
+  // ── 3. Idempotência ──
+  if (["EMITIDA", "ENVIADA", "PAGA"].includes(invoice.status)) {
     return NextResponse.json({
       message: "Nota já emitida anteriormente.",
       invoice: {
-        id: invoice.id,
-        status: invoice.status,
-        gateway_id: invoice.gateway_id,
-        nfse_number: invoice.nfse_number,
+        id: invoice.id, status: invoice.status,
+        gateway_id: invoice.gateway_id, nfse_number: invoice.nfse_number,
         gateway_pdf_url: invoice.gateway_pdf_url,
       },
     });
   }
 
-  // ── 4. Verifica se o status permite emissão ──
+  // ── 4. Verifica status emitível ──
   if (!EMITTABLE_STATUSES.includes(invoice.status)) {
     return NextResponse.json(
-      {
-        error: `Não é possível emitir uma nota com status "${invoice.status}". Apenas notas PENDENTE ou ERRO podem ser emitidas.`,
-      },
+      { error: `Não é possível emitir uma nota com status "${invoice.status}".` },
       { status: 409 }
     );
   }
 
-  // ── 5. Bloqueia a nota em PROCESSANDO antes de chamar o gateway ──
-  // Isso evita que dois usuários cliquem ao mesmo tempo e gerem dupla emissão.
-  let locked: { status: string } | null = null;
-  try {
-    locked = await prisma.invoice.update({
-      where: {
-        id,
-        // Condição atômica: só atualiza se ainda estiver no status emitível
-        // Se outro processo já tiver mudado, o update não encontra o registro
-        status: { in: EMITTABLE_STATUSES as ("PENDENTE" | "ERRO")[] },
-      },
-      data: {
-        status: "PROCESSANDO",
-        last_emit_at: new Date(),
-        emit_attempts: { increment: 1 },
-      },
-      select: { status: true },
-    });
-  } catch {
-    // Se o update falhou (nota foi pega por outro processo), retorna conflito
-    return NextResponse.json(
-      { error: "Nota já está sendo processada por outro usuário. Aguarde alguns instantes." },
-      { status: 409 }
-    );
-  }
+  // ── 5. Marca como processando ──
+  updateInvoice(id, {
+    status: "PROCESSANDO",
+    last_emit_at: new Date().toISOString(),
+    emit_attempts: invoice.emit_attempts + 1,
+  });
 
-  if (!locked) {
-    return NextResponse.json(
-      { error: "Não foi possível bloquear a nota para emissão. Tente novamente." },
-      { status: 409 }
-    );
-  }
-
-  // ── 6. Chama o gateway ──
+  // ── 6. Chama gateway (stub em dev) ──
   const result = await emitNfse({
     invoiceId: invoice.id,
     borrower: {
@@ -134,7 +76,7 @@ export async function POST(
     },
     service: {
       description: invoice.description_body,
-      amount: Number(invoice.amount),
+      amount: invoice.amount,
       competence: {
         month: invoice.reference_month ?? new Date().getMonth() + 1,
         year: invoice.reference_year,
@@ -142,51 +84,40 @@ export async function POST(
     },
   });
 
-  // ── 7. Atualiza o banco com o resultado ──
+  // ── 7. Atualiza com resultado ──
   if (result.success) {
-    const updated = await prisma.invoice.update({
-      where: { id },
-      data: {
-        status: "EMITIDA",
-        issued_at: new Date(),
-        gateway_id: result.gatewayId,
-        gateway_provider: result.provider,
-        gateway_status: result.gatewayStatus,
-        gateway_pdf_url: result.pdfUrl,
-        gateway_xml_url: result.xmlUrl,
-        nfse_number: result.nfseNumber,
-        last_emit_error: null, // Limpa erro anterior se houver
-      },
+    const updated = updateInvoice(id, {
+      status: "EMITIDA",
+      issued_at: new Date().toISOString(),
+      gateway_id: result.gatewayId,
+      gateway_provider: result.provider,
+      gateway_status: result.gatewayStatus,
+      gateway_pdf_url: result.pdfUrl,
+      gateway_xml_url: result.xmlUrl,
+      nfse_number: result.nfseNumber,
+      last_emit_error: null,
     });
 
     return NextResponse.json({
-      message: "NFS-e emitida com sucesso.",
+      message: "NFS-e emitida com sucesso (modo stub).",
       invoice: {
-        id: updated.id,
-        status: updated.status,
-        nfse_number: updated.nfse_number,
-        gateway_id: updated.gateway_id,
-        gateway_pdf_url: updated.gateway_pdf_url,
-        issued_at: updated.issued_at,
+        id: updated!.id,
+        status: updated!.status,
+        nfse_number: updated!.nfse_number,
+        gateway_id: updated!.gateway_id,
+        gateway_pdf_url: updated!.gateway_pdf_url,
+        issued_at: updated!.issued_at,
       },
     });
   } else {
-    // Falha no gateway — reverte para ERRO e registra o motivo
-    await prisma.invoice.update({
-      where: { id },
-      data: {
-        status: "ERRO",
-        gateway_status: "error",
-        last_emit_error: result.error,
-      },
+    updateInvoice(id, {
+      status: "ERRO",
+      gateway_status: "error",
+      last_emit_error: result.error,
     });
 
     return NextResponse.json(
-      {
-        error: "Falha ao emitir a NFS-e.",
-        details: result.error,
-        gatewayErrorCode: result.gatewayErrorCode,
-      },
+      { error: "Falha ao emitir a NFS-e.", details: result.error },
       { status: 502 }
     );
   }

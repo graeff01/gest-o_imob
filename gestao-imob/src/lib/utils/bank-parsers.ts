@@ -314,24 +314,114 @@ function detectOperationType(description: string): string {
   return "OUTROS";
 }
 
-// Classificação automática por categoria (sugestão)
-export function suggestCategory(description: string): string | null {
+// ═══════════════════════════════════════════
+// CATEGORIZAÇÃO INTELIGENTE
+// ═══════════════════════════════════════════
+
+/**
+ * Categorias do sistema — cada transação é classificada em uma dessas.
+ * As cores são usadas nos gráficos e badges.
+ */
+export const CATEGORIES = {
+  "Aluguel Recebido":        { color: "bg-green-100 text-green-800",  icon: "🏠", type: "receita" },
+  "Comissão Recebida":       { color: "bg-emerald-100 text-emerald-800", icon: "💰", type: "receita" },
+  "Repasse Recebido":        { color: "bg-teal-100 text-teal-800",   icon: "🔄", type: "receita" },
+  "Outras Receitas":         { color: "bg-lime-100 text-lime-800",   icon: "📈", type: "receita" },
+  "Folha / Comissões":       { color: "bg-blue-100 text-blue-800",   icon: "👥", type: "despesa" },
+  "Royalties Franquia":      { color: "bg-violet-100 text-violet-800", icon: "🏢", type: "despesa" },
+  "Contas de Consumo":       { color: "bg-amber-100 text-amber-800", icon: "⚡", type: "despesa" },
+  "Aluguel Escritório":      { color: "bg-orange-100 text-orange-800", icon: "🏗️", type: "despesa" },
+  "Condomínio":              { color: "bg-yellow-100 text-yellow-800", icon: "🏢", type: "despesa" },
+  "IPTU / Impostos":         { color: "bg-red-100 text-red-800",     icon: "📋", type: "despesa" },
+  "Tarifas Bancárias":       { color: "bg-slate-100 text-slate-800", icon: "🏦", type: "despesa" },
+  "Marketing / Publicidade": { color: "bg-pink-100 text-pink-800",   icon: "📣", type: "despesa" },
+  "Manutenção / Reparos":    { color: "bg-cyan-100 text-cyan-800",   icon: "🔧", type: "despesa" },
+  "Material Escritório":     { color: "bg-indigo-100 text-indigo-800", icon: "📎", type: "despesa" },
+  "Software / Sistemas":     { color: "bg-purple-100 text-purple-800", icon: "💻", type: "despesa" },
+  "Seguros":                 { color: "bg-sky-100 text-sky-800",     icon: "🛡️", type: "despesa" },
+  "Contabilidade / Jurídico":{ color: "bg-fuchsia-100 text-fuchsia-800", icon: "⚖️", type: "despesa" },
+  "Transporte / Combustível":{ color: "bg-stone-100 text-stone-800", icon: "🚗", type: "despesa" },
+  "Outros":                  { color: "bg-gray-100 text-gray-800",   icon: "📌", type: "despesa" },
+} as const;
+
+export type CategoryName = keyof typeof CATEGORIES;
+
+/**
+ * Categorização inteligente por palavras-chave na descrição do extrato.
+ * Retorna a categoria sugerida ou "Outros" como fallback.
+ */
+export function suggestCategory(description: string): CategoryName {
   const desc = description.toUpperCase();
 
-  if (desc.includes("LUZ") || desc.includes("ENERGIA") || desc.includes("CEEE") || desc.includes("RGE")) return "Contas de Consumo";
-  if (desc.includes("ÁGUA") || desc.includes("AGUA") || desc.includes("DMAE") || desc.includes("CORSAN")) return "Contas de Consumo";
-  if (desc.includes("TELEFON") || desc.includes("INTERNET") || desc.includes("VIVO") || desc.includes("CLARO")) return "Contas de Consumo";
-  if (desc.includes("ALUGUEL")) return "Gastos Espaço";
-  if (desc.includes("CONDOMINI")) return "Gastos Espaço";
-  if (desc.includes("IPTU")) return "Impostos e Taxas";
-  if (desc.includes("ISS") || desc.includes("IMPOSTO")) return "Impostos e Taxas";
-  if (desc.includes("TARIFA") || desc.includes("TAR ") || desc.includes("ANUIDADE")) return "Tarifas Bancárias";
-  if (desc.includes("SALARIO") || desc.includes("SALÁRIO") || desc.includes("FOLHA")) return "Folha Locação";
-  if (desc.includes("VALE") && (desc.includes("TRANSPORTE") || desc.includes("REFEIC"))) return "Folha Locação";
-  if (desc.includes("MANUTENC") || desc.includes("REPARO") || desc.includes("CONSERTO")) return "Manutenção e Reparos";
-  if (desc.includes("MATERIAL") || desc.includes("PAPELARIA")) return "Material de Escritório";
-  if (desc.includes("MARKETING") || desc.includes("PUBLICIDADE") || desc.includes("GOOGLE") || desc.includes("META ADS")) return "Op. Locação";
-  if (desc.includes("COMISSAO") || desc.includes("COMISSÃO")) return "Folha Locação";
+  // ── RECEITAS ──
+  if (desc.includes("ALUGUEL") && (desc.includes("RECEB") || desc.includes("CREDIT"))) return "Aluguel Recebido";
+  if (desc.includes("LOCACAO") && desc.includes("RECEB")) return "Aluguel Recebido";
+  if ((desc.includes("COMISSAO") || desc.includes("COMISSÃO")) && desc.includes("RECEB")) return "Comissão Recebida";
+  if (desc.includes("REPASSE") || desc.includes("PIPEIMOB")) return "Repasse Recebido";
 
-  return null;
+  // ── FOLHA / COMISSÕES (saída) ──
+  if (desc.includes("SALARIO") || desc.includes("SALÁRIO") || desc.includes("FOLHA PGTO")) return "Folha / Comissões";
+  if ((desc.includes("COMISSAO") || desc.includes("COMISSÃO")) && !desc.includes("RECEB")) return "Folha / Comissões";
+  if (desc.includes("VALE") && (desc.includes("TRANSPORTE") || desc.includes("REFEIC") || desc.includes("ALIMENT"))) return "Folha / Comissões";
+  if (desc.includes("FGTS") || desc.includes("INSS") || desc.includes("RESCISAO")) return "Folha / Comissões";
+  if (desc.includes("FERIAS") || desc.includes("13 SALARIO") || desc.includes("DECIMO")) return "Folha / Comissões";
+
+  // ── ROYALTIES FRANQUIA ──
+  if (desc.includes("AUXILIADORA") || desc.includes("ROYALT") || desc.includes("FRANQUIA")) return "Royalties Franquia";
+
+  // ── CONTAS DE CONSUMO ──
+  if (desc.includes("LUZ") || desc.includes("ENERGIA") || desc.includes("CEEE") || desc.includes("RGE") || desc.includes("CPFL")) return "Contas de Consumo";
+  if (desc.includes("ÁGUA") || desc.includes("AGUA") || desc.includes("DMAE") || desc.includes("CORSAN")) return "Contas de Consumo";
+  if (desc.includes("GAS") || desc.includes("SULGAS")) return "Contas de Consumo";
+  if (desc.includes("TELEFON") || desc.includes("INTERNET") || desc.includes("VIVO") || desc.includes("CLARO") || desc.includes("TIM") || desc.includes("OI ")) return "Contas de Consumo";
+
+  // ── ALUGUEL ESCRITÓRIO ──
+  if (desc.includes("ALUGUEL") && !desc.includes("RECEB") && !desc.includes("CREDIT")) return "Aluguel Escritório";
+  if (desc.includes("LOCACAO") && !desc.includes("RECEB")) return "Aluguel Escritório";
+
+  // ── CONDOMÍNIO ──
+  if (desc.includes("CONDOMINI") || desc.includes("COND ")) return "Condomínio";
+
+  // ── IMPOSTOS ──
+  if (desc.includes("IPTU")) return "IPTU / Impostos";
+  if (desc.includes("ISS") || desc.includes("IMPOSTO") || desc.includes("DAS ") || desc.includes("SIMPLES NACIONAL")) return "IPTU / Impostos";
+  if (desc.includes("DARF") || desc.includes("IRPJ") || desc.includes("CSLL") || desc.includes("PIS") || desc.includes("COFINS")) return "IPTU / Impostos";
+
+  // ── TARIFAS BANCÁRIAS ──
+  if (desc.includes("TARIFA") || desc.includes("TAR ") || desc.includes("ANUIDADE") || desc.includes("MANUT CONTA") || desc.includes("IOF")) return "Tarifas Bancárias";
+  if (desc.includes("TED TARIFA") || desc.includes("PIX TARIFA") || desc.includes("TAXA BANCARIA")) return "Tarifas Bancárias";
+
+  // ── MARKETING ──
+  if (desc.includes("MARKETING") || desc.includes("PUBLICIDADE") || desc.includes("GOOGLE") || desc.includes("META ADS") || desc.includes("FACEBOOK")) return "Marketing / Publicidade";
+  if (desc.includes("INSTAGRAM") || desc.includes("ANUNCIO") || desc.includes("PROPAGANDA") || desc.includes("OLX") || desc.includes("ZAP IMOV")) return "Marketing / Publicidade";
+
+  // ── MANUTENÇÃO ──
+  if (desc.includes("MANUTENC") || desc.includes("REPARO") || desc.includes("CONSERTO") || desc.includes("REFORMA")) return "Manutenção / Reparos";
+  if (desc.includes("LIMPEZA") || desc.includes("PINTURA") || desc.includes("ELETRIC") || desc.includes("ENCANAD")) return "Manutenção / Reparos";
+
+  // ── MATERIAL ESCRITÓRIO ──
+  if (desc.includes("MATERIAL") || desc.includes("PAPELARIA") || desc.includes("KALUNGA") || desc.includes("STAPLES")) return "Material Escritório";
+  if (desc.includes("CARTORIO") || desc.includes("XEROX") || desc.includes("IMPRESSAO")) return "Material Escritório";
+
+  // ── SOFTWARE / SISTEMAS ──
+  if (desc.includes("SOFTWAR") || desc.includes("SISTEMA") || desc.includes("LICEN") || desc.includes("ASSINATURA")) return "Software / Sistemas";
+  if (desc.includes("IMOVIEW") || desc.includes("SUPERLOGI") || desc.includes("JETIMOB") || desc.includes("ARBO")) return "Software / Sistemas";
+  if (desc.includes("MICROSOFT") || desc.includes("ADOBE") || desc.includes("ZOOM") || desc.includes("SLACK")) return "Software / Sistemas";
+
+  // ── SEGUROS ──
+  if (desc.includes("SEGURO") || desc.includes("PORTO SEGURO") || desc.includes("BRADESCO SEGUR") || desc.includes("ZURICH")) return "Seguros";
+
+  // ── CONTABILIDADE / JURÍDICO ──
+  if (desc.includes("CONTABIL") || desc.includes("CONTADOR") || desc.includes("ESCRITORIO CONTAB")) return "Contabilidade / Jurídico";
+  if (desc.includes("ADVOGAD") || desc.includes("JURIDIC") || desc.includes("HONORAR")) return "Contabilidade / Jurídico";
+
+  // ── TRANSPORTE ──
+  if (desc.includes("COMBUSTI") || desc.includes("GASOLINA") || desc.includes("POSTO") || desc.includes("SHELL") || desc.includes("IPIRANGA")) return "Transporte / Combustível";
+  if (desc.includes("UBER") || desc.includes("99 ") || desc.includes("ESTACIONAM") || desc.includes("PEDAGIO")) return "Transporte / Combustível";
+
+  // ── RECEITAS GENÉRICAS (créditos não categorizados acima) ──
+  // Esta checagem é feita por último — se a transação é crédito e não foi pega acima
+  // O caller pode checar isCredit e reclassificar
+
+  return "Outros";
 }

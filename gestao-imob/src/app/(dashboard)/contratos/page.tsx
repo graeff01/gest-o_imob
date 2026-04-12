@@ -19,16 +19,8 @@ interface Contract {
   consultant: string | null;
 }
 
-const MOCK_CONTRACTS: Contract[] = [
-  { id: "1", contract_number: "MV-2026-0047", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-04-01", end_date: "2027-03-31", rent_value: 4200, sale_value: null, client: "Fernanda Oliveira", property: "Av. Independência, 1200 Ap 301", neighborhood: "Moinhos de Vento", consultant: "Lucas Rodrigues" },
-  { id: "2", contract_number: "MV-2026-0046", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-03-15", end_date: "2027-03-14", rent_value: 8500, sale_value: null, client: "Empresa Delta Ltda", property: "R. Padre Chagas, 302 Sala 5", neighborhood: "Moinhos de Vento", consultant: "Fernanda Lima" },
-  { id: "3", contract_number: "MV-2026-0045", contract_type: "LOCACAO", status: "PENDENTE", start_date: "2026-05-01", end_date: "2027-04-30", rent_value: 3800, sale_value: null, client: "Ricardo Almeida", property: "R. Mostardeiro, 555 Ap 12", neighborhood: "Moinhos de Vento", consultant: "Lucas Rodrigues" },
-  { id: "4", contract_number: "MV-2026-0044", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-02-01", end_date: "2027-01-31", rent_value: 12000, sale_value: null, client: "Construtora Norte S.A.", property: "Av. Goethe, 77 Cobertura", neighborhood: "Moinhos de Vento", consultant: "Rafael Souza" },
-  { id: "5", contract_number: "MV-2026-0043", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-01-15", end_date: "2027-01-14", rent_value: 5600, sale_value: null, client: "Ana Carolina Lima", property: "R. Ramiro Barcelos, 820 Ap 401", neighborhood: "Rio Branco", consultant: "Fernanda Lima" },
-  { id: "6", contract_number: "MV-2025-0038", contract_type: "LOCACAO", status: "ATIVO", start_date: "2025-10-01", end_date: "2026-09-30", rent_value: 6800, sale_value: null, client: "Bruno Henrique Costa", property: "R. 24 de Outubro, 430", neighborhood: "Moinhos de Vento", consultant: "Lucas Rodrigues" },
-  { id: "7", contract_number: "MV-2025-0030", contract_type: "LOCACAO", status: "RENOVADO", start_date: "2025-05-01", end_date: "2026-04-30", rent_value: 4900, sale_value: null, client: "Mariana Santos", property: "Av. Osvaldo Aranha, 1100", neighborhood: "Bom Fim", consultant: "Carla Mendes" },
-  { id: "8", contract_number: "MV-2025-0022", contract_type: "LOCACAO", status: "ENCERRADO", start_date: "2024-10-01", end_date: "2025-09-30", rent_value: 3200, sale_value: null, client: "Pedro Augusto Ramos", property: "R. Fernandes Vieira, 210", neighborhood: "Bela Vista", consultant: null },
-];
+// Dados vazios — serão populados pelo banco de dados
+const MOCK_CONTRACTS: Contract[] = [];
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   PENDENTE: { label: "Pendente", color: "bg-yellow-100 text-yellow-700" },
