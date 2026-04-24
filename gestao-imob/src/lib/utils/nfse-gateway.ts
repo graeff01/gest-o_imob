@@ -3,76 +3,71 @@
  * ---------------
  * Abstração sobre o gateway de emissão de NFS-e.
  *
- * ESTADO ATUAL: STUB — retorna sucesso simulado.
- * Para ativar a emissão real, siga os passos abaixo.
+ * Gateway principal: nfse.io
+ * Docs: https://nfse.io/docs
  *
- * ─── COMO ATIVAR O GATEWAY (quando tiver o certificado) ───────────────────────
+ * ─── COMO ATIVAR ──────────────────────────────────────────────────────────────
  *
- * 1. Escolha o gateway (recomendado: NFe.io ou Plugnotas)
- * 2. Crie uma conta e cadastre a empresa com o certificado digital A1
- * 3. Adicione as variáveis no .env (e no Railway em Prod):
+ * 1. Crie conta em https://nfse.io e faça upload do certificado A1 (.pfx)
+ * 2. Cadastre a empresa com o CNPJ e a Inscrição Municipal de Porto Alegre
+ * 3. Copie a API Key e o Company ID do painel do nfse.io
+ * 4. Preencha as variáveis abaixo no .env.local (dev) e no Railway (produção):
  *
- *    NFSE_GATEWAY_PROVIDER=nfeio          # ou: plugnotas | focusnfe
- *    NFSE_GATEWAY_API_KEY=sua_chave_aqui
- *    NFSE_COMPANY_ID=id_da_empresa_no_gateway
- *    NFSE_CITY_CODE=4314902              # Código IBGE de Porto Alegre
- *    NFSE_SERVICE_CODE=6822600           # Código de serviço imobiliário LC116
- *    NFSE_ISSQN_RATE=0.02               # Alíquota ISS POA (confirmar com contador)
+ *    GATEWAY_STUB_MODE=false
+ *    NFSE_GATEWAY_PROVIDER=nfseio
+ *    NFSE_GATEWAY_API_KEY=sua_api_key_do_nfseio
+ *    NFSE_COMPANY_ID=id_da_empresa_no_nfseio
+ *    NFSE_COMPANY_CNPJ=XX.XXX.XXX/XXXX-XX  (CNPJ da imobiliária)
+ *    NFSE_COMPANY_IM=XXXXXXX               (Inscrição Municipal em Porto Alegre)
+ *    NFSE_CITY_CODE=4314902                (IBGE de Porto Alegre — não muda)
+ *    NFSE_SERVICE_CODE=10.05.01            (código tributação POA para intermediação)
+ *    NFSE_SERVICE_CODE_COMPLEMENT=10.05.01.002
+ *    NFSE_DEFAULT_ALIQUOTA=9.0             (alíquota Simples Nacional — confirmar com contador)
  *
- * 4. Troque GATEWAY_STUB_MODE=true para GATEWAY_STUB_MODE=false no .env
- * 5. Teste com uma nota real em ambiente de homologação primeiro
+ * 5. Teste em homologação antes de produção:
+ *    NFSE_HOMOLOGACAO=true  → aponta para ambiente de testes do gateway
  *
  * ─────────────────────────────────────────────────────────────────────────────
- *
- * Esta camada isola 100% o código de negócio das particularidades de cada gateway.
- * Se trocar de gateway no futuro, só este arquivo muda.
  */
 
-// ─── Tipos ────────────────────────────────────────────────────────────────────
+// ─── Tipos de payload ─────────────────────────────────────────────────────────
 
 export interface NfseEmitPayload {
-  /** ID interno da nota no nosso banco — usado para rastreamento */
   invoiceId: string;
 
-  /** Dados do tomador (quem recebe a nota) */
   borrower: {
     name: string;
-    /** CPF (11 dígitos) ou CNPJ (14 dígitos) — apenas dígitos */
-    federalTaxNumber: string;
+    federalTaxNumber: string; // CPF (11 dígitos) ou CNPJ (14 dígitos) — só dígitos
     email?: string;
+    address?: {
+      cep: string;
+      logradouro?: string;
+      municipio?: string;
+      uf?: string;
+    };
   };
 
-  /** Dados do serviço prestado */
   service: {
     description: string;
-    /** Valor em reais */
     amount: number;
-    /** Competência: { month: 1-12, year: 2026 } */
     competence: { month: number; year: number };
+    aliquota?: number; // % ex: 9.0 — usa NFSE_DEFAULT_ALIQUOTA se omitido
   };
 }
 
 export interface NfseEmitSuccess {
   success: true;
-  /** ID gerado pelo gateway — salvar no banco para rastreamento */
   gatewayId: string;
-  /** Número oficial da NFS-e na prefeitura */
   nfseNumber: number | null;
-  /** URL do PDF para download/arquivo */
   pdfUrl: string | null;
-  /** URL do XML para arquivo fiscal */
   xmlUrl: string | null;
-  /** Status retornado pelo gateway */
   gatewayStatus: string;
-  /** Nome do gateway usado */
   provider: string;
 }
 
 export interface NfseEmitFailure {
   success: false;
-  /** Mensagem de erro legível para o usuário */
   error: string;
-  /** Código de erro do gateway (para debug) */
   gatewayErrorCode?: string;
 }
 
@@ -80,227 +75,236 @@ export type NfseEmitResult = NfseEmitSuccess | NfseEmitFailure;
 
 // ─── Configuração ─────────────────────────────────────────────────────────────
 
-/**
- * Lê as configurações do gateway das variáveis de ambiente.
- * Modo stub ativo enquanto GATEWAY_STUB_MODE=true (padrão).
- */
 function getGatewayConfig() {
   return {
-    isStub: process.env.GATEWAY_STUB_MODE !== "false",
-    provider: process.env.NFSE_GATEWAY_PROVIDER ?? "nfeio",
-    apiKey: process.env.NFSE_GATEWAY_API_KEY ?? "",
-    companyId: process.env.NFSE_COMPANY_ID ?? "",
-    cityCode: process.env.NFSE_CITY_CODE ?? "4314902",     // Porto Alegre
-    serviceCode: process.env.NFSE_SERVICE_CODE ?? "6822600", // Serviços imobiliários
-    issqnRate: parseFloat(process.env.NFSE_ISSQN_RATE ?? "0.02"),
+    isStub:        process.env.GATEWAY_STUB_MODE !== "false",
+    isHomolog:     process.env.NFSE_HOMOLOGACAO === "true",
+    provider:      process.env.NFSE_GATEWAY_PROVIDER ?? "nfseio",
+    apiKey:        process.env.NFSE_GATEWAY_API_KEY ?? "",
+    companyId:     process.env.NFSE_COMPANY_ID ?? "",
+    companyCnpj:   (process.env.NFSE_COMPANY_CNPJ ?? "").replace(/\D/g, ""),
+    companyIM:     process.env.NFSE_COMPANY_IM ?? "",            // Inscrição Municipal POA
+    cityCode:      process.env.NFSE_CITY_CODE ?? "4314902",      // IBGE Porto Alegre
+    serviceCode:   process.env.NFSE_SERVICE_CODE ?? "10.05.01",  // Código tributação POA
+    serviceCodeComplement: process.env.NFSE_SERVICE_CODE_COMPLEMENT ?? "10.05.01.002",
+    defaultAliquota: parseFloat(process.env.NFSE_DEFAULT_ALIQUOTA ?? "9.0"),
   };
 }
 
-// ─── Implementações por gateway ───────────────────────────────────────────────
+// ─── nfse.io ──────────────────────────────────────────────────────────────────
 
-/**
- * Emissão via NFe.io
- * Docs: https://nfe.io/docs/nfs-e/emissao-nota-fiscal/
- */
-async function emitViaNfeio(
+async function emitViaNfseIo(
   payload: NfseEmitPayload,
   config: ReturnType<typeof getGatewayConfig>
 ): Promise<NfseEmitResult> {
-  const url = `https://api.nfe.io/v1/companies/${config.companyId}/serviceinvoices`;
+  const baseUrl = config.isHomolog
+    ? "https://api.sandbox.nfse.io/v1"
+    : "https://api.nfse.io/v1";
 
+  const aliquota = payload.service.aliquota ?? config.defaultAliquota;
+
+  // Monta o corpo da requisição conforme a API do nfse.io
+  // Ref: https://nfse.io/docs/api/emissao
   const body = {
-    cityServiceCode: config.serviceCode,
-    issRate: config.issqnRate,
-    servicesAmount: payload.service.amount,
-    description: payload.service.description,
-    competence: new Date(
-      payload.service.competence.year,
-      payload.service.competence.month - 1,
-      1
-    ).toISOString(),
+    // Identificador único para idempotência — garante que reenvios não geram nota duplicada
+    external_id: payload.invoiceId,
+
+    // Dados do prestador (empresa emissora)
+    provider: {
+      cnpj: config.companyCnpj,
+      inscricao_municipal: config.companyIM,
+      city_ibge_code: config.cityCode,
+    },
+
+    // Dados do tomador (quem recebe a nota)
     borrower: {
+      federal_tax_number: payload.borrower.federalTaxNumber,
       name: payload.borrower.name,
-      federalTaxNumber: payload.borrower.federalTaxNumber,
-      email: payload.borrower.email,
+      ...(payload.borrower.email ? { email: payload.borrower.email } : {}),
+      ...(payload.borrower.address?.cep ? {
+        address: {
+          zip_code:      payload.borrower.address.cep.replace(/\D/g, ""),
+          street:        payload.borrower.address.logradouro ?? "",
+          city:          payload.borrower.address.municipio ?? "Porto Alegre",
+          state:         payload.borrower.address.uf ?? "RS",
+          country:       "BRA",
+        },
+      } : {}),
     },
+
+    // Dados do serviço
+    service: {
+      // Campos obrigatórios Porto Alegre
+      city_service_code:      config.serviceCode,
+      city_service_code_complement: config.serviceCodeComplement,
+      description:            payload.service.description,
+      amount:                 payload.service.amount,
+      iss_rate:               aliquota / 100,       // nfse.io aceita fração (0.09 = 9%)
+      iss_withheld:           false,                // Retenção ISSQN: Não
+      deduction_amount:       0,
+
+      // Tributação federal
+      federal_service_code:   "10.05.01",           // LC 116/2003
+      pis_withheld:           false,
+      cofins_withheld:        false,
+      inss_withheld:          false,
+      ir_withheld:            false,
+      csll_withheld:          false,
+
+      // Competência
+      competence: `${payload.service.competence.year}-${String(payload.service.competence.month).padStart(2, "0")}-01`,
+    },
+
+    // Regime tributário (Simples Nacional = 1 na maioria dos gateways)
+    taxation_type: "simples_nacional",
   };
 
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetch(`${baseUrl}/companies/${config.companyId}/serviceinvoices`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-        "X-Request-Id": payload.invoiceId, // Para rastreamento e idempotência
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000), // 30s timeout
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Erro de conexão com o gateway.";
-    return { success: false, error: `Falha ao conectar com NFe.io: ${message}` };
-  }
-
-  if (!response.ok) {
-    let errorBody = "";
-    try { errorBody = await response.text(); } catch { /* ignora */ }
-    return {
-      success: false,
-      error: `NFe.io retornou erro ${response.status}: ${errorBody || response.statusText}`,
-      gatewayErrorCode: String(response.status),
-    };
-  }
-
-  let data: Record<string, unknown>;
-  try {
-    data = await response.json() as Record<string, unknown>;
-  } catch {
-    return { success: false, error: "Resposta inválida do gateway NFe.io." };
-  }
-
-  return {
-    success: true,
-    gatewayId: String(data.id ?? ""),
-    nfseNumber: data.number ? Number(data.number) : null,
-    pdfUrl: (data.pdfUrl as string) ?? null,
-    xmlUrl: (data.xmlUrl as string) ?? null,
-    gatewayStatus: String(data.status ?? "processing"),
-    provider: "nfeio",
-  };
-}
-
-/**
- * Emissão via Plugnotas
- * Docs: https://docs.plugnotas.com.br/
- */
-async function emitViaPlugnotas(
-  payload: NfseEmitPayload,
-  config: ReturnType<typeof getGatewayConfig>
-): Promise<NfseEmitResult> {
-  const url = "https://api.plugnotas.com.br/nfse";
-
-  const body = {
-    idIntegracao: payload.invoiceId, // Chave de idempotência
-    prestador: { cnpj: config.companyId },
-    tomador: {
-      cpfCnpj: payload.borrower.federalTaxNumber,
-      razaoSocial: payload.borrower.name,
-      email: payload.borrower.email,
-    },
-    servico: {
-      codigoTributacaoMunicipio: config.serviceCode,
-      aliquota: config.issqnRate * 100, // Plugnotas usa percentual (ex: 2.0)
-      valorServicos: payload.service.amount,
-      discriminacao: payload.service.description,
-      competencia: `${payload.service.competence.year}-${String(payload.service.competence.month).padStart(2, "0")}-01`,
-    },
-  };
-
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": config.apiKey,
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${config.apiKey}`,
+        "X-Request-Id":  payload.invoiceId,
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Erro de conexão.";
-    return { success: false, error: `Falha ao conectar com Plugnotas: ${message}` };
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Falha ao conectar com nfse.io: ${msg}` };
   }
 
+  let data: Record<string, unknown> = {};
+  try { data = await response.json() as Record<string, unknown>; } catch { /* ignora */ }
+
   if (!response.ok) {
-    let errorBody = "";
-    try { errorBody = await response.text(); } catch { /* ignora */ }
+    const detail = (data?.message as string) || (data?.error as string) || response.statusText;
     return {
       success: false,
-      error: `Plugnotas retornou erro ${response.status}: ${errorBody || response.statusText}`,
+      error: `nfse.io retornou erro ${response.status}: ${detail}`,
       gatewayErrorCode: String(response.status),
     };
   }
 
-  let data: Record<string, unknown>;
-  try {
-    data = await response.json() as Record<string, unknown>;
-  } catch {
-    return { success: false, error: "Resposta inválida do gateway Plugnotas." };
-  }
-
   return {
-    success: true,
-    gatewayId: String(data.id ?? ""),
-    nfseNumber: data.numero ? Number(data.numero) : null,
-    pdfUrl: (data.linkPdf as string) ?? null,
-    xmlUrl: (data.linkXml as string) ?? null,
+    success:       true,
+    gatewayId:     String(data.id ?? data.external_id ?? ""),
+    nfseNumber:    data.number ? Number(data.number) : null,
+    pdfUrl:        (data.pdf_url as string) ?? (data.pdfUrl as string) ?? null,
+    xmlUrl:        (data.xml_url as string) ?? (data.xmlUrl as string) ?? null,
     gatewayStatus: String(data.status ?? "processing"),
-    provider: "plugnotas",
+    provider:      "nfseio",
   };
 }
 
-/**
- * Modo stub — retorna sucesso simulado sem chamar nenhuma API externa.
- * Ativo enquanto GATEWAY_STUB_MODE=true no .env.
- *
- * Gera um ID falso para simular o comportamento esperado em desenvolvimento.
- */
-function emitStub(payload: NfseEmitPayload): NfseEmitResult {
-  console.warn(
-    `[nfse-gateway] MODO STUB ATIVO — nota ${payload.invoiceId} NÃO foi enviada à prefeitura.`,
-    "Configure GATEWAY_STUB_MODE=false e as credenciais no .env para emissão real."
-  );
+// ─── NFe.io (fallback / alternativa) ─────────────────────────────────────────
+
+async function emitViaNfeio(
+  payload: NfseEmitPayload,
+  config: ReturnType<typeof getGatewayConfig>
+): Promise<NfseEmitResult> {
+  const url = `https://api.nfe.io/v1/companies/${config.companyId}/serviceinvoices`;
+  const aliquota = payload.service.aliquota ?? config.defaultAliquota;
+
+  const body = {
+    cityServiceCode:  config.serviceCode,
+    issRate:          aliquota / 100,
+    servicesAmount:   payload.service.amount,
+    description:      payload.service.description,
+    competence:       new Date(payload.service.competence.year, payload.service.competence.month - 1, 1).toISOString(),
+    borrower: {
+      name:             payload.borrower.name,
+      federalTaxNumber: payload.borrower.federalTaxNumber,
+      email:            payload.borrower.email,
+      ...(payload.borrower.address?.cep ? {
+        address: {
+          postalCode:   payload.borrower.address.cep.replace(/\D/g, ""),
+          country:      "BRA",
+          state:        payload.borrower.address.uf ?? "RS",
+          city:         payload.borrower.address.municipio ?? "Porto Alegre",
+        },
+      } : {}),
+    },
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${config.apiKey}`,
+        "X-Request-Id":  payload.invoiceId,
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Falha ao conectar com NFe.io: ${msg}` };
+  }
+
+  let data: Record<string, unknown> = {};
+  try { data = await response.json() as Record<string, unknown>; } catch { /* ignora */ }
+
+  if (!response.ok) {
+    const detail = (data?.message as string) || response.statusText;
+    return {
+      success: false,
+      error: `NFe.io retornou erro ${response.status}: ${detail}`,
+      gatewayErrorCode: String(response.status),
+    };
+  }
 
   return {
-    success: true,
-    gatewayId: `stub-${payload.invoiceId}-${Date.now()}`,
-    nfseNumber: null,
-    pdfUrl: null,
-    xmlUrl: null,
+    success:       true,
+    gatewayId:     String(data.id ?? ""),
+    nfseNumber:    data.number ? Number(data.number) : null,
+    pdfUrl:        (data.pdfUrl as string) ?? null,
+    xmlUrl:        (data.xmlUrl as string) ?? null,
+    gatewayStatus: String(data.status ?? "processing"),
+    provider:      "nfeio",
+  };
+}
+
+// ─── Stub (desenvolvimento) ───────────────────────────────────────────────────
+
+function emitStub(payload: NfseEmitPayload): NfseEmitResult {
+  console.warn(
+    `[nfse-gateway] ⚠️  STUB ATIVO — nota ${payload.invoiceId} NÃO foi enviada à prefeitura.`,
+    "\nConfigure GATEWAY_STUB_MODE=false e as variáveis NFSE_* no .env para emissão real."
+  );
+  return {
+    success:       true,
+    gatewayId:     `stub-${payload.invoiceId}-${Date.now()}`,
+    nfseNumber:    null,
+    pdfUrl:        null,
+    xmlUrl:        null,
     gatewayStatus: "stub_success",
-    provider: "stub",
+    provider:      "stub",
   };
 }
 
 // ─── Função pública ───────────────────────────────────────────────────────────
 
-/**
- * Emite uma NFS-e via o gateway configurado.
- *
- * Em modo stub (padrão), simula o envio sem chamar API externa.
- * Para emissão real, configure as variáveis de ambiente do gateway.
- *
- * @param payload - Dados da nota a emitir
- * @returns NfseEmitResult com sucesso ou erro detalhado
- */
 export async function emitNfse(payload: NfseEmitPayload): Promise<NfseEmitResult> {
   const config = getGatewayConfig();
 
-  // Modo stub — desenvolvimento e testes sem gateway
-  if (config.isStub) {
-    return emitStub(payload);
-  }
+  if (config.isStub) return emitStub(payload);
 
-  // Validação das credenciais antes de tentar emitir
   if (!config.apiKey || !config.companyId) {
     return {
       success: false,
-      error: "Credenciais do gateway não configuradas. Verifique NFSE_GATEWAY_API_KEY e NFSE_COMPANY_ID no .env.",
+      error:   "Credenciais não configuradas. Verifique NFSE_GATEWAY_API_KEY e NFSE_COMPANY_ID no .env.",
     };
   }
 
-  // Roteamento para o gateway configurado
   switch (config.provider) {
-    case "nfeio":
-      return emitViaNfeio(payload, config);
-    case "plugnotas":
-      return emitViaPlugnotas(payload, config);
+    case "nfseio":    return emitViaNfseIo(payload, config);
+    case "nfeio":     return emitViaNfeio(payload, config);
     default:
-      return {
-        success: false,
-        error: `Gateway "${config.provider}" não suportado. Use: nfeio | plugnotas`,
-      };
+      return { success: false, error: `Gateway "${config.provider}" não suportado. Use: nfseio | nfeio` };
   }
 }

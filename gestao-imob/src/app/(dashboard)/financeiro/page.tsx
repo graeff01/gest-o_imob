@@ -7,11 +7,35 @@ import Link from "next/link";
 
 type Tab = "despesas" | "receitas";
 
-// Dados vazios — serão populados pelo banco de dados quando conectado
+// Dados demonstrativos — substituídos por dados reais quando o banco estiver conectado
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MOCK_EXPENSES: any[] = [];
+const MOCK_EXPENSES: any[] = [
+  { id: "exp-001", date: "2026-04-01", category: "Folha de Pagamentos", subcategory: "Salários locação", description: "Salário — Lucas Rodrigues (CLT)", supplier: null, department: "LOCACAO", amount: 5800, status: "PAGO", source: "manual" },
+  { id: "exp-002", date: "2026-04-01", category: "Folha de Pagamentos", subcategory: "Salários venda", description: "Salário — Thiago Lima (CLT)", supplier: null, department: "VENDA", amount: 6200, status: "PAGO", source: "manual" },
+  { id: "exp-003", date: "2026-04-01", category: "Folha de Pagamentos", subcategory: "Salários admin", description: "Salário — Ana Paula Müller (CLT)", supplier: null, department: "ADMIN", amount: 3800, status: "PAGO", source: "manual" },
+  { id: "exp-004", date: "2026-04-01", category: "Royalties Franquia", subcategory: "Royalties mensais", description: "Royalties Auxiliadora Predial — Abril/2026", supplier: "Auxiliadora Predial Franquias Ltda", department: "AMBOS", amount: 4700, status: "PAGO", source: "manual" },
+  { id: "exp-005", date: "2026-04-01", category: "Marketing", subcategory: "Marketing digital", description: "Impulsionamento Instagram + ZAP Imóveis — Abril", supplier: "Agência Digital RS", department: "AMBOS", amount: 2400, status: "PAGO", source: "manual" },
+  { id: "exp-006", date: "2026-04-02", category: "Manutenção", subcategory: "Hidráulica", description: "Troca de torneira — Ap 301 Av. Independência", supplier: "João Encanador ME", department: "LOCACAO", amount: 380, status: "PAGO", source: "manual" },
+  { id: "exp-007", date: "2026-04-03", category: "Contas de Consumo", subcategory: "Luz/Energia", description: "Conta de energia — CEEE Equatorial", supplier: "CEEE EQUATORIAL", department: "AMBOS", amount: 847, status: "PAGO", source: "ai" },
+  { id: "exp-008", date: "2026-04-03", category: "Contas de Consumo", subcategory: "Telefone/Internet", description: "Plano escritório — internet fibra ótica", supplier: "Claro Empresas", department: "AMBOS", amount: 490, status: "PAGO", source: "manual" },
+  { id: "exp-009", date: "2026-03-28", category: "Impostos e Tributos", subcategory: "ISSQN", description: "ISSQN março/2026", supplier: "Prefeitura Municipal de Porto Alegre", department: "AMBOS", amount: 2340, status: "PAGO", source: "manual" },
+  { id: "exp-010", date: "2026-04-10", category: "Impostos e Tributos", subcategory: "CSLL", description: "CSLL — 1° trimestre 2026", supplier: "Receita Federal", department: "AMBOS", amount: 3120, status: "PENDENTE", source: "manual" },
+  { id: "exp-011", date: "2026-04-05", category: "Material de Escritório", subcategory: "Papelaria", description: "Compra de suprimentos — Zaffari", supplier: "ZAFFARI COMERCIO E INDUSTRIA", department: "AMBOS", amount: 287, status: "PAGO", source: "ai" },
+  { id: "exp-012", date: "2026-04-08", category: "Software/Sistemas", subcategory: "CRM imobiliário", description: "Licença mensal — PipeImob", supplier: "PipeImob Tecnologia", department: "AMBOS", amount: 490, status: "PAGO", source: "manual" },
+  { id: "exp-013", date: "2026-03-20", category: "Manutenção", subcategory: "Pintura", description: "Pintura fachada — R. Padre Chagas 302", supplier: "Pintura Pro Ltda", department: "LOCACAO", amount: 4500, status: "PENDENTE", source: "manual" },
+];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MOCK_REVENUES: any[] = [];
+const MOCK_REVENUES: any[] = [
+  { id: "rev-001", date: "2026-04-01", category: "AGENCIAMENTO", description: "Taxa de administração — Av. Goethe 77, Cobertura", contract: "MV-2026-0004", department: "LOCACAO", amount: 1000, source: "manual" },
+  { id: "rev-002", date: "2026-04-01", category: "AGENCIAMENTO", description: "Taxa de administração — Av. Independência 1200", contract: "MV-2026-0001", department: "LOCACAO", amount: 400, source: "manual" },
+  { id: "rev-003", date: "2026-04-01", category: "AGENCIAMENTO", description: "Taxa de administração — R. Padre Chagas 302", contract: "MV-2026-0002", department: "LOCACAO", amount: 600, source: "manual" },
+  { id: "rev-004", date: "2026-04-01", category: "AGENCIAMENTO", description: "Taxa de administração — Av. Protásio Alves 3000", contract: "MV-2026-0007", department: "LOCACAO", amount: 420, source: "manual" },
+  { id: "rev-005", date: "2026-03-20", category: "INTERMEDIACAO", description: "Comissão intermediação — MV-2026-0002", contract: "MV-2026-0002", department: "LOCACAO", amount: 8400, source: "manual" },
+  { id: "rev-006", date: "2026-03-15", category: "INTERMEDIACAO", description: "Comissão intermediação — MV-2026-0004", contract: "MV-2026-0004", department: "LOCACAO", amount: 17000, source: "manual" },
+  { id: "rev-007", date: "2026-02-28", category: "NFSE_ALUGUEL", description: "NFSe emitida ref. fevereiro — MV-2026-0004", contract: "MV-2026-0004", department: "LOCACAO", amount: 4440, source: "manual" },
+  { id: "rev-008", date: "2026-04-05", category: "OUTRO", description: "PIX recebido — Aluguel Ap 301 Av. Independência", contract: "MV-2026-0001", department: "LOCACAO", amount: 4000, source: "ai" },
+  { id: "rev-009", date: "2026-02-10", category: "INTERMEDIACAO", description: "Comissão venda — Lote 15 Av. Nilo Peçanha", contract: "MV-2026-0009", department: "VENDA", amount: 51000, source: "manual" },
+];
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   PENDENTE: { label: "Pendente", color: "bg-yellow-100 text-yellow-700" },

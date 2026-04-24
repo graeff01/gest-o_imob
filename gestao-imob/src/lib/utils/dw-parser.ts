@@ -125,6 +125,36 @@ const STATUS_MAP: Record<string, DWInvoiceStatus> = {
 // ─── Funções auxiliares ───────────────────────────────────────────────────────
 
 /**
+ * Split de uma linha CSV respeitando campos entre aspas.
+ * Usado para re-parsear rows que o DW exporta com a linha inteira entre aspas externas
+ * (ocorre quando o campo de endereço contém aspas internas: ""AVENIDA..."").
+ */
+function splitCSVRow(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++; // pula aspas escapadas
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+/**
  * Normaliza um CPF ou CNPJ removendo tudo que não for dígito.
  * Retorna null se o resultado não tiver 11 (CPF) ou 14 (CNPJ) dígitos.
  */
@@ -187,46 +217,35 @@ function parseAmount(raw: unknown): number | null {
 }
 
 /**
- * Gera o título e o corpo da NFS-e com base nos dados do DW.
- * Esta é a descrição que vai para a prefeitura — deve ser clara e precisa.
+ * Gera o título e o corpo da NFS-e no formato exigido pela Prefeitura de Porto Alegre.
+ * Formato: "Intermediação no contrato de locação (título) - endereço completo"
  */
 function generateNFSeDescription(row: {
   service_type: DWServiceType;
   property_address: string | null;
   property_code: string | null;
+  title_number: string;
   historico: string;
   reference_month: number;
   reference_year: number;
 }): { title: string; body: string } {
-  const MONTH_NAMES = [
-    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
-  ];
-
-  const monthName = MONTH_NAMES[row.reference_month - 1] ?? "";
-  const period = `${monthName}/${row.reference_year}`;
-
   const titleMap: Record<DWServiceType, string> = {
     INTERMEDIACAO: "Intermediação de Locação Imobiliária",
     AGENCIAMENTO: "Agenciamento de Imóvel",
     ADMINISTRACAO: "Administração de Locação Imobiliária",
   };
 
-  const title = titleMap[row.service_type];
-
-  const addressPart = row.property_address
-    ? ` referente ao imóvel situado em ${row.property_address}`
-    : row.property_code
-      ? ` referente ao imóvel de código ${row.property_code}`
-      : "";
-
-  const bodyMap: Record<DWServiceType, string> = {
-    INTERMEDIACAO: `Serviço de intermediação de locação imobiliária${addressPart}, competência ${period}.`,
-    AGENCIAMENTO: `Serviço de agenciamento e captação de imóvel${addressPart}, competência ${period}.`,
-    ADMINISTRACAO: `Taxa de administração de contrato de locação imobiliária${addressPart}, competência ${period}.`,
+  const verbMap: Record<DWServiceType, string> = {
+    INTERMEDIACAO: "Intermediação no contrato de locação",
+    AGENCIAMENTO: "Agenciamento do imóvel referente ao título",
+    ADMINISTRACAO: "Administração do contrato de locação",
   };
 
-  return { title, body: bodyMap[row.service_type] };
+  const title = titleMap[row.service_type];
+  const addressPart = row.property_address?.trim() || (row.property_code ? `Imóvel cód. ${row.property_code}` : "");
+  const body = `${verbMap[row.service_type]} ${row.title_number}${addressPart ? ` - ${addressPart}` : ""}`;
+
+  return { title, body };
 }
 
 // ─── Função principal ─────────────────────────────────────────────────────────
@@ -243,8 +262,14 @@ export function parseDWExcel(buffer: Buffer): DWParseResult {
 
   let workbook: XLSX.WorkBook;
 
+  // Strip UTF-8 BOM if present (common in DW CSV exports)
+  let parseBuffer = buffer;
+  if (buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
+    parseBuffer = buffer.slice(3);
+  }
+
   try {
-    workbook = XLSX.read(buffer, { type: "buffer", cellDates: false });
+    workbook = XLSX.read(parseBuffer, { type: "buffer", cellDates: false, codepage: 1252 });
   } catch {
     return {
       rows: [],
@@ -291,13 +316,28 @@ export function parseDWExcel(buffer: Buffer): DWParseResult {
   let skippedRows = 0;
 
   for (let i = 0; i < dataRows.length; i++) {
-    const r = dataRows[i] as unknown[];
+    let r = dataRows[i] as unknown[];
     const rowIndex = i + 2; // +2 porque linha 1 = cabeçalho, índice começa em 1 no Excel
 
     // Pula linhas completamente vazias (comum no final de exportações)
     if (!r || r.every((cell) => cell === null || cell === "")) {
       skippedRows++;
       continue;
+    }
+
+    // Quirk do DW: quando o endereço contém aspas (""AVENIDA...""), o DW envolve
+    // a linha inteira em aspas externas. O XLSX interpreta isso como uma única célula
+    // (coluna A recebe toda a linha). Detectamos pelo fato de só r[0] ter valor e o
+    // conteúdo ter vírgulas suficientes para ser uma linha completa.
+    if (
+      typeof r[0] === "string" &&
+      r.slice(1).every((cell) => cell === null || cell === undefined || cell === "") &&
+      (r[0] as string).split(",").length >= 12
+    ) {
+      const reparsed = splitCSVRow(r[0] as string);
+      if (reparsed.length >= 12) {
+        r = reparsed;
+      }
     }
 
     // ── Extração das células ──
@@ -379,6 +419,7 @@ export function parseDWExcel(buffer: Buffer): DWParseResult {
       service_type,
       property_address,
       property_code,
+      title_number,
       historico,
       reference_month,
       reference_year,

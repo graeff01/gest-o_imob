@@ -29,8 +29,17 @@ interface DimobEntry {
   contrato_numero: string;
 }
 
-// Dados vazios — serão populados pelo banco de dados
-const MOCK_ENTRIES: DimobEntry[] = [];
+// Dados demonstrativos — substituídos por dados reais quando o banco estiver conectado
+const MOCK_ENTRIES: DimobEntry[] = [
+  { locatario_nome: "João Carlos Mendes", locatario_cpf: "123.456.789-00", proprietario_nome: "Maria Aparecida Lima", proprietario_cpf: "987.654.321-00", imovel_endereco: "Av. Independência, 1200, Ap 301 — Moinhos de Vento", valor_total: 48000, meses: 12, contrato_numero: "MV-2026-0001" },
+  { locatario_nome: "Empresa XYZ Ltda", locatario_cpf: "12.345.678/0001-90", proprietario_nome: "Carlos Eduardo Souza", proprietario_cpf: "111.222.333-44", imovel_endereco: "Rua Padre Chagas, 302, Sala 5 — Moinhos de Vento", valor_total: 72000, meses: 12, contrato_numero: "MV-2026-0002" },
+  { locatario_nome: "Ana Paula Ferreira", locatario_cpf: "555.666.777-88", proprietario_nome: "Roberto Almeida Costa", proprietario_cpf: "444.333.222-11", imovel_endereco: "R. Mostardeiro, 555, Ap 12 — Moinhos de Vento", valor_total: 36000, meses: 12, contrato_numero: "MV-2026-0003" },
+  { locatario_nome: "Construtora Delta S.A.", locatario_cpf: "98.765.432/0001-10", proprietario_nome: "Lucia Hoffmann", proprietario_cpf: "212.121.212-12", imovel_endereco: "Av. Goethe, 77, Cobertura — Moinhos de Vento", valor_total: 120000, meses: 12, contrato_numero: "MV-2026-0004" },
+  { locatario_nome: "Fernando Henrique Dias", locatario_cpf: "777.888.999-00", proprietario_nome: "Francisco Antônio Moreira", proprietario_cpf: "555.444.333-22", imovel_endereco: "R. Ramiro Barcelos, 820, Ap 401 — Rio Branco", valor_total: 43200, meses: 12, contrato_numero: "MV-2025-0044" },
+  { locatario_nome: "Pedro Henrique Lemos", locatario_cpf: "666.555.444-33", proprietario_nome: "Carlos Eduardo Souza", proprietario_cpf: "111.222.333-44", imovel_endereco: "Av. Protásio Alves, 3000, Sala 203 — Petrópolis", valor_total: 50400, meses: 12, contrato_numero: "MV-2026-0007" },
+  { locatario_nome: "Mariana Costa", locatario_cpf: "333.222.111-00", proprietario_nome: "Francisco Antônio Moreira", proprietario_cpf: "555.444.333-22", imovel_endereco: "Rua Félix da Cunha, 800, Ap 801 — Floresta", valor_total: 23400, meses: 12, contrato_numero: "MV-2026-0012" },
+  { locatario_nome: "Tech Solutions Ltda", locatario_cpf: "45.678.901/0001-23", proprietario_nome: "Imobiliária Planalto Ltda", proprietario_cpf: "89.012.345/0001-67", imovel_endereco: "Rua Dona Laura, 320, Ap 302 — Rio Branco", valor_total: 37800, meses: 12, contrato_numero: "MV-2026-0015" },
+];
 
 function gerarTextoDimob(entries: DimobEntry[], cnpj: string, ano: string): string {
   const lines: string[] = [];

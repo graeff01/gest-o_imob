@@ -15,7 +15,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   FileText, Search, Send, CheckCircle2, Clock, Ban,
   DollarSign, Upload, AlertCircle, X, RefreshCw,
-  Download, ChevronDown, ChevronUp, Loader2, AlertTriangle,
+  Download, ChevronDown, ChevronUp, Loader2, AlertTriangle, Info,
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
@@ -143,6 +143,11 @@ export default function NotasFiscaisPage() {
   const [emitModal, setEmitModal] = useState<Invoice | null>(null);
   const [emitting, setEmitting] = useState(false);
   const [emitError, setEmitError] = useState<string | null>(null);
+  const [emitCep, setEmitCep] = useState("");
+  const [emitAliquota, setEmitAliquota] = useState("9");
+  const [cepLoading, setCepLoading] = useState(false);
+  const [cepResults, setCepResults] = useState<{ cep_formatted: string; logradouro: string; bairro: string }[]>([]);
+  const [showFixedFields, setShowFixedFields] = useState(false);
 
   // ── Modal de import DW ──
   const [importModal, setImportModal] = useState(false);
@@ -218,6 +223,11 @@ export default function NotasFiscaisPage() {
     try {
       const res = await fetch(`/api/invoices/${emitModal.id}/emit`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cep:      emitCep || undefined,
+          aliquota: emitAliquota ? Number(emitAliquota) : undefined,
+        }),
       });
       const data = await res.json();
 
@@ -310,6 +320,27 @@ export default function NotasFiscaisPage() {
     setImportErrors([]);
     setImportSuccess(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  // ── CEP lookup ──
+  const lookupCep = async () => {
+    if (!emitModal?.property_address) return;
+    setCepLoading(true);
+    setCepResults([]);
+    try {
+      const res = await fetch(`/api/cep-lookup?address=${encodeURIComponent(emitModal.property_address)}`);
+      const data = await res.json();
+      if (data.results?.length > 0) {
+        setCepResults(data.results);
+        setEmitCep(data.results[0].cep_formatted);
+      } else {
+        setCepResults([]);
+      }
+    } catch {
+      // silently fail, user can type manually
+    } finally {
+      setCepLoading(false);
+    }
   };
 
   // ── Cálculos para os cards de resumo ──
@@ -549,7 +580,7 @@ export default function NotasFiscaisPage() {
                             {/* Emitir — PENDENTE ou ERRO */}
                             {(inv.status === "PENDENTE" || inv.status === "ERRO") && (
                               <button
-                                onClick={() => { setEmitModal(inv); setEmitError(null); }}
+                                onClick={() => { setEmitModal(inv); setEmitError(null); setEmitCep(""); setEmitAliquota("9"); setCepResults([]); }}
                                 className="p-1.5 border border-blue-200 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
                                 title="Emitir NFS-e"
                               >
@@ -579,14 +610,14 @@ export default function NotasFiscaisPage() {
                               </button>
                             )}
 
-                            {/* Download PDF — se tiver */}
+                            {/* Download DANFE/PDF — se tiver */}
                             {inv.gateway_pdf_url && (
                               <a
                                 href={inv.gateway_pdf_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="p-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors"
-                                title="Baixar PDF da NFS-e"
+                                title="Baixar DANFE (PDF)"
                               >
                                 <Download className="h-3.5 w-3.5" />
                               </a>
@@ -664,6 +695,32 @@ export default function NotasFiscaisPage() {
                               </div>
                             )}
 
+                            {/* Download DANFE e XML */}
+                            {(inv.gateway_pdf_url || (inv as Invoice & { gateway_xml_url?: string | null }).gateway_xml_url) && (
+                              <div className="flex gap-2 mt-1">
+                                {inv.gateway_pdf_url && (
+                                  <a
+                                    href={inv.gateway_pdf_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+                                  >
+                                    <Download className="h-3 w-3" />DANFE (PDF)
+                                  </a>
+                                )}
+                                {(inv as Invoice & { gateway_xml_url?: string | null }).gateway_xml_url && (
+                                  <a
+                                    href={(inv as Invoice & { gateway_xml_url?: string | null }).gateway_xml_url!}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50"
+                                  >
+                                    <Download className="h-3 w-3" />XML
+                                  </a>
+                                )}
+                              </div>
+                            )}
+
                             <div className="mt-2 flex gap-4 text-xs">
                               {inv.issued_at && (
                                 <p className="text-gray-400">
@@ -698,7 +755,7 @@ export default function NotasFiscaisPage() {
       ═══════════════════════════════════════════════════════════════════ */}
       {emitModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl">
 
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
@@ -711,60 +768,146 @@ export default function NotasFiscaisPage() {
               </button>
             </div>
 
-            {/* Dados da nota */}
-            <div className="p-6 space-y-4">
+            {/* Dados da nota — campos obrigatórios NFS-e Porto Alegre */}
+            <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
 
-              {/* Alerta de modo stub */}
-              <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+              {/* ── Tomador ── */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
-                  <p className="font-medium">Modo de desenvolvimento ativo</p>
-                  <p className="mt-0.5">A nota será marcada como emitida no sistema, mas <strong>não será enviada à prefeitura</strong> até o gateway ser configurado com o certificado digital.</p>
+                  <p className="text-gray-400 mb-0.5">Tomador</p>
+                  <p className="font-medium text-gray-900 bg-gray-50 rounded px-2 py-1.5 truncate">{emitModal.client_name}</p>
+                </div>
+                <div>
+                  <p className="text-gray-400 mb-0.5">CPF / CNPJ</p>
+                  <p className="font-mono text-gray-900 bg-gray-50 rounded px-2 py-1.5">{emitModal.client_cpf_cnpj}</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-400 mb-0.5">Tomador (quem recebe)</p>
-                  <p className="font-medium text-gray-900">{emitModal.client_name}</p>
-                  <p className="text-xs text-gray-500">{emitModal.client_cpf_cnpj}</p>
+              {/* ── CEP + endereço ── */}
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Endereço do imóvel</p>
+                {emitModal.property_address && (
+                  <p className="text-xs text-gray-600 mb-2 bg-gray-50 rounded px-2 py-1.5">{emitModal.property_address}</p>
+                )}
+                <div className="flex gap-2 items-end">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-400 mb-0.5 block">CEP</label>
+                    <input
+                      type="text"
+                      value={emitCep}
+                      onChange={(e) => setEmitCep(e.target.value)}
+                      placeholder="00000-000"
+                      maxLength={9}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                    />
+                  </div>
+                  {emitModal.property_address && (
+                    <button
+                      onClick={lookupCep}
+                      disabled={cepLoading}
+                      className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {cepLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
+                      Buscar CEP
+                    </button>
+                  )}
                 </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-400 mb-0.5">Valor do serviço</p>
-                  <p className="text-xl font-bold text-gray-900">{formatCurrency(Number(emitModal.amount))}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-400 mb-0.5">Tipo de serviço</p>
-                  <p className="font-medium text-gray-900">{SERVICE_LABELS[emitModal.service_type]}</p>
-                </div>
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <p className="text-xs text-gray-400 mb-0.5">Competência</p>
-                  <p className="font-medium text-gray-900">
-                    {emitModal.reference_month
-                      ? `${MONTH_NAMES[emitModal.reference_month - 1]}/${emitModal.reference_year}`
-                      : emitModal.reference_year}
+                {cepResults.length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    {cepResults.length > 1 && <p className="text-[10px] text-gray-400">Selecione o CEP correto:</p>}
+                    {cepResults.map((r) => (
+                      <button
+                        key={r.cep_formatted}
+                        onClick={() => setEmitCep(r.cep_formatted)}
+                        className={cn(
+                          "w-full text-left text-xs px-2 py-1.5 rounded border transition-colors",
+                          emitCep === r.cep_formatted
+                            ? "border-blue-400 bg-blue-50 text-blue-800"
+                            : "border-gray-200 hover:bg-gray-50 text-gray-700"
+                        )}
+                      >
+                        <span className="font-mono font-medium">{r.cep_formatted}</span>
+                        {" — "}{r.logradouro}, {r.bairro}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ── Valor + alíquota ── */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p className="text-gray-400 mb-0.5">Valor do serviço</p>
+                  <p className="text-xl font-bold text-gray-900 bg-gray-50 rounded px-2 py-1.5">
+                    {formatCurrency(Number(emitModal.amount))}
                   </p>
                 </div>
-              </div>
-
-              <div className="bg-gray-50 rounded-lg p-3 text-sm">
-                <p className="text-xs text-gray-400 mb-1">Descrição que irá na NFS-e</p>
-                <p className="text-gray-700 leading-relaxed">{emitModal.description_body}</p>
-              </div>
-
-              {emitModal.property_address && (
-                <div className="text-xs text-gray-500">
-                  Imóvel: {emitModal.property_address}
+                <div>
+                  <label className="text-gray-400 mb-0.5 block">Alíquota Simples Nacional (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.5"
+                    value={emitAliquota}
+                    onChange={(e) => setEmitAliquota(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-              )}
+              </div>
+
+              {/* ── Descrição ── */}
+              <div className="text-xs">
+                <p className="text-gray-400 mb-0.5">Descrição da NFS-e</p>
+                <p className="text-gray-700 bg-gray-50 rounded px-2 py-2 leading-relaxed">{emitModal.description_body}</p>
+              </div>
+
+              {/* ── Campos automáticos (colapsável) ── */}
+              <div className="border border-gray-100 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setShowFixedFields(!showFixedFields)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Info className="h-3.5 w-3.5 text-gray-400" />
+                    Campos preenchidos automaticamente pelo sistema
+                  </span>
+                  {showFixedFields ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                </button>
+                {showFixedFields && (
+                  <div className="px-3 pb-3 pt-1 grid grid-cols-2 gap-2 text-xs border-t border-gray-100">
+                    {[
+                      ["Data de emissão", new Date().toLocaleDateString("pt-BR")],
+                      ["Regime de apuração", "Simples Nacional"],
+                      ["País do tomador", "Brasil"],
+                      ["Município de incidência", "Porto Alegre – RS"],
+                      ["Cód. tributação nacional", "10.05.01"],
+                      ["Cód. complementar municipal", "10.05.01.002"],
+                      ["Imunidade", "Não"],
+                      ["Retenção ISSQN", "Não"],
+                      ["Dedução / Redução", "Não"],
+                      ["Tributação federal", "00 – Nenhum"],
+                      ["Tipo PIS/COFINS", "Não retido"],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <p className="text-gray-400 mb-0.5">{label}</p>
+                        <p className="font-medium text-gray-700 bg-gray-50 rounded px-2 py-1">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Alerta dev */}
+              <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700">
+                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <p>Modo de desenvolvimento — a nota será registrada no sistema, mas <strong>não enviada à prefeitura</strong> até o certificado digital ser configurado.</p>
+              </div>
 
               {emitModal.emit_attempts > 0 && (
-                <p className="text-xs text-gray-400">
-                  Tentativas anteriores: {emitModal.emit_attempts}
-                </p>
+                <p className="text-xs text-gray-400">Tentativas anteriores: {emitModal.emit_attempts}</p>
               )}
 
-              {/* Erro da tentativa atual */}
               {emitError && (
                 <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
                   <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
@@ -810,7 +953,7 @@ export default function NotasFiscaisPage() {
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Importar Notas do DW</h2>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  Selecione o arquivo Excel exportado do DW da Auxiliadora Predial.
+                  Selecione o arquivo Excel (.xlsx) ou CSV exportado do DW da Auxiliadora Predial.
                 </p>
               </div>
               <button onClick={() => setImportModal(false)} className="text-gray-400 hover:text-gray-600 p-1">
@@ -840,7 +983,7 @@ export default function NotasFiscaisPage() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".xlsx,.xls"
+                    accept=".xlsx,.xls,.csv"
                     className="hidden"
                     disabled={importing}
                     onChange={(e) => {
@@ -856,7 +999,7 @@ export default function NotasFiscaisPage() {
                   <p className="text-sm font-medium text-gray-700">
                     {importing ? "Lendo arquivo..." : "Clique ou arraste o arquivo Excel do DW"}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">Apenas .xlsx ou .xls · Máximo 10MB</p>
+                  <p className="text-xs text-gray-400 mt-1">Aceita .xlsx, .xls ou .csv (exportação DW) · Máximo 10MB</p>
                   <a
                     href="/api/invoices/sample-dw"
                     download

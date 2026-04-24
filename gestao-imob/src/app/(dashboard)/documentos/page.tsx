@@ -456,9 +456,9 @@ export default function CentralIAPage() {
                     <Sparkles className="h-10 w-10 text-blue-600" />
                   </div>
                   <h2 className="text-lg font-bold text-gray-900 mb-2">Envie seu primeiro documento</h2>
-                  <p className="text-sm text-gray-500 mb-6">
-                    A IA vai analisar, classificar e lançar automaticamente na aba correta do sistema.
-                    Você poderá revisar e corrigir antes de confirmar.
+                  <p className="text-sm text-gray-500 mb-5">
+                    A IA analisa, classifica e lança automaticamente na aba correta.
+                    Você revisa e confirma antes de salvar.
                   </p>
 
                   <button
@@ -466,25 +466,48 @@ export default function CentralIAPage() {
                     className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-sm font-medium hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-600/25 transition-all hover:shadow-xl hover:shadow-blue-600/30"
                   >
                     <Upload className="h-5 w-5" />
-                    Enviar Documento
+                    Enviar Documento Real
                   </button>
 
-                  <p className="text-[11px] text-gray-400 mt-4">
-                    Ou arraste e solte na tela &middot; JPG, PNG, WebP, PDF (max 20MB)
+                  <p className="text-[11px] text-gray-400 mt-3 mb-5">
+                    JPG, PNG, WebP, PDF (max 20MB) &middot; ou arraste e solte na tela
                   </p>
 
-                  <div className="flex items-center justify-center gap-3 mt-6">
-                    {[
-                      { icon: TrendingDown, label: "Despesas", color: "text-red-400 bg-red-50" },
-                      { icon: TrendingUp, label: "Receitas", color: "text-green-400 bg-green-50" },
-                      { icon: Receipt, label: "Notas Fiscais", color: "text-blue-400 bg-blue-50" },
-                      { icon: CreditCard, label: "Extratos", color: "text-purple-400 bg-purple-50" },
-                      { icon: FileText, label: "Contratos", color: "text-indigo-400 bg-indigo-50" },
-                    ].map((t) => (
-                      <div key={t.label} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium", t.color)}>
-                        <t.icon className="h-3.5 w-3.5" /> {t.label}
-                      </div>
-                    ))}
+                  {/* Exemplos de teste */}
+                  <div className="w-full border-t border-gray-100 pt-4">
+                    <p className="text-[11px] text-gray-400 mb-3 font-medium uppercase tracking-wide">
+                      Testar com documento de exemplo
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 text-left">
+                      {[
+                        { label: "Nota Fiscal Serviço", filename: "nota-fiscal-servico.jpg", icon: Receipt, color: "border-blue-100 hover:bg-blue-50 text-blue-700" },
+                        { label: "Conta de Energia", filename: "ceee-energia-abril.jpg", icon: TrendingDown, color: "border-amber-100 hover:bg-amber-50 text-amber-700" },
+                        { label: "Compra Mercado", filename: "zaffari-mercado.jpg", icon: TrendingDown, color: "border-red-100 hover:bg-red-50 text-red-700" },
+                        { label: "Comprovante PIX", filename: "comprovante-pix-recebido.jpg", icon: TrendingUp, color: "border-green-100 hover:bg-green-50 text-green-700" },
+                        { label: "Guia de ISS", filename: "guia-iss-prefeitura.jpg", icon: Receipt, color: "border-orange-100 hover:bg-orange-50 text-orange-700" },
+                        { label: "Google Ads", filename: "marketing-google-ads.jpg", icon: TrendingDown, color: "border-purple-100 hover:bg-purple-50 text-purple-700" },
+                      ].map(({ label, filename, icon: Icon, color }) => (
+                        <button
+                          key={filename}
+                          onClick={() => {
+                            // Simula upload com arquivo de teste — o mock classifica pelo nome
+                            const blob = new Blob(["SAMPLE"], { type: "image/jpeg" });
+                            const file = new File([blob], filename, { type: "image/jpeg" });
+                            processFile(file);
+                          }}
+                          className={cn(
+                            "flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-medium transition-colors",
+                            color
+                          )}
+                        >
+                          <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                          <span className="truncate">{label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-gray-300 mt-2">
+                      Estes botões simulam o upload — em produção com OpenAI configurado, a IA lê o documento real.
+                    </p>
                   </div>
                 </div>
               </div>

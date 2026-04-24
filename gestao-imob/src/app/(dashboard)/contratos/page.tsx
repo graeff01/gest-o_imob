@@ -19,8 +19,22 @@ interface Contract {
   consultant: string | null;
 }
 
-// Dados vazios — serão populados pelo banco de dados
-const MOCK_CONTRACTS: Contract[] = [];
+// Dados demonstrativos — substituídos por dados reais quando o banco estiver conectado
+const MOCK_CONTRACTS: Contract[] = [
+  { id: "ct-001", contract_number: "MV-2026-0001", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-01-01", end_date: "2027-01-01", rent_value: 4000, sale_value: null, client: "João Carlos Mendes", property: "Av. Independência, 1200, Ap 301", neighborhood: "Moinhos de Vento", consultant: "Lucas Rodrigues" },
+  { id: "ct-002", contract_number: "MV-2026-0002", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-02-01", end_date: "2027-02-01", rent_value: 6000, sale_value: null, client: "Empresa XYZ Ltda", property: "Rua Padre Chagas, 302, Sala 5", neighborhood: "Moinhos de Vento", consultant: "Lucas Rodrigues" },
+  { id: "ct-003", contract_number: "MV-2026-0003", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-01-15", end_date: "2027-01-15", rent_value: 3000, sale_value: null, client: "Ana Paula Ferreira", property: "R. Mostardeiro, 555, Ap 12", neighborhood: "Moinhos de Vento", consultant: "Roberto Costa" },
+  { id: "ct-004", contract_number: "MV-2026-0004", contract_type: "LOCACAO", status: "ATIVO", start_date: "2025-08-01", end_date: "2026-08-01", rent_value: 10000, sale_value: null, client: "Construtora Delta S.A.", property: "Av. Goethe, 77, Cobertura", neighborhood: "Moinhos de Vento", consultant: "Thiago Lima" },
+  { id: "ct-005", contract_number: "MV-2025-0044", contract_type: "LOCACAO", status: "ATIVO", start_date: "2025-07-01", end_date: "2026-07-01", rent_value: 3600, sale_value: null, client: "Fernando Henrique Dias", property: "R. Ramiro Barcelos, 820, Ap 401", neighborhood: "Rio Branco", consultant: "Lucas Rodrigues" },
+  { id: "ct-006", contract_number: "MV-2026-0007", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-03-01", end_date: "2027-03-01", rent_value: 4200, sale_value: null, client: "Pedro Henrique Lemos", property: "Av. Protásio Alves, 3000, Sala 203", neighborhood: "Petrópolis", consultant: "Roberto Costa" },
+  { id: "ct-007", contract_number: "MV-2026-0012", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-02-15", end_date: "2027-02-15", rent_value: 1950, sale_value: null, client: "Mariana Costa", property: "Rua Félix da Cunha, 800, Ap 801", neighborhood: "Floresta", consultant: "Lucas Rodrigues" },
+  { id: "ct-008", contract_number: "MV-2026-0015", contract_type: "LOCACAO", status: "ATIVO", start_date: "2026-03-15", end_date: "2027-03-15", rent_value: 3150, sale_value: null, client: "Tech Solutions Ltda", property: "Rua Dona Laura, 320, Ap 302", neighborhood: "Rio Branco", consultant: "Thiago Lima" },
+  { id: "ct-009", contract_number: "MV-2026-0018", contract_type: "LOCACAO", status: "PENDENTE", start_date: "2026-04-30", end_date: "2027-04-30", rent_value: 5500, sale_value: null, client: "Mariana Costa", property: "Av. Carlos Gomes, 450, Ap 802", neighborhood: "Auxiliadora", consultant: "Lucas Rodrigues" },
+  { id: "ct-010", contract_number: "MV-2025-0022", contract_type: "LOCACAO", status: "ENCERRADO", start_date: "2025-01-01", end_date: "2026-01-01", rent_value: 2800, sale_value: null, client: "Ana Paula Ferreira", property: "Rua Marquês do Herval, 150, Ap 1502", neighborhood: "Centro Histórico", consultant: "Roberto Costa" },
+  { id: "ct-011", contract_number: "MV-2025-0038", contract_type: "LOCACAO", status: "RENOVADO", start_date: "2026-03-01", end_date: "2027-03-01", rent_value: 3200, sale_value: null, client: "Fernando Henrique Dias", property: "R. Ramiro Barcelos, 820, Ap 401", neighborhood: "Rio Branco", consultant: "Lucas Rodrigues" },
+  { id: "ct-012", contract_number: "MV-2026-0009", contract_type: "VENDA", status: "ATIVO", start_date: "2026-02-10", end_date: null, rent_value: null, sale_value: 850000, client: "João Carlos Mendes", property: "Av. Nilo Peçanha, 1500, Lote 15", neighborhood: "Três Figueiras", consultant: "Thiago Lima" },
+  { id: "ct-013", contract_number: "MV-2025-0051", contract_type: "VENDA", status: "ENCERRADO", start_date: "2025-11-01", end_date: "2026-01-15", rent_value: null, sale_value: 620000, client: "Construtora Delta S.A.", property: "Rua Quintino Bocaiúva, 78", neighborhood: "Moinhos de Vento", consultant: "Thiago Lima" },
+];
 
 const statusLabels: Record<string, { label: string; color: string }> = {
   PENDENTE: { label: "Pendente", color: "bg-yellow-100 text-yellow-700" },

@@ -6,11 +6,26 @@ import { cn, formatCurrency } from "@/lib/utils";
 
 type Tab = "rules" | "historico";
 
-// Dados vazios — serão populados pelo banco de dados
+// Dados demonstrativos — substituídos por dados reais quando o banco estiver conectado
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MOCK_RULES: any[] = [];
+const MOCK_RULES: any[] = [
+  { id: "rule-001", rule_type: "CONSULTOR_INTERMEDIACAO", employee_type: "CLT", min_threshold: 0, max_threshold: 3, percentage: "10.0", fixed_amount: null, description: "Até 3 locações/mês — 10% sobre valor de intermediação" },
+  { id: "rule-002", rule_type: "CONSULTOR_INTERMEDIACAO", employee_type: "CLT", min_threshold: 4, max_threshold: 9, percentage: "11.0", fixed_amount: null, description: "De 4 a 9 locações/mês — 11% sobre valor de intermediação" },
+  { id: "rule-003", rule_type: "CONSULTOR_INTERMEDIACAO", employee_type: "CLT", min_threshold: 10, max_threshold: null, percentage: "13.0", fixed_amount: null, description: "A partir de 10 locações/mês — 13% sobre valor de intermediação" },
+  { id: "rule-004", rule_type: "CAPTADOR_INTERMEDIACAO", employee_type: "CONTRACT", min_threshold: 0, max_threshold: 15, percentage: "10.0", fixed_amount: null, description: "Até 15 imóveis captados/mês — 10% sobre intermediação" },
+  { id: "rule-005", rule_type: "CAPTADOR_INTERMEDIACAO", employee_type: "CONTRACT", min_threshold: 16, max_threshold: 20, percentage: "11.0", fixed_amount: null, description: "De 16 a 20 imóveis captados/mês — 11% sobre intermediação" },
+  { id: "rule-006", rule_type: "CAPTADOR_INTERMEDIACAO", employee_type: "CONTRACT", min_threshold: 21, max_threshold: null, percentage: "13.0", fixed_amount: null, description: "A partir de 21 imóveis captados/mês — 13% + bônus" },
+  { id: "rule-007", rule_type: "CAPTADOR_BONUS", employee_type: null, min_threshold: 0, max_threshold: null, percentage: null, fixed_amount: "50.00", description: "Bônus de R$50 por imóvel captado (adicional à comissão de intermediação)" },
+  { id: "rule-008", rule_type: "VENDA", employee_type: null, min_threshold: 0, max_threshold: null, percentage: "6.0", fixed_amount: null, description: "Comissão de venda — 6% sobre valor de comissão ajustada" },
+  { id: "rule-009", rule_type: "CAMPANHA_SUCESSO", employee_type: null, min_threshold: 0, max_threshold: null, percentage: null, fixed_amount: "100.00", description: "R$100 por contrato fechado durante campanha sucesso" },
+];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MOCK_HISTORICO: any[] = [];
+const MOCK_HISTORICO: any[] = [
+  { mes: "Janeiro/2026", corretores: 5, total: 14800, status: "Pago" },
+  { mes: "Fevereiro/2026", corretores: 5, total: 12600, status: "Pago" },
+  { mes: "Março/2026", corretores: 5, total: 21400, status: "Pago" },
+  { mes: "Abril/2026", corretores: 5, total: 18200, status: "Calculado" },
+];
 
 const ruleTypeLabels: Record<string, string> = {
   CONSULTOR_INTERMEDIACAO: "Intermediação — Consultor",

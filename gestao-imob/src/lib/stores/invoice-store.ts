@@ -58,7 +58,7 @@ const globalForStore = globalThis as unknown as {
 };
 
 // Bump this version to force a reset of the in-memory store
-const STORE_VERSION = 2;
+const STORE_VERSION = 6;
 
 function getStore(): Map<string, InvoiceRecord> {
   if (!globalForStore.__invoiceStore || globalForStore.__invoiceStoreVersion !== STORE_VERSION) {

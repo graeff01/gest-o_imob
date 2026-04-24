@@ -192,10 +192,44 @@ export interface ExceptionItem {
 const K = {
   fornecedores: "core-fornecedores-v1",
   proprietarios: "core-proprietarios-v1",
-  parametros: "core-parametros-v1", // array de versões
+  parametros: "core-parametros-v1",
   audit: "core-audit-v1",
   exceptions: "core-exceptions-v1",
+  seedVersion: "core-seed-version",
 } as const;
+
+const SEED_VERSION = 1;
+
+const SEED_FORNECEDORES: Fornecedor[] = [
+  { id: "forn-001", nome: "Auxiliadora Predial Franquias Ltda", cpfCnpj: "00000000000191", categoriaPadrao: "Royalties Franquia", subcategoriaPadrao: "Royalties mensais", confiancaClassificacao: 98, totalMovimentado: 56400, quantidadeLancamentos: 12, observacoes: "Pagamento mensal até dia 5", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-002", nome: "Claro Empresas", cpfCnpj: "40432544000147", categoriaPadrao: "Contas de Consumo", subcategoriaPadrao: "Telefone/Internet", confiancaClassificacao: 95, totalMovimentado: 5880, quantidadeLancamentos: 12, observacoes: "Plano fibra escritório", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-003", nome: "CEEE Equatorial", cpfCnpj: "08467115000100", categoriaPadrao: "Contas de Consumo", subcategoriaPadrao: "Luz/Energia", confiancaClassificacao: 97, totalMovimentado: 10164, quantidadeLancamentos: 12, observacoes: "", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-004", nome: "Agência Digital RS", cpfCnpj: "34567890000111", categoriaPadrao: "Marketing", subcategoriaPadrao: "Marketing digital", confiancaClassificacao: 85, totalMovimentado: 28800, quantidadeLancamentos: 12, observacoes: "Gestão Instagram + ZAP Imóveis", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-005", nome: "PipeImob Tecnologia", cpfCnpj: "23456789000122", categoriaPadrao: "Software/Sistemas", subcategoriaPadrao: "CRM imobiliário", confiancaClassificacao: 99, totalMovimentado: 5880, quantidadeLancamentos: 12, observacoes: "Licença mensal do CRM", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-006", nome: "João Encanador ME", cpfCnpj: "12345678000133", categoriaPadrao: "Manutenção", subcategoriaPadrao: "Hidráulica", confiancaClassificacao: 70, totalMovimentado: 2340, quantidadeLancamentos: 6, observacoes: "Prestador de serviço hidráulico", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-007", nome: "Prefeitura Municipal de Porto Alegre", cpfCnpj: "92963560000160", categoriaPadrao: "Impostos e Tributos", subcategoriaPadrao: "ISSQN", confiancaClassificacao: 99, totalMovimentado: 28080, quantidadeLancamentos: 12, observacoes: "ISSQN mensal", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-008", nome: "Pintura Pro Ltda", cpfCnpj: "45678901000144", categoriaPadrao: "Manutenção", subcategoriaPadrao: "Pintura", confiancaClassificacao: 60, totalMovimentado: 9000, quantidadeLancamentos: 2, observacoes: "", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+];
+
+const SEED_PROPRIETARIOS: Proprietario[] = [
+  { id: "prop-own-001", nome: "Maria Aparecida Lima", cpfCnpj: "98765432100", telefone: "(51) 99234-5678", email: "maria.lima@gmail.com", pix: "maria.lima@gmail.com", banco: "Itaú", agencia: "1234", conta: "56789-0", imoveisIds: ["prop-001"], observacoes: "Proprietária do Ap 301 Av. Independência", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "prop-own-002", nome: "Carlos Eduardo Souza", cpfCnpj: "11122233344", telefone: "(51) 98123-4567", email: "carlos.souza@outlook.com", pix: "98765-4321", banco: "Bradesco", agencia: "2345", conta: "67890-1", imoveisIds: ["prop-002", "prop-007"], observacoes: "", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "prop-own-003", nome: "Roberto Almeida Costa", cpfCnpj: "44433322211", telefone: "(51) 99345-6789", email: "roberto.costa@gmail.com", pix: "roberto.costa@gmail.com", banco: "Banco do Brasil", agencia: "3456", conta: "78901-2", imoveisIds: ["prop-003", "prop-008"], observacoes: "", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "prop-own-004", nome: "Lucia Hoffmann", cpfCnpj: "21221212212", telefone: "(51) 98456-7890", email: "lucia.hoffmann@terra.com.br", pix: "21221212212", banco: "Caixa Econômica", agencia: "4567", conta: "89012-3", imoveisIds: ["prop-004", "prop-010"], observacoes: "Prefere contato por e-mail", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "prop-own-005", nome: "Francisco Antônio Moreira", cpfCnpj: "55544433322", telefone: "(51) 99567-8901", email: undefined, pix: "55544433322", banco: "Santander", agencia: "5678", conta: "90123-4", imoveisIds: ["prop-005", "prop-011"], observacoes: "Sem e-mail — contato somente por WhatsApp", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "prop-own-006", nome: "Imobiliária Planalto Ltda", cpfCnpj: "89012345000167", telefone: "(51) 3232-1234", email: "contato@planalto.imob.br", pix: "contato@planalto.imob.br", banco: "Itaú", agencia: "6789", conta: "01234-5", imoveisIds: ["prop-006", "prop-012"], observacoes: "PJ — emite NF para repasse", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+];
+
+function ensureSeeded() {
+  if (typeof window === "undefined") return;
+  const current = parseInt(localStorage.getItem(K.seedVersion) || "0");
+  if (current >= SEED_VERSION) return;
+  const existingForn = read<Fornecedor[]>(K.fornecedores, []);
+  if (existingForn.length === 0) write(K.fornecedores, SEED_FORNECEDORES);
+  const existingProps = read<Proprietario[]>(K.proprietarios, []);
+  if (existingProps.length === 0) write(K.proprietarios, SEED_PROPRIETARIOS);
+  localStorage.setItem(K.seedVersion, String(SEED_VERSION));
+}
 
 // ─── Helpers internos ─────────────────────────────
 
@@ -268,6 +302,7 @@ export function updateException(id: string, patch: Partial<ExceptionItem>) {
 // ─── Fornecedores ─────────────────────────────────
 
 export function getFornecedores(): Fornecedor[] {
+  ensureSeeded();
   return read<Fornecedor[]>(K.fornecedores, []);
 }
 
@@ -331,6 +366,7 @@ export function deleteFornecedor(id: string) {
 // ─── Proprietários ────────────────────────────────
 
 export function getProprietarios(): Proprietario[] {
+  ensureSeeded();
   return read<Proprietario[]>(K.proprietarios, []);
 }
 

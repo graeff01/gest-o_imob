@@ -54,27 +54,42 @@ import {
 
 // ─── Mock Data ─────────────────────────────────────
 
-// Dados vazios — serão populados pelo banco de dados quando conectado
+// Dados demonstrativos — substituídos por dados reais quando o banco estiver conectado
 const KPI = {
-  faturamentoBruto: 0,
-  repasseMatriz: 0,
-  receitaAgencia: 0,
-  comissoesPagas: 0,
-  lucroLiquido: 0,
-  metaMensal: 0,
-  contratosAtivos: 0,
-  imoveisCarteira: 0,
-  imoveisOcupados: 0,
-  corretoresAtivos: 0,
-  inadimplencia: 0,
-  inadimplenciaValor: 0,
-  contratosVencendo: 0,
-  nfsPendentes: 0,
+  faturamentoBruto: 156800,
+  repasseMatriz: 109760,
+  receitaAgencia: 47040,
+  comissoesPagas: 18200,
+  lucroLiquido: 28840,
+  metaMensal: 55000,
+  contratosAtivos: 34,
+  imoveisCarteira: 48,
+  imoveisOcupados: 34,
+  corretoresAtivos: 5,
+  inadimplencia: 3,
+  inadimplenciaValor: 8400,
+  contratosVencendo: 5,
+  nfsPendentes: 12,
 };
 
-const CORRETOR_STATS: { nome: string; locacoes: number; tier: string; proximoTier: number; valor: number; tipo: string }[] = [];
-const CONTRATOS_VENCENDO: { numero: string; cliente: string; vencimento: string; valor: number }[] = [];
-const INADIMPLENTES: { contrato: string; cliente: string; valor: number; dias: number }[] = [];
+const CORRETOR_STATS: { nome: string; locacoes: number; tier: string; proximoTier: number; valor: number; tipo: string }[] = [
+  { nome: "Thiago Lima", locacoes: 12, tier: "13%", proximoTier: 0, valor: 7280, tipo: "CONSULTOR" },
+  { nome: "Lucas Rodrigues", locacoes: 8, tier: "11%", proximoTier: 2, valor: 4840, tipo: "CONSULTOR" },
+  { nome: "Fernanda Souza", locacoes: 18, tier: "11%", proximoTier: 3, valor: 5400, tipo: "CAPTADOR" },
+  { nome: "Roberto Costa", locacoes: 3, tier: "10%", proximoTier: 1, valor: 1380, tipo: "CONSULTOR" },
+];
+const CONTRATOS_VENCENDO: { numero: string; cliente: string; vencimento: string; valor: number }[] = [
+  { numero: "MV-2026-0018", cliente: "João Carlos Mendes", vencimento: "2026-04-30", valor: 4000 },
+  { numero: "MV-2026-0022", cliente: "Ana Paula Ferreira", vencimento: "2026-05-02", valor: 5800 },
+  { numero: "MV-2026-0031", cliente: "Construtora Delta S.A.", vencimento: "2026-05-05", valor: 12000 },
+  { numero: "MV-2026-0035", cliente: "Mariana Costa", vencimento: "2026-05-10", valor: 3200 },
+  { numero: "MV-2026-0041", cliente: "Tech Solutions Ltda", vencimento: "2026-05-15", valor: 8500 },
+];
+const INADIMPLENTES: { contrato: string; cliente: string; valor: number; dias: number }[] = [
+  { contrato: "MV-2026-0007", cliente: "Pedro Henrique Lemos", valor: 4200, dias: 15 },
+  { contrato: "MV-2025-0044", cliente: "Empresa XYZ Ltda", valor: 2800, dias: 22 },
+  { contrato: "MV-2026-0012", cliente: "Fernando Henrique Dias", valor: 1400, dias: 8 },
+];
 
 const currencyFormatter = (value: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(value);

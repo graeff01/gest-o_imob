@@ -66,10 +66,14 @@ export async function POST(request: NextRequest) {
   const allowedTypes = [
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/vnd.ms-excel",
+    "text/csv",
+    "application/csv",
+    "text/plain",
   ];
   const fileName = file.name.toLowerCase();
-  if (!allowedTypes.includes(file.type) && !fileName.endsWith(".xlsx") && !fileName.endsWith(".xls")) {
-    return NextResponse.json({ error: "Formato inválido. Envie .xlsx ou .xls." }, { status: 400 });
+  const validExt = fileName.endsWith(".xlsx") || fileName.endsWith(".xls") || fileName.endsWith(".csv");
+  if (!allowedTypes.includes(file.type) && !validExt) {
+    return NextResponse.json({ error: "Formato inválido. Envie .xlsx, .xls ou .csv." }, { status: 400 });
   }
   if (file.size > MAX_FILE_SIZE) {
     return NextResponse.json({ error: `Arquivo muito grande (${(file.size / 1024 / 1024).toFixed(1)}MB). Limite: 10MB.` }, { status: 400 });
