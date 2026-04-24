@@ -657,10 +657,14 @@ export default function NotasFiscaisPage() {
                       {isExpanded && (
                         <tr key={`${inv.id}-detail`} className="bg-gray-50/80">
                           <td colSpan={8} className="px-6 py-4 border-t border-gray-100">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs mb-3">
+                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs mb-3">
                               <div>
-                                <p className="text-gray-400 mb-0.5">Imóvel</p>
-                                <p className="font-medium text-gray-700">{inv.property_address || `Cód. ${inv.property_code}` || "—"}</p>
+                                <p className="text-gray-400 mb-0.5">Código do Imóvel</p>
+                                <p className="font-mono text-gray-700">{inv.property_code || "—"}</p>
+                              </div>
+                              <div>
+                                <p className="text-gray-400 mb-0.5">Endereço do Imóvel</p>
+                                <p className="font-medium text-gray-700">{inv.property_address || "—"}</p>
                               </div>
                               <div>
                                 <p className="text-gray-400 mb-0.5">Título DW</p>
