@@ -167,6 +167,11 @@ export default function NotasFiscaisPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelLoading, setCancelLoading] = useState(false);
 
+  // ── Relatório mensal ──
+  const [reportModal, setReportModal] = useState(false);
+  const [reportMonth, setReportMonth] = useState(String(new Date().getMonth() + 1));
+  const [reportYear, setReportYear]   = useState(String(new Date().getFullYear()));
+
   // ── Modal de nota manual ──
   const [manualModal, setManualModal]   = useState(false);
   const [manualForm, setManualForm]     = useState<ManualForm>(EMPTY_MANUAL_FORM);
@@ -449,6 +454,227 @@ export default function NotasFiscaisPage() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // ── Relatório mensal ──
+  const handleGenerateReport = () => {
+    const mo = Number(reportMonth);
+    const yr = Number(reportYear);
+    const monthName = MONTH_NAMES[mo - 1];
+    const ISS_RATE = 0.09;
+
+    const mi = invoices.filter(i => i.reference_month === mo && i.reference_year === yr);
+
+    const totalValue   = mi.reduce((s, i) => s + Number(i.amount), 0);
+    const paidValue    = mi.filter(i => i.status === "PAGA").reduce((s, i) => s + Number(i.amount), 0);
+    const emittedValue = mi.filter(i => ["EMITIDA","ENVIADA"].includes(i.status)).reduce((s, i) => s + Number(i.amount), 0);
+    const pendingValue = mi.filter(i => i.status === "PENDENTE").reduce((s, i) => s + Number(i.amount), 0);
+    const issTotal     = totalValue * ISS_RATE;
+
+    const byService = (["INTERMEDIACAO","AGENCIAMENTO","ADMINISTRACAO"] as const).map(key => {
+      const items = mi.filter(i => i.service_type === key);
+      const total = items.reduce((s, i) => s + Number(i.amount), 0);
+      const paid  = items.filter(i => i.status === "PAGA").reduce((s, i) => s + Number(i.amount), 0);
+      return { label: SERVICE_LABELS[key], count: items.length, total, paid, iss: total * ISS_RATE };
+    }).filter(s => s.count > 0);
+
+    const statusGroups = [
+      { label: "Pagas",      color: "#16a34a", count: mi.filter(i => i.status === "PAGA").length },
+      { label: "Emitidas",   color: "#4338ca", count: mi.filter(i => i.status === "EMITIDA").length },
+      { label: "Enviadas",   color: "#7c3aed", count: mi.filter(i => i.status === "ENVIADA").length },
+      { label: "Pendentes",  color: "#d97706", count: mi.filter(i => i.status === "PENDENTE").length },
+      { label: "Canceladas", color: "#9ca3af", count: mi.filter(i => i.status === "CANCELADA").length },
+      { label: "Erro",       color: "#dc2626", count: mi.filter(i => i.status === "ERRO").length },
+    ].filter(s => s.count > 0);
+
+    const fmt = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString("pt-BR") : "—";
+
+    const rowColor = (status: string) => {
+      const map: Record<string, string> = {
+        PAGA: "#f0fdf4", EMITIDA: "#eef2ff", ENVIADA: "#f5f3ff",
+        PENDENTE: "#fffbeb", CANCELADA: "#f9fafb", ERRO: "#fef2f2",
+      };
+      return map[status] ?? "#fff";
+    };
+
+    const detailRows = mi.map(inv => `
+      <tr style="background:${rowColor(inv.status)}">
+        <td>${inv.nfse_number ? `NFS-e ${inv.nfse_number}` : inv.title_number ?? "—"}</td>
+        <td>${inv.client_name}<br/><span style="color:#6b7280;font-size:11px">${inv.client_cpf_cnpj}</span></td>
+        <td>${SERVICE_LABELS[inv.service_type]}</td>
+        <td style="text-align:right;font-weight:600">${fmt(Number(inv.amount))}</td>
+        <td style="text-align:center">
+          <span style="padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;background:${rowColor(inv.status)};border:1px solid #e5e7eb">
+            ${STATUS_CONFIG[inv.status as InvoiceStatus].label}
+          </span>
+        </td>
+        <td style="text-align:center">${fmtDate(inv.issued_at)}</td>
+        <td style="text-align:center">${fmtDate(inv.paid_at)}</td>
+        <td>${inv.property_address ?? inv.property_code ?? "—"}</td>
+      </tr>`).join("");
+
+    const byServiceRows = byService.map(s => `
+      <tr>
+        <td><strong>${s.label}</strong></td>
+        <td style="text-align:center">${s.count}</td>
+        <td style="text-align:right">${fmt(s.total)}</td>
+        <td style="text-align:right;color:#16a34a">${fmt(s.paid)}</td>
+        <td style="text-align:right;color:#dc2626">${fmt(s.total - s.paid)}</td>
+        <td style="text-align:right;color:#1d4ed8">${fmt(s.iss)}</td>
+      </tr>`).join("");
+
+    const statusBadges = statusGroups.map(s =>
+      `<span style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;font-size:13px">
+        <span style="width:10px;height:10px;border-radius:50%;background:${s.color};display:inline-block"></span>
+        ${s.label}: <strong>${s.count}</strong>
+      </span>`).join("");
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<title>Relatório NFS-e — ${monthName}/${yr}</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Inter',sans-serif;background:#f5f5f5;color:#1a1a2e;font-size:13px}
+  .page{max-width:920px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 32px rgba(0,0,0,.10)}
+  .header{background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);color:#fff;padding:40px 48px 32px}
+  .tag{display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.2);border-radius:20px;padding:3px 12px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;margin-bottom:14px;color:#93c5fd}
+  .header h1{font-size:26px;font-weight:700;line-height:1.2;margin-bottom:6px}
+  .header p{color:#94a3b8;font-size:13px}
+  .header-meta{display:flex;gap:28px;margin-top:24px;padding-top:24px;border-top:1px solid rgba(255,255,255,.1);flex-wrap:wrap}
+  .meta-item label{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#64748b;margin-bottom:3px}
+  .meta-item span{font-size:13px;font-weight:500;color:#e2e8f0}
+  .body{padding:40px 48px}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:36px}
+  .card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:18px}
+  .card .cl{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:#64748b;margin-bottom:4px}
+  .card .cv{font-size:20px;font-weight:700;color:#0f172a}
+  .card .cs{font-size:11px;color:#94a3b8;margin-top:2px}
+  .card.green{border-left:3px solid #22c55e}.card.green .cv{color:#16a34a}
+  .card.amber{border-left:3px solid #f59e0b}.card.amber .cv{color:#d97706}
+  .card.blue{border-left:3px solid #3b82f6}.card.blue .cv{color:#1d4ed8}
+  .card.red{border-left:3px solid #ef4444}.card.red .cv{color:#dc2626}
+  .section{margin-bottom:36px}
+  .section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:8px;margin-bottom:18px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{text-align:left;padding:9px 12px;background:#f8fafc;border-bottom:2px solid #e2e8f0;color:#475569;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  td{padding:9px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+  tr.total td{font-weight:700;border-top:2px solid #e2e8f0;background:#f8fafc}
+  .iss-box{background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:20px 24px;margin-bottom:36px}
+  .iss-box h3{font-size:13px;font-weight:700;color:#1e40af;margin-bottom:12px}
+  .iss-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .iss-item{background:#fff;border-radius:8px;padding:14px;border:1px solid #dbeafe}
+  .iss-item .il{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:#60a5fa;margin-bottom:4px}
+  .iss-item .iv{font-size:17px;font-weight:700;color:#1e40af}
+  .iss-item .is{font-size:11px;color:#93c5fd}
+  .status-bar{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;margin-bottom:36px}
+  .footer{background:#f8fafc;border-top:1px solid #e2e8f0;padding:24px 48px;display:flex;justify-content:space-between;align-items:center}
+  .footer p{font-size:11px;color:#94a3b8}
+  .btn-print{background:#1e3a5f;color:#fff;border:none;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+  .btn-print:hover{background:#1e40af}
+  @media print{body{background:#fff}.page{margin:0;border-radius:0;box-shadow:none}.btn-print{display:none}@page{margin:0}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div class="tag">Relatório Fiscal</div>
+    <h1>Notas Fiscais de Serviço<br>${monthName} / ${yr}</h1>
+    <p>Imobiliária Moinhos de Vento — Auxiliadora Predial</p>
+    <div class="header-meta">
+      <div class="meta-item"><label>Competência</label><span>${monthName}/${yr}</span></div>
+      <div class="meta-item"><label>Total de notas</label><span>${mi.length}</span></div>
+      <div class="meta-item"><label>Gerado em</label><span>${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span></div>
+      <div class="meta-item"><label>Alíquota ISS</label><span>9% (Simples Nacional)</span></div>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <div class="cards">
+      <div class="card"><div class="cl">Total emitido</div><div class="cv">${fmt(totalValue)}</div><div class="cs">${mi.length} nota(s)</div></div>
+      <div class="card green"><div class="cl">Recebido (Pago)</div><div class="cv">${fmt(paidValue)}</div><div class="cs">${mi.filter(i=>i.status==="PAGA").length} nota(s)</div></div>
+      <div class="card amber"><div class="cl">Em aberto</div><div class="cv">${fmt(emittedValue)}</div><div class="cs">emitidas/enviadas</div></div>
+      <div class="card red"><div class="cl">Pendente emissão</div><div class="cv">${fmt(pendingValue)}</div><div class="cs">${mi.filter(i=>i.status==="PENDENTE").length} nota(s)</div></div>
+    </div>
+
+    <div class="iss-box">
+      <h3>ISS — Imposto Sobre Serviços (9% Simples Nacional)</h3>
+      <div class="iss-grid">
+        <div class="iss-item"><div class="il">ISS Total (base: ${fmt(totalValue)})</div><div class="iv">${fmt(issTotal)}</div><div class="is">sobre todas as notas do mês</div></div>
+        <div class="iss-item"><div class="il">ISS Recolhido (base: ${fmt(paidValue)})</div><div class="iv">${fmt(paidValue * ISS_RATE)}</div><div class="is">notas já pagas</div></div>
+        <div class="iss-item"><div class="il">ISS a Recolher (base: ${fmt(emittedValue)})</div><div class="iv">${fmt(emittedValue * ISS_RATE)}</div><div class="is">notas emitidas em aberto</div></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Por Tipo de Serviço</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo de Serviço</th>
+            <th style="text-align:center">Qtd</th>
+            <th style="text-align:right">Valor Total</th>
+            <th style="text-align:right">Recebido</th>
+            <th style="text-align:right">Em Aberto</th>
+            <th style="text-align:right">ISS (9%)</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${byServiceRows}
+          <tr class="total">
+            <td>Total Geral</td>
+            <td style="text-align:center">${mi.length}</td>
+            <td style="text-align:right">${fmt(totalValue)}</td>
+            <td style="text-align:right;color:#16a34a">${fmt(paidValue)}</td>
+            <td style="text-align:right;color:#d97706">${fmt(emittedValue)}</td>
+            <td style="text-align:right;color:#1d4ed8">${fmt(issTotal)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="status-bar">
+      <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.8px;color:#64748b;margin-right:20px">Distribuição por Status</span>
+      ${statusBadges}
+    </div>
+
+    <div class="section">
+      <div class="section-title">Detalhamento das Notas (${mi.length})</div>
+      ${mi.length === 0 ? '<p style="color:#94a3b8;text-align:center;padding:24px">Nenhuma nota para este período.</p>' : `
+      <table>
+        <thead>
+          <tr>
+            <th>Número</th>
+            <th>Tomador</th>
+            <th>Serviço</th>
+            <th style="text-align:right">Valor</th>
+            <th style="text-align:center">Status</th>
+            <th style="text-align:center">Emitida</th>
+            <th style="text-align:center">Paga</th>
+            <th>Imóvel</th>
+          </tr>
+        </thead>
+        <tbody>${detailRows}</tbody>
+      </table>`}
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <p><strong>Imobiliária Moinhos de Vento</strong> — Relatório gerado automaticamente pelo sistema de gestão</p>
+    <button class="btn-print" onclick="window.print()">Imprimir / Salvar PDF</button>
+  </div>
+</div>
+</body>
+</html>`;
+
+    const win = window.open("", "_blank");
+    if (win) { win.document.write(html); win.document.close(); }
+    setReportModal(false);
+  };
+
   // ── Seleção ──
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -480,6 +706,13 @@ export default function NotasFiscaisPage() {
             title="Atualizar"
           >
             <RefreshCw className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setReportModal(true)}
+            className="flex items-center gap-2 px-3 py-2 border border-indigo-300 text-indigo-700 bg-indigo-50 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
+          >
+            <FileText className="h-4 w-4" />
+            Relatório Mensal
           </button>
           <button
             onClick={handleExportExcel}
@@ -1300,6 +1533,64 @@ export default function NotasFiscaisPage() {
                 className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {manualLoading ? <><Loader2 className="h-4 w-4 animate-spin" /> Criando...</> : <><Plus className="h-4 w-4" /> Criar Nota</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          MODAL RELATÓRIO MENSAL
+      ═══════════════════════════════════════════════════════════════════ */}
+      {reportModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between p-6 border-b border-gray-100">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Relatório Mensal para Contador</h2>
+                <p className="text-xs text-gray-500 mt-0.5">Selecione o período — abre em nova aba, pronto para impressão.</p>
+              </div>
+              <button onClick={() => setReportModal(false)} className="text-gray-400 hover:text-gray-600 p-1"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-500 mb-1.5 block">Mês</label>
+                  <select
+                    value={reportMonth}
+                    onChange={e => setReportMonth(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {MONTH_NAMES.map((m, i) => (
+                      <option key={i + 1} value={String(i + 1)}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 mb-1.5 block">Ano</label>
+                  <select
+                    value={reportYear}
+                    onChange={e => setReportYear(e.target.value)}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {[2024, 2025, 2026, 2027].map(y => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-3 text-xs text-indigo-700">
+                O relatório incluirá: resumo financeiro, ISS a recolher, breakdown por tipo de serviço e listagem completa das notas.
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100">
+              <button onClick={() => setReportModal(false)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancelar</button>
+              <button
+                onClick={handleGenerateReport}
+                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors"
+              >
+                <FileText className="h-4 w-4" />
+                Gerar Relatório
               </button>
             </div>
           </div>
