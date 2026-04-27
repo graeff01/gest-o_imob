@@ -123,20 +123,20 @@ const STATUS_MAP: Record<string, DWInvoiceStatus> = {
   "pendente": "PENDENTE",
 };
 
-const EXPECTED_HEADER = [
-  "DATA VENCIMENTO",
-  "NOME AGENCIA",
-  "HISTORICO",
-  "IMOVEL",
-  "ENDERECO IMOVEL",
-  "PROPRIETARIO",
-  "PROPRIETARIO CPF",
-  "NUMERO TITULO",
-  "SITUACAO TITULO",
-  "STATUS TITULO",
-  "TIPO",
-  "VALOR P",
-  "QTD TITULO",
+const EXPECTED_HEADER: string[][] = [
+  ["DATA VENCIMENTO"],
+  ["NOME AGENCIA"],
+  ["HISTORICO"],
+  ["IMOVEL"],
+  ["ENDERECO IMOVEL"],
+  ["PROPRIETARIO"],
+  ["PROPRIETARIO CPF", "PROPRIETARIO CPF CNPJ"],
+  ["NUMERO TITULO"],
+  ["SITUACAO TITULO"],
+  ["STATUS TITULO"],
+  ["TIPO"],
+  ["VALOR P", "VALOR PROPRIETARIO", "VALOR PRORIETARIO"],
+  ["QTD TITULO"],
 ];
 
 // ─── Funções auxiliares ───────────────────────────────────────────────────────
@@ -192,7 +192,13 @@ function normalizeHeader(value: unknown): string {
 }
 
 function validateHeader(row: unknown[]) {
-  return EXPECTED_HEADER.filter((expected, index) => normalizeHeader(row[index]) !== expected);
+  return EXPECTED_HEADER
+    .map((acceptedHeaders, index) => ({
+      acceptedHeaders,
+      actualHeader: normalizeHeader(row[index]),
+    }))
+    .filter(({ acceptedHeaders, actualHeader }) => !acceptedHeaders.includes(actualHeader))
+    .map(({ acceptedHeaders, actualHeader }) => `${acceptedHeaders.join(" ou ")} (recebido: ${actualHeader || "vazio"})`);
 }
 
 function isStrictDocumentValidationEnabled() {
@@ -299,7 +305,7 @@ function generateNFSeDescription(row: {
 export function parseDWExcel(buffer: Buffer): DWParseResult {
   const rows: DWParsedRow[] = [];
   const errors: DWParseError[] = [];
-  const titleNumbersInFile = new Set<string>();
+  const invoiceKeysInFile = new Set<string>();
 
   let workbook: XLSX.WorkBook;
 
@@ -445,11 +451,12 @@ export function parseDWExcel(buffer: Buffer): DWParseResult {
       errors.push({ rowIndex, message: "Número do título ausente — não é possível garantir deduplicação.", rawData });
       continue;
     }
-    if (titleNumbersInFile.has(title_number)) {
-      errors.push({ rowIndex, message: `Titulo duplicado dentro do arquivo: "${title_number}".`, rawData });
+    const invoiceKey = `${title_number}|${due_date.getFullYear()}|${client_cpf_cnpj}`;
+    if (invoiceKeysInFile.has(invoiceKey)) {
+      errors.push({ rowIndex, message: `Titulo duplicado para o mesmo tomador dentro do arquivo: "${title_number}".`, rawData });
       continue;
     }
-    titleNumbersInFile.add(title_number);
+    invoiceKeysInFile.add(invoiceKey);
 
     // Tipo de serviço
     const rawTypeStr = rawType ? String(rawType).trim().toLowerCase() : "";

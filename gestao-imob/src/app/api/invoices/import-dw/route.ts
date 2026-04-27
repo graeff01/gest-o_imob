@@ -90,12 +90,12 @@ export async function POST(request: NextRequest) {
   const titleNumbers = parseResult.rows.map((r) => r.title_number);
   const existingInvoices = await prisma.invoice.findMany({
     where: { title_number: { in: titleNumbers } },
-    select: { title_number: true, reference_year: true },
+    select: { title_number: true, reference_year: true, client_cpf_cnpj: true },
   });
-  const existingKeys = new Set(existingInvoices.map((inv) => `${inv.title_number}|${inv.reference_year}`));
+  const existingKeys = new Set(existingInvoices.map((inv) => `${inv.title_number}|${inv.reference_year}|${inv.client_cpf_cnpj}`));
 
   const previewRows: PreviewRow[] = parseResult.rows.map((row) => {
-    const key = `${row.title_number}|${row.reference_year}`;
+    const key = `${row.title_number}|${row.reference_year}|${row.client_cpf_cnpj}`;
     return {
       rowIndex: row.rowIndex,
       title_number: row.title_number,
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
   });
 
   const newRows = parseResult.rows.filter((row) => {
-    const key = `${row.title_number}|${row.reference_year}`;
+    const key = `${row.title_number}|${row.reference_year}|${row.client_cpf_cnpj}`;
     return !existingKeys.has(key);
   });
 

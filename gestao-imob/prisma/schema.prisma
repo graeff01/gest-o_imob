@@ -702,8 +702,9 @@ model Invoice {
   contract Contract? @relation(fields: [contract_id], references: [id])
   creator  User      @relation("InvoiceCreatedBy", fields: [created_by], references: [id])
 
-  // Garante que o mesmo título do DW não seja importado duas vezes
-  @@unique([title_number, reference_year], name: "unique_dw_title_per_year")
+  // Garante que o mesmo título do DW não seja importado duas vezes para o mesmo tomador.
+  // O DW pode repetir NUMERO TITULO quando a cobrança é dividida entre proprietários.
+  @@unique([title_number, reference_year, client_cpf_cnpj], name: "unique_dw_title_per_year_client")
   @@index([status])
   @@index([reference_year, reference_month])
   @@index([client_cpf_cnpj])
