@@ -18,6 +18,13 @@ Avancar a preparacao para homologacao e producao sem implementar testes automati
   - `AUTH_OWNER_2_EMAIL` e `AUTH_OWNER_2_HASH` obrigatorios fora do local.
   - `AUTH_URL` deve usar `https://` em production.
 - Checklist de PRD atualizado com `AUTH_URL` e regra de HTTPS.
+- Tela de login redesenhada com aparencia mais corporativa e sem credenciais expostas.
+- Campos de login com `autocomplete` adequado para email e senha.
+- Headers basicos de seguranca adicionados no Next:
+  - `X-Frame-Options`
+  - `X-Content-Type-Options`
+  - `Referrer-Policy`
+  - `Permissions-Policy`
 - `verify:ci` validado apos as mudancas.
 
 ## Validacao
