@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Search, FileText } from "lucide-react";
+import { Search } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 interface Contract {

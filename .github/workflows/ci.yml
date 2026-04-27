@@ -18,6 +18,7 @@ jobs:
       AUTH_SECRET: ci-local-secret-not-for-production
       AUTH_ADMIN_EMAIL: admin@example.com
       AUTH_ADMIN_HASH: "$2b$12$PHvw9V0bUV1a3fX7vZr6Y.nvk8Y.1e8ebjSNjiKQczV0VOjoWfVAu"
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
       GATEWAY_STUB_MODE: "true"
     steps:
       - name: Checkout

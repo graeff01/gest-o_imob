@@ -223,3 +223,50 @@ export async function POST(request: NextRequest) {
     { status: 201 }
   );
 }
+
+export async function DELETE(request: NextRequest) {
+  let userId: string;
+  try {
+    const ctx = await requireElevatedRole();
+    userId = ctx.dbUserId;
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Invoice DW cleanup auth error:", error);
+    return NextResponse.json({ error: "Erro de autenticacao." }, { status: 500 });
+  }
+
+  const dryRun = request.nextUrl.searchParams.get("dryRun") !== "false";
+  const where = {
+    imported_from_dw: true,
+    status: "PENDENTE" as const,
+  };
+
+  if (dryRun) {
+    const count = await prisma.invoice.count({ where });
+    return NextResponse.json({
+      dryRun: true,
+      removable: count,
+      message: "Simulacao concluida. Use ?dryRun=false para remover as notas DW pendentes.",
+    });
+  }
+
+  const result = await prisma.invoice.deleteMany({ where });
+
+  await auditEvent({
+    action: "invoice.import.cleaned",
+    actorId: userId,
+    entityType: "invoice",
+    summary: "Notas DW pendentes removidas.",
+    metadata: {
+      deleted: result.count,
+      scope: "imported_from_dw=true,status=PENDENTE",
+    },
+  });
+
+  return NextResponse.json({
+    deleted: result.count,
+    message: `${result.count} nota(s) DW pendente(s) removida(s).`,
+  });
+}

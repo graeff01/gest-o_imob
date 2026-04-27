@@ -149,7 +149,6 @@ export function parseCaixaOFX(content: string): ParseResult {
 
   // Extrair info da conta
   const acctId = extractOFXField(content, "ACCTID") || "";
-  const bankId = extractOFXField(content, "BANKID") || "104";
 
   // Saldo final
   const balAmtStr = extractOFXField(content, "BALAMT");

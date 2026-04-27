@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createPropertyOwnerSchema } from "@/lib/validations/pessoas";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth, requireElevatedRole } from "@/server/authz";
 
 export async function GET(request: Request) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
   const page = parseInt(searchParams.get("page") || "1");
@@ -37,6 +46,10 @@ export async function GET(request: Request) {
     }
     throw new Error("empty_db");
   } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("property-owners.list");
+    }
+
     const { MOCK_OWNERS } = await import("@/lib/mock-data");
     let filtered = MOCK_OWNERS;
     if (search) {
@@ -55,6 +68,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  try {
+    await requireElevatedRole();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const body = await request.json();
   const parsed = createPropertyOwnerSchema.safeParse(body);
 
@@ -81,7 +100,11 @@ export async function POST(request: Request) {
     const owner = await prisma.propertyOwner.create({ data });
 
     return NextResponse.json(owner, { status: 201 });
-  } catch (error) {
+  } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("property-owners.create");
+    }
+
     const mockOwner = { ...data, id: "mock-" + Date.now() };
     return NextResponse.json(mockOwner, { status: 201 });
   }

@@ -5,6 +5,7 @@ import {
   fileToBase64,
   type AIExtractionResult,
 } from "@/lib/utils/ai-processor";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
 
 /**
  * API DE OCR & CLASSIFICAÇÃO INTELIGENTE
@@ -74,6 +75,10 @@ export async function POST(req: Request) {
 
       data = result.data;
     } else {
+      if (!canUseMockFallback()) {
+        return mockFallbackBlockedResponse("ocr.mock");
+      }
+
       // MOCK: simula resposta baseada no nome do arquivo
       const result = processDocumentMock(file.name);
 

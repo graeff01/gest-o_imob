@@ -18,10 +18,7 @@ import {
   CreditCard,
   Edit3,
   PenLine,
-  ChevronDown,
-  X,
   Send,
-  Plus,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import {

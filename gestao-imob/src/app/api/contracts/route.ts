@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createContractSchema } from "@/lib/validations/financeiro";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth } from "@/server/authz";
 
 export async function GET(request: Request) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
@@ -42,7 +51,11 @@ export async function GET(request: Request) {
     ]);
 
     return NextResponse.json({ contracts, total, page, limit });
-  } catch (error) {
+  } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("contracts.list");
+    }
+
     return NextResponse.json({ contracts: [], total: 0, page, limit });
   }
 }
@@ -97,7 +110,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(contract, { status: 201 });
-  } catch (error) {
+  } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("contracts.create");
+    }
+
     const mockContract = {
       id: "mock-" + Date.now(),
       contract_number: `MV-MOCK-${Date.now().toString().slice(-4)}`,

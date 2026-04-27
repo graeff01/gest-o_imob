@@ -15,16 +15,15 @@ Itens que nao bloqueiam a preparacao atual, mas devem ser tratados conforme o si
 ## Produto
 
 - Tela de usuarios para ativar/desativar dono e trocar senha.
-- Tela de configuracao da empresa emissora.
-- Desfazer lote de importacao DW com auditoria.
+- Tela visual de configuracao da empresa emissora.
+- Desfazer lote completo de importacao DW com identificador de lote.
 - Historico detalhado de tentativas de emissao NFS-e.
 - Exportacao fiscal/contabil padronizada.
 - Tela de erros do gateway com orientacao operacional.
 
 ## Codigo
 
-- Remover mocks/fallbacks legados das APIs antigas antes de PRD com cliente real.
-- Migrar `middleware.ts` para `proxy`, conforme aviso do Next.
+- Remover mocks/fallbacks legados das APIs antigas quando o banco real estiver estavel.
 - Reduzir warnings do lint ate permitir `--max-warnings=0`.
 - Centralizar autorizacao por perfil em todas as APIs legadas.
 - Persistir auditoria em tabela propria no banco.

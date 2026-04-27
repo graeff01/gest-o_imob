@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createClientSchema } from "@/lib/validations/pessoas";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth, requireElevatedRole } from "@/server/authz";
 
 export async function GET(request: Request) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
   const page = parseInt(searchParams.get("page") || "1");
@@ -37,6 +46,10 @@ export async function GET(request: Request) {
     }
     throw new Error("empty_db");
   } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("clients.list");
+    }
+
     const { MOCK_CLIENTS } = await import("@/lib/mock-data");
     let filtered = MOCK_CLIENTS;
     if (search) {
@@ -55,6 +68,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  try {
+    await requireElevatedRole();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const body = await request.json();
   const parsed = createClientSchema.safeParse(body);
 
@@ -81,7 +100,11 @@ export async function POST(request: Request) {
     const client = await prisma.client.create({ data });
 
     return NextResponse.json(client, { status: 201 });
-  } catch (error) {
+  } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("clients.create");
+    }
+
     const mockClient = { ...data, id: "mock-" + Date.now() };
     return NextResponse.json(mockClient, { status: 201 });
   }

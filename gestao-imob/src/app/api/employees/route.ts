@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createEmployeeSchema } from "@/lib/validations/pessoas";
 import { hash } from "bcryptjs";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
+import { authErrorResponse } from "@/server/api-response";
+import { requireTechnicalRole } from "@/server/authz";
 
 export async function GET(request: Request) {
+  try {
+    await requireTechnicalRole();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
   const page = parseInt(searchParams.get("page") || "1");
@@ -37,6 +46,10 @@ export async function GET(request: Request) {
     }
     throw new Error("empty_db");
   } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("employees.list");
+    }
+
     // FALLBACK: mock data enquanto DB não está conectado
     const { MOCK_EMPLOYEES } = await import("@/lib/mock-data");
     let filtered = MOCK_EMPLOYEES;
@@ -56,6 +69,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  try {
+    await requireTechnicalRole();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const body = await request.json();
   const parsed = createEmployeeSchema.safeParse(body);
 
@@ -114,7 +133,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(employee, { status: 201 });
-  } catch (error) {
+  } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("employees.create");
+    }
+
     const mockEmployee = {
       id: "mock-" + Date.now(),
       cpf: data.cpf,

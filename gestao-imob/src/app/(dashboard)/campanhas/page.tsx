@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Trophy, Calendar, DollarSign } from "lucide-react";
+import { Plus, Search, Trophy } from "lucide-react";
 import { cn, formatDate, formatCurrency } from "@/lib/utils";
 import { CampaignForm } from "./campaign-form";
 

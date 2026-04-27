@@ -9,8 +9,16 @@
  */
 
 import { NextResponse } from "next/server";
+import { appConfig } from "@/server/env";
 
 export async function GET() {
+  if (!appConfig.isLocal) {
+    return NextResponse.json(
+      { error: "Arquivo de exemplo disponivel apenas no ambiente local." },
+      { status: 404 }
+    );
+  }
+
   const ofx = `OFXHEADER:100
 DATA:OFXSGML
 VERSION:102

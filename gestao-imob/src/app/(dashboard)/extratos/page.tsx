@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Upload, Search, ArrowUpCircle, ArrowDownCircle,
   ChevronDown, ChevronRight, FileText, Loader2, X,
-  RefreshCw, Download, AlertTriangle, Pencil, Check,
+  RefreshCw, AlertTriangle, Pencil, Check,
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 

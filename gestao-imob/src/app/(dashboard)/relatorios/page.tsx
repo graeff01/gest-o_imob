@@ -8,7 +8,6 @@ import {
   Users,
   DollarSign,
   TrendingDown,
-  TrendingUp,
   CheckCircle,
   Calendar,
   Building,

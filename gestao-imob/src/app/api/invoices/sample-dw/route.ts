@@ -7,8 +7,16 @@
 
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { appConfig } from "@/server/env";
 
 export async function GET() {
+  if (!appConfig.isLocal) {
+    return NextResponse.json(
+      { error: "Arquivo de exemplo disponivel apenas no ambiente local." },
+      { status: 404 }
+    );
+  }
+
   // Cabeçalho conforme o parser espera (colunas A-M)
   const header = [
     "DATA VENCIMENTO",    // A
