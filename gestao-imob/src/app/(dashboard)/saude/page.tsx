@@ -31,6 +31,7 @@ interface SystemHealth {
   environment: {
     appEnv: string;
     gatewayMode: string;
+    mockFallbacks: string;
     isProduction: boolean;
   };
   score: number;
@@ -259,7 +260,7 @@ export default function SaudePage() {
 
         {systemHealth && (
           <>
-            <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <div className="mt-4 grid gap-3 md:grid-cols-5">
               <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                 <p className="text-[10px] uppercase text-gray-500 font-semibold">Ambiente</p>
                 <p className="mt-1 text-sm font-bold text-gray-900">{systemHealth.environment.appEnv}</p>
@@ -267,6 +268,10 @@ export default function SaudePage() {
               <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                 <p className="text-[10px] uppercase text-gray-500 font-semibold">Gateway</p>
                 <p className="mt-1 text-sm font-bold text-gray-900">{systemHealth.environment.gatewayMode}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[10px] uppercase text-gray-500 font-semibold">Mocks</p>
+                <p className="mt-1 text-sm font-bold text-gray-900">{systemHealth.environment.mockFallbacks}</p>
               </div>
               <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                 <p className="text-[10px] uppercase text-gray-500 font-semibold">Usuarios ativos</p>

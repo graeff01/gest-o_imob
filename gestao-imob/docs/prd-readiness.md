@@ -20,12 +20,17 @@ Este documento define o minimo para considerar o sistema pronto para homologacao
 - `NEXT_PUBLIC_APP_ENV`
 - `DATABASE_URL`
 - `AUTH_SECRET`
+- `AUTH_URL`
 - `AUTH_ADMIN_EMAIL`
 - `AUTH_ADMIN_HASH`
 - `AUTH_OWNER_1_EMAIL`
 - `AUTH_OWNER_1_HASH`
 - `AUTH_OWNER_2_EMAIL`
 - `AUTH_OWNER_2_HASH`
+- `ALLOW_MOCK_FALLBACKS=false`
+
+Em `production`, `AUTH_URL` deve usar `https://`.
+Fora do ambiente local, mocks/fallbacks devem permanecer desligados.
 
 ## NFS-e
 
@@ -59,3 +64,4 @@ Em `production`, o sistema bloqueia `GATEWAY_STUB_MODE=true`.
 - dominio configurado
 - rotina de rollback definida
 - CI ativo em toda PR para `main`
+- processo de desenvolvimento documentado em `docs/processo-desenvolvimento.md`
