@@ -11,7 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:seed": "npx tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "verify:local": "node scripts/verify-local-hardening.cjs"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

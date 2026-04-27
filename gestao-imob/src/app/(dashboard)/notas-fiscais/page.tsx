@@ -8,7 +8,7 @@ import {
   Plus, Square, CheckSquare, FileSpreadsheet, Zap,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, maskSensitiveCpfCnpj } from "@/lib/utils";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -252,7 +252,8 @@ export default function NotasFiscaisPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error("Erro ao atualizar status.");
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error ?? "Erro ao atualizar status.");
       await fetchInvoices();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Erro ao atualizar.");
@@ -262,6 +263,10 @@ export default function NotasFiscaisPage() {
   // ── Cancelamento com motivo ──
   const handleCancelConfirm = async () => {
     if (!cancelModal) return;
+    if (!cancelReason.trim()) {
+      alert("Informe um motivo para cancelar a nota.");
+      return;
+    }
     setCancelLoading(true);
     try {
       const res = await fetch(`/api/invoices/${cancelModal.id}`, {
@@ -273,7 +278,8 @@ export default function NotasFiscaisPage() {
           notes: cancelReason || null,
         }),
       });
-      if (!res.ok) throw new Error("Erro ao cancelar.");
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error ?? "Erro ao cancelar.");
       setCancelModal(null);
       setCancelReason("");
       await fetchInvoices();
@@ -314,7 +320,7 @@ export default function NotasFiscaisPage() {
       "Status":       STATUS_CONFIG[inv.status].label,
       "NFS-e":        inv.nfse_number ?? "",
       "Cliente":      inv.client_name,
-      "CPF/CNPJ":     inv.client_cpf_cnpj,
+      "CPF/CNPJ":     maskSensitiveCpfCnpj(inv.client_cpf_cnpj),
       "Serviço":      SERVICE_LABELS[inv.service_type],
       "Competência":  inv.reference_month
                         ? `${MONTH_NAMES[inv.reference_month - 1]}/${inv.reference_year}`
@@ -366,7 +372,6 @@ export default function NotasFiscaisPage() {
           description_title: title,
           description_body:  body,
           notes:            manualForm.notes || null,
-          created_by:       "manual",
         }),
       });
       const data = await res.json();
@@ -499,7 +504,7 @@ export default function NotasFiscaisPage() {
     const detailRows = mi.map(inv => `
       <tr style="background:${rowColor(inv.status)}">
         <td>${inv.nfse_number ? `NFS-e ${inv.nfse_number}` : inv.title_number ?? "—"}</td>
-        <td>${inv.client_name}<br/><span style="color:#6b7280;font-size:11px">${inv.client_cpf_cnpj}</span></td>
+        <td>${inv.client_name}<br/><span style="color:#6b7280;font-size:11px">${maskSensitiveCpfCnpj(inv.client_cpf_cnpj)}</span></td>
         <td>${SERVICE_LABELS[inv.service_type]}</td>
         <td style="text-align:right;font-weight:600">${fmt(Number(inv.amount))}</td>
         <td style="text-align:center">
@@ -994,7 +999,7 @@ export default function NotasFiscaisPage() {
                             )}
                             <div>
                               <p className="font-medium text-gray-900 truncate max-w-[180px]">{inv.client_name}</p>
-                              <p className="text-xs text-gray-400">{inv.client_cpf_cnpj}</p>
+                              <p className="text-xs text-gray-400">{maskSensitiveCpfCnpj(inv.client_cpf_cnpj)}</p>
                             </div>
                           </div>
                         </td>
@@ -1691,7 +1696,7 @@ export default function NotasFiscaisPage() {
                           <tr key={row.rowIndex} className={cn(row.import_status === "duplicata" && "opacity-50 bg-gray-50")}>
                             <td className="px-3 py-2">
                               <p className="font-medium text-gray-800 truncate max-w-[160px]">{row.client_name}</p>
-                              <p className="text-gray-400">{row.client_cpf_cnpj}</p>
+                              <p className="text-gray-400">{maskSensitiveCpfCnpj(row.client_cpf_cnpj)}</p>
                             </td>
                             <td className="px-3 py-2 text-gray-600">{SERVICE_LABELS[row.service_type as ServiceType] ?? row.service_type}</td>
                             <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{row.due_date}</td>

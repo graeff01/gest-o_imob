@@ -25,6 +25,7 @@
  */
 
 import * as XLSX from "xlsx";
+import { validateCNPJ, validateCPF } from "@/lib/utils";
 
 // ─── Tipos de saída ───────────────────────────────────────────────────────────
 
@@ -122,6 +123,22 @@ const STATUS_MAP: Record<string, DWInvoiceStatus> = {
   "pendente": "PENDENTE",
 };
 
+const EXPECTED_HEADER = [
+  "DATA VENCIMENTO",
+  "NOME AGENCIA",
+  "HISTORICO",
+  "IMOVEL",
+  "ENDERECO IMOVEL",
+  "PROPRIETARIO",
+  "PROPRIETARIO CPF",
+  "NUMERO TITULO",
+  "SITUACAO TITULO",
+  "STATUS TITULO",
+  "TIPO",
+  "VALOR P",
+  "QTD TITULO",
+];
+
 // ─── Funções auxiliares ───────────────────────────────────────────────────────
 
 /**
@@ -163,6 +180,29 @@ function normalizeCpfCnpj(raw: unknown): string | null {
   const digits = String(raw).replace(/\D/g, "");
   if (digits.length !== 11 && digits.length !== 14) return null;
   return digits;
+}
+
+function normalizeHeader(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+}
+
+function validateHeader(row: unknown[]) {
+  return EXPECTED_HEADER.filter((expected, index) => normalizeHeader(row[index]) !== expected);
+}
+
+function isStrictDocumentValidationEnabled() {
+  return process.env.DW_STRICT_DOCUMENT_VALIDATION === "true";
+}
+
+function hasValidDocumentDigits(document: string) {
+  if (document.length === 11) return validateCPF(document);
+  if (document.length === 14) return validateCNPJ(document);
+  return false;
 }
 
 /**
@@ -259,6 +299,7 @@ function generateNFSeDescription(row: {
 export function parseDWExcel(buffer: Buffer): DWParseResult {
   const rows: DWParsedRow[] = [];
   const errors: DWParseError[] = [];
+  const titleNumbersInFile = new Set<string>();
 
   let workbook: XLSX.WorkBook;
 
@@ -306,6 +347,21 @@ export function parseDWExcel(buffer: Buffer): DWParseResult {
       rows: [],
       errors: [{ rowIndex: 0, message: "Arquivo vazio ou sem dados. A primeira linha deve ser o cabeçalho." }],
       totalRows: 0,
+      validRows: 0,
+      skippedRows: 0,
+    };
+  }
+
+  const missingHeaders = validateHeader(rawData[0] as unknown[]);
+  if (missingHeaders.length > 0) {
+    return {
+      rows: [],
+      errors: [{
+        rowIndex: 1,
+        message: `Cabecalho fora do padrao DW. Colunas divergentes: ${missingHeaders.join(", ")}.`,
+        rawData: { header: rawData[0] },
+      }],
+      totalRows: rawData.length - 1,
       validRows: 0,
       skippedRows: 0,
     };
@@ -378,6 +434,10 @@ export function parseDWExcel(buffer: Buffer): DWParseResult {
       errors.push({ rowIndex, message: `CPF/CNPJ inválido ou ausente: "${rawClientDoc}"`, rawData });
       continue;
     }
+    if (isStrictDocumentValidationEnabled() && !hasValidDocumentDigits(client_cpf_cnpj)) {
+      errors.push({ rowIndex, message: `CPF/CNPJ com digitos verificadores invalidos: "${rawClientDoc}"`, rawData });
+      continue;
+    }
 
     // Número do título (chave de deduplicação)
     const title_number = rawTitleNumber ? String(rawTitleNumber).trim() : "";
@@ -385,6 +445,11 @@ export function parseDWExcel(buffer: Buffer): DWParseResult {
       errors.push({ rowIndex, message: "Número do título ausente — não é possível garantir deduplicação.", rawData });
       continue;
     }
+    if (titleNumbersInFile.has(title_number)) {
+      errors.push({ rowIndex, message: `Titulo duplicado dentro do arquivo: "${title_number}".`, rawData });
+      continue;
+    }
+    titleNumbersInFile.add(title_number);
 
     // Tipo de serviço
     const rawTypeStr = rawType ? String(rawType).trim().toLowerCase() : "";

@@ -1,6 +1,9 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
+import { assertRuntimeSafety } from "@/server/env";
+
+assertRuntimeSafety();
 
 // ─── Usuários carregados de variáveis de ambiente ─────────────────────────────
 // Senhas armazenadas como hash bcrypt (nunca em texto puro).
@@ -15,6 +18,10 @@ interface EnvUser {
   role: "ADMIN_MASTER" | "DONO";
 }
 
+function normalizeBcryptHash(hash: string) {
+  return hash.replace(/\\\$/g, "$");
+}
+
 function loadUsers(): EnvUser[] {
   const users: EnvUser[] = [];
 
@@ -27,10 +34,10 @@ function loadUsers(): EnvUser[] {
   const donoName   = process.env.AUTH_DONO_NAME ?? "Proprietário";
 
   if (adminEmail && adminHash) {
-    users.push({ id: "user-admin", name: adminName, email: adminEmail.toLowerCase(), passwordHash: adminHash, role: "ADMIN_MASTER" });
+    users.push({ id: "user-admin", name: adminName, email: adminEmail.toLowerCase(), passwordHash: normalizeBcryptHash(adminHash), role: "ADMIN_MASTER" });
   }
   if (donoEmail && donoHash) {
-    users.push({ id: "user-dono", name: donoName, email: donoEmail.toLowerCase(), passwordHash: donoHash, role: "DONO" });
+    users.push({ id: "user-dono", name: donoName, email: donoEmail.toLowerCase(), passwordHash: normalizeBcryptHash(donoHash), role: "DONO" });
   }
 
   if (users.length === 0) {
