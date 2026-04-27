@@ -29,6 +29,7 @@ import {
   UserSquare,
   Settings2,
   Shield,
+  GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navigationItems, SECTION_LABELS, type NavItem, type Role } from "@/lib/constants/navigation";
@@ -57,6 +58,7 @@ const iconMap: Record<string, React.ElementType> = {
   UserSquare,
   Settings2,
   Shield,
+  GitBranch,
 };
 
 interface SidebarProps {

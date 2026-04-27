@@ -292,6 +292,8 @@ export default function NotasFiscaisPage() {
   const [importErrors, setImportErrors]   = useState<ParseError[]>([]);
   const [importing, setImporting]         = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [dwCleanupLoading, setDwCleanupLoading] = useState(false);
+  const [dwCleanupMessage, setDwCleanupMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Carregar dados ──
@@ -557,6 +559,39 @@ export default function NotasFiscaisPage() {
     } catch {
       setImportErrors([{ rowIndex: 0, message: "Erro de conexão ao importar." }]);
     } finally { setImporting(false); }
+  };
+
+  const handleClearPendingDw = async () => {
+    setDwCleanupLoading(true);
+    setDwCleanupMessage(null);
+    try {
+      const previewResponse = await fetch("/api/invoices/import-dw", { method: "DELETE" });
+      const preview = await previewResponse.json().catch(() => ({}));
+      if (!previewResponse.ok) throw new Error(preview.error ?? "Falha ao consultar importacoes DW pendentes.");
+
+      const removable = Number(preview.removable ?? 0);
+      if (removable === 0) {
+        setDwCleanupMessage("Nao ha notas DW pendentes para remover.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Remover ${removable} nota(s) importada(s) do DW que ainda estao pendentes? Notas emitidas, enviadas, pagas ou canceladas nao serao apagadas.`
+      );
+      if (!confirmed) return;
+
+      const cleanupResponse = await fetch("/api/invoices/import-dw?dryRun=false", { method: "DELETE" });
+      const cleanup = await cleanupResponse.json().catch(() => ({}));
+      if (!cleanupResponse.ok) throw new Error(cleanup.error ?? "Falha ao limpar importacoes DW pendentes.");
+
+      setDwCleanupMessage(cleanup.message ?? `${cleanup.deleted ?? 0} nota(s) removida(s).`);
+      setSelectedIds(new Set());
+      await fetchInvoices();
+    } catch (err) {
+      setDwCleanupMessage(err instanceof Error ? err.message : "Falha ao limpar importacoes DW pendentes.");
+    } finally {
+      setDwCleanupLoading(false);
+    }
   };
 
   const resetImport = () => {
@@ -834,6 +869,15 @@ export default function NotasFiscaisPage() {
             Exportar
           </button>
           <button
+            onClick={handleClearPendingDw}
+            disabled={dwCleanupLoading}
+            className="flex items-center gap-2 px-3 py-2 border border-amber-300 text-amber-700 bg-amber-50 rounded-lg text-sm font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors"
+            title="Remove somente notas importadas do DW que ainda estao pendentes"
+          >
+            {dwCleanupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Limpar DW pendente
+          </button>
+          <button
             onClick={() => { setManualModal(true); setManualForm(EMPTY_MANUAL_FORM); setManualError(null); }}
             className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
           >
@@ -851,6 +895,12 @@ export default function NotasFiscaisPage() {
       </div>
 
       {/* ── Cards de resumo ── */}
+      {dwCleanupMessage && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          {dwCleanupMessage}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-xl border border-gray-200">
           <p className="text-xs text-gray-500 mb-1">A Emitir</p>

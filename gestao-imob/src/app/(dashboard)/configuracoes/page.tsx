@@ -38,6 +38,20 @@ interface NfseConfig {
   homologacao: boolean;
 }
 
+interface NfseCompanyDraft {
+  legalName: string;
+  tradeName: string;
+  cnpj: string;
+  municipalRegistration: string;
+  cityCode: string;
+  serviceCode: string;
+  serviceCodeComplement: string;
+  defaultAliquota: string;
+  environment: "homologacao" | "producao";
+}
+
+const NFSE_COMPANY_DRAFT_KEY = "gestao-imob:nfse-company-draft:v1";
+
 const SECTIONS: SectionDef[] = [
   {
     title: "Financeiro",
@@ -121,6 +135,18 @@ export default function ConfiguracoesPage() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [nfseConfig, setNfseConfig] = useState<NfseConfig | null>(null);
   const [nfseConfigError, setNfseConfigError] = useState<string | null>(null);
+  const [nfseDraft, setNfseDraft] = useState<NfseCompanyDraft>({
+    legalName: "Imobiliaria Moinhos de Vento",
+    tradeName: "Moinhos de Vento",
+    cnpj: "",
+    municipalRegistration: "",
+    cityCode: "",
+    serviceCode: "",
+    serviceCodeComplement: "",
+    defaultAliquota: "9",
+    environment: "homologacao",
+  });
+  const [nfseDraftSaved, setNfseDraftSaved] = useState(false);
 
   useEffect(() => {
     const v = getParametrosVigentes();
@@ -132,10 +158,27 @@ export default function ConfiguracoesPage() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error ?? "Falha ao carregar configuracao fiscal.");
         setNfseConfig(data);
+        setNfseDraft((prev) => ({
+          ...prev,
+          cityCode: data.cityCode || prev.cityCode,
+          serviceCode: data.serviceCode || prev.serviceCode,
+          serviceCodeComplement: data.serviceCodeComplement || prev.serviceCodeComplement,
+          defaultAliquota: data.defaultAliquota || prev.defaultAliquota,
+          environment: data.homologacao ? "homologacao" : "producao",
+        }));
       })
       .catch((error) => {
         setNfseConfigError(error instanceof Error ? error.message : "Falha ao carregar configuracao fiscal.");
       });
+
+    const rawDraft = window.localStorage.getItem(NFSE_COMPANY_DRAFT_KEY);
+    if (rawDraft) {
+      try {
+        setNfseDraft((prev) => ({ ...prev, ...JSON.parse(rawDraft) }));
+      } catch {
+        window.localStorage.removeItem(NFSE_COMPANY_DRAFT_KEY);
+      }
+    }
   }, []);
 
   if (!form || !vigente) return null;
@@ -159,6 +202,12 @@ export default function ConfiguracoesPage() {
     setMotivo("");
     setSavedFlash(true);
     setTimeout(() => setSavedFlash(false), 2000);
+  };
+
+  const saveNfseDraft = () => {
+    window.localStorage.setItem(NFSE_COMPANY_DRAFT_KEY, JSON.stringify(nfseDraft));
+    setNfseDraftSaved(true);
+    setTimeout(() => setNfseDraftSaved(false), 2000);
   };
 
   return (
@@ -199,13 +248,13 @@ export default function ConfiguracoesPage() {
             <div>
               <h3 className="text-sm font-semibold text-gray-900">Empresa emissora de NFS-e</h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Leitura tecnica dos dados fiscais usados na emissao. Somente Admin Master acessa esta tela.
+                Dados fiscais editaveis pelo Admin Master. Enquanto nao houver banco, ficam salvos como rascunho local.
               </p>
             </div>
           </div>
           <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600">
             <ShieldCheck className="h-3.5 w-3.5" />
-            Somente leitura
+            Editavel local
           </span>
         </div>
 
@@ -235,6 +284,61 @@ export default function ConfiguracoesPage() {
             ))}
           </div>
         )}
+
+        <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-gray-900">Rascunho da empresa emissora</h4>
+              <p className="text-xs text-gray-500">
+                Estes campos preparam a estrutura para PRD. A emissao real ainda usa as variaveis NFSE_* ate termos banco.
+              </p>
+            </div>
+            <button
+              onClick={saveNfseDraft}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {nfseDraftSaved ? "Salvo" : "Salvar rascunho"}
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            {[
+              { key: "legalName", label: "Razao social" },
+              { key: "tradeName", label: "Nome fantasia" },
+              { key: "cnpj", label: "CNPJ emissor" },
+              { key: "municipalRegistration", label: "Inscricao municipal" },
+              { key: "cityCode", label: "Cidade IBGE" },
+              { key: "serviceCode", label: "Codigo de servico" },
+              { key: "serviceCodeComplement", label: "Codigo complementar" },
+              { key: "defaultAliquota", label: "Aliquota padrao (%)" },
+            ].map((field) => (
+              <label key={field.key} className="block">
+                <span className="mb-1 block text-xs font-medium text-gray-600">{field.label}</span>
+                <input
+                  value={String(nfseDraft[field.key as keyof NfseCompanyDraft] ?? "")}
+                  onChange={(event) =>
+                    setNfseDraft((prev) => ({ ...prev, [field.key]: event.target.value }))
+                  }
+                  className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
+            ))}
+            <label className="block">
+              <span className="mb-1 block text-xs font-medium text-gray-600">Ambiente fiscal</span>
+              <select
+                value={nfseDraft.environment}
+                onChange={(event) =>
+                  setNfseDraft((prev) => ({ ...prev, environment: event.target.value as NfseCompanyDraft["environment"] }))
+                }
+                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="homologacao">Homologacao</option>
+                <option value="producao">Producao</option>
+              </select>
+            </label>
+          </div>
+        </div>
       </div>
 
       {showHistory && (
