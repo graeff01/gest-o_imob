@@ -7,6 +7,7 @@ import { Building2, Lock, Mail, Eye, EyeOff, ArrowRight } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
+  const showDemoCredentials = (process.env.NEXT_PUBLIC_APP_ENV ?? "local") === "local";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -184,18 +185,15 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Credenciais */}
-            <div className="mt-6 p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
-              <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Perfis de acesso</p>
-              <div className="text-xs text-gray-600">
-                <p className="font-semibold text-gray-700">Admin Master</p>
-                <p className="font-mono text-gray-500">admin@moinhos.com / admin2026</p>
+            {showDemoCredentials && (
+              <div className="mt-6 p-3 bg-gray-50 rounded-xl border border-gray-100 space-y-2">
+                <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wider">Perfil local de teste</p>
+                <div className="text-xs text-gray-600">
+                  <p className="font-semibold text-gray-700">Admin Master</p>
+                  <p className="font-mono text-gray-500">admin@moinhos.com / admin2026</p>
+                </div>
               </div>
-              <div className="text-xs text-gray-600">
-                <p className="font-semibold text-gray-700">Dono</p>
-                <p className="font-mono text-gray-500">dono@moinhos.com / dono2026</p>
-              </div>
-            </div>
+            )}
           </div>
 
           <p className="text-center text-xs text-gray-400 mt-6">

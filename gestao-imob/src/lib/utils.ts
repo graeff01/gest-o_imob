@@ -38,6 +38,13 @@ export function maskCPFCNPJ(value: string): string {
   return formatCNPJ(cleaned);
 }
 
+export function maskSensitiveCpfCnpj(value: string): string {
+  const cleaned = value.replace(/\D/g, "");
+  if (cleaned.length === 11) return `***.${cleaned.slice(3, 6)}.${cleaned.slice(6, 9)}-**`;
+  if (cleaned.length === 14) return `**.${cleaned.slice(2, 5)}.${cleaned.slice(5, 8)}/****-**`;
+  return cleaned ? "***" : "";
+}
+
 export function validateCPF(cpf: string): boolean {
   const cleaned = cpf.replace(/\D/g, "");
   if (cleaned.length !== 11) return false;

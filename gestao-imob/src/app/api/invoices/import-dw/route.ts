@@ -3,20 +3,14 @@
  * ----------------------------
  * Recebe Excel do DW, faz parse, checa duplicatas e retorna preview.
  * Com ?confirm=true, persiste as linhas novas.
- * Fallback in-memory quando não há DATABASE_URL.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { parseDWExcel, DWParsedRow } from "@/lib/utils/dw-parser";
-import {
-  findByTitleNumbers,
-  createManyInvoices,
-  getNextYearSequence,
-} from "@/lib/stores/invoice-store";
+import { auditEvent } from "@/server/audit";
+import { AuthError, requireElevatedRole } from "@/server/authz";
 
-const AUTHORIZED_ROLES = ["ADMIN_MASTER", "DONO"];
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
 interface PreviewRow {
@@ -38,17 +32,17 @@ interface PreviewRow {
 }
 
 export async function POST(request: NextRequest) {
-  // ── 1. Auth ──
-  const session = await auth();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
+  let userId: string;
+  try {
+    const ctx = await requireElevatedRole();
+    userId = ctx.dbUserId;
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Invoice DW import auth error:", error);
+    return NextResponse.json({ error: "Erro de autenticacao." }, { status: 500 });
   }
-  const userRole = (session.user as Record<string, unknown>).role as string | undefined;
-  if (!userRole || !AUTHORIZED_ROLES.includes(userRole)) {
-    return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-  }
-
-  const userId = session.user.id;
 
   // ── 2. File ──
   let formData: FormData;
@@ -92,21 +86,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── 4. Duplicatas — tenta Prisma, senão in-memory ──
+  // ── 4. Duplicatas ──
   const titleNumbers = parseResult.rows.map((r) => r.title_number);
-  let existingKeys: Set<string>;
-
-  try {
-    const existingInvoices = await prisma.invoice.findMany({
-      where: { title_number: { in: titleNumbers } },
-      select: { title_number: true, reference_year: true },
-    });
-    existingKeys = new Set(existingInvoices.map((inv) => `${inv.title_number}|${inv.reference_year}`));
-  } catch {
-    // Fallback in-memory
-    const existingInvoices = findByTitleNumbers(titleNumbers);
-    existingKeys = new Set(existingInvoices.map((inv) => `${inv.title_number}|${inv.reference_year}`));
-  }
+  const existingInvoices = await prisma.invoice.findMany({
+    where: { title_number: { in: titleNumbers } },
+    select: { title_number: true, reference_year: true },
+  });
+  const existingKeys = new Set(existingInvoices.map((inv) => `${inv.title_number}|${inv.reference_year}`));
 
   const previewRows: PreviewRow[] = parseResult.rows.map((row) => {
     const key = `${row.title_number}|${row.reference_year}`;
@@ -138,6 +124,20 @@ export async function POST(request: NextRequest) {
   const confirm = request.nextUrl.searchParams.get("confirm") === "true";
 
   if (!confirm) {
+    await auditEvent({
+      action: "invoice.import.previewed",
+      actorId: userId,
+      entityType: "import_batch",
+      summary: "Preview de importacao DW gerado.",
+      metadata: {
+        totalRows: parseResult.totalRows,
+        validRows: parseResult.validRows,
+        newRows: newRows.length,
+        duplicateRows: previewRows.filter((r) => r.import_status === "duplicata").length,
+        errorRows: parseResult.errors.length,
+      },
+    });
+
     return NextResponse.json({
       preview: previewRows,
       summary: {
@@ -161,20 +161,26 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  try {
-    // Tenta Prisma
-    const currentYear = new Date().getFullYear();
+  const years = [...new Set(newRows.map((row) => row.reference_year))];
+  const nextSequenceByYear = new Map<number, number>();
+
+  for (const year of years) {
     const lastInvoice = await prisma.invoice.findFirst({
-      where: { reference_year: currentYear },
+      where: { reference_year: year },
       orderBy: { year_sequence: "desc" },
       select: { year_sequence: true },
     });
-    let nextSequence = (lastInvoice?.year_sequence ?? 0) + 1;
+    nextSequenceByYear.set(year, (lastInvoice?.year_sequence ?? 0) + 1);
+  }
 
-    const invoicesToCreate = newRows.map((row: DWParsedRow) => ({
+  const invoicesToCreate = newRows.map((row: DWParsedRow) => {
+    const sequence = nextSequenceByYear.get(row.reference_year) ?? 1;
+    nextSequenceByYear.set(row.reference_year, sequence + 1);
+
+    return {
       reference_year: row.reference_year,
       reference_month: row.reference_month,
-      year_sequence: nextSequence++,
+      year_sequence: sequence,
       property_code: row.property_code,
       property_address: row.property_address,
       client_name: row.client_name,
@@ -188,62 +194,32 @@ export async function POST(request: NextRequest) {
       status: "PENDENTE" as const,
       imported_from_dw: true,
       dw_agency_name: row.agency_name || null,
-      notes: `Importado do DW em ${new Date().toLocaleDateString("pt-BR")}. Status DW: ${row.dw_status}. Histórico: ${row.historico}`,
+      notes: `Importado do DW em ${new Date().toLocaleDateString("pt-BR")}. Status DW: ${row.dw_status}. Historico: ${row.historico}`,
       created_by: userId,
-    }));
+    };
+  });
 
-    const result = await prisma.invoice.createMany({ data: invoicesToCreate, skipDuplicates: true });
+  const result = await prisma.invoice.createMany({ data: invoicesToCreate, skipDuplicates: true });
 
-    return NextResponse.json(
-      { message: `${result.count} nota(s) importada(s) com sucesso.`, imported: result.count, duplicates: previewRows.filter((r) => r.import_status === "duplicata").length, errors: parseResult.errors },
-      { status: 201 }
-    );
-  } catch {
-    // Fallback in-memory
-    const currentYear = new Date().getFullYear();
-    let nextSequence = getNextYearSequence(currentYear);
+  await auditEvent({
+    action: "invoice.import.confirmed",
+    actorId: userId,
+    entityType: "import_batch",
+    summary: "Importacao DW confirmada.",
+    metadata: {
+      imported: result.count,
+      duplicates: previewRows.filter((r) => r.import_status === "duplicata").length,
+      errors: parseResult.errors.length,
+    },
+  });
 
-    const records = newRows.map((row: DWParsedRow) => ({
-      contract_id: null,
-      nfse_number: null,
-      year_sequence: nextSequence++,
-      reference_year: row.reference_year,
-      reference_month: row.reference_month,
-      property_code: row.property_code,
-      property_address: row.property_address,
-      client_name: row.client_name,
-      client_cpf_cnpj: row.client_cpf_cnpj,
-      client_contact: null,
-      service_type: row.service_type,
-      title_number: row.title_number,
-      due_date: row.due_date.toISOString().split("T")[0],
-      amount: row.amount,
-      description_title: row.description_title,
-      description_body: row.description_body,
-      status: "PENDENTE" as const,
-      issued_at: null,
-      sent_at: null,
-      paid_at: null,
-      cancelled_at: null,
-      gateway_id: null,
-      gateway_provider: null,
-      gateway_status: null,
-      gateway_pdf_url: null,
-      gateway_xml_url: null,
-      last_emit_error: null,
-      last_emit_at: null,
-      emit_attempts: 0,
-      imported_from_dw: true,
-      dw_agency_name: row.agency_name || null,
-      notes: `Importado do DW em ${new Date().toLocaleDateString("pt-BR")}`,
-      created_by: userId,
-    }));
-
-    const count = createManyInvoices(records);
-
-    return NextResponse.json(
-      { message: `${count} nota(s) importada(s) com sucesso (modo local).`, imported: count, duplicates: previewRows.filter((r) => r.import_status === "duplicata").length, errors: parseResult.errors },
-      { status: 201 }
-    );
-  }
+  return NextResponse.json(
+    {
+      message: `${result.count} nota(s) importada(s) com sucesso.`,
+      imported: result.count,
+      duplicates: previewRows.filter((r) => r.import_status === "duplicata").length,
+      errors: parseResult.errors,
+    },
+    { status: 201 }
+  );
 }

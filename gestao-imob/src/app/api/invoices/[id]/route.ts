@@ -1,32 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { updateInvoice } from "@/lib/stores/invoice-store";
+import { ZodError } from "zod";
+import { AuthError, requireElevatedRole } from "@/server/authz";
+import { updateInvoiceSchema } from "@/server/invoice-schemas";
+import { InvoiceServiceError, updateInvoice } from "@/server/invoice-service";
+
+function errorResponse(error: unknown) {
+  if (error instanceof AuthError || error instanceof InvoiceServiceError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+
+  if (error instanceof ZodError) {
+    return NextResponse.json(
+      { error: "Dados invalidos.", issues: error.issues },
+      { status: 400 }
+    );
+  }
+
+  console.error("Invoice update error:", error);
+  return NextResponse.json({ error: "Erro ao atualizar nota fiscal." }, { status: 500 });
+}
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireElevatedRole();
     const { id } = await params;
-    const body = await request.json();
+    const input = updateInvoiceSchema.parse(await request.json());
+    const invoice = await updateInvoice(id, input);
 
-    try {
-      // Tenta Prisma
-      const invoice = await prisma.invoice.update({
-        where: { id },
-        data: body,
-      });
-      return NextResponse.json({ invoice });
-    } catch {
-      // Fallback: store in-memory
-      const invoice = updateInvoice(id, body);
-      if (!invoice) {
-        return NextResponse.json({ error: "Nota fiscal não encontrada" }, { status: 404 });
-      }
-      return NextResponse.json({ invoice });
-    }
-  } catch (err) {
-    console.error("Invoice update error:", err);
-    return NextResponse.json({ error: "Erro ao atualizar nota fiscal" }, { status: 500 });
+    return NextResponse.json({ invoice });
+  } catch (error) {
+    return errorResponse(error);
   }
 }
