@@ -42,7 +42,7 @@ Em `production`, o sistema bloqueia `GATEWAY_STUB_MODE=true`.
 ## Antes de mergear uma sprint
 
 - `npm run verify:ci`
-- `npm run lint` completo deve virar obrigatorio apos a sprint de limpeza de lint legado
+- `npm run lint` completo deve executar sem erros
 - testar login Admin Master
 - testar login Dono
 - testar importacao DW com arquivo real

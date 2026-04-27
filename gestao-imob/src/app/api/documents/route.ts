@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { DocumentType, ProcessingStatus } from "@/generated/prisma/enums";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -9,10 +10,16 @@ export async function GET(request: Request) {
   const page = parseInt(searchParams.get("page") || "1");
   const limit = parseInt(searchParams.get("limit") || "20");
   const skip = (page - 1) * limit;
+  const validType = Object.values(DocumentType).includes(type as DocumentType)
+    ? (type as DocumentType)
+    : null;
+  const validStatus = Object.values(ProcessingStatus).includes(status as ProcessingStatus)
+    ? (status as ProcessingStatus)
+    : null;
 
   const where = {
-    ...(type ? { document_type: type as any } : {}),
-    ...(status ? { processing_status: status as any } : {}),
+    ...(validType ? { document_type: validType } : {}),
+    ...(validStatus ? { processing_status: validStatus } : {}),
   };
 
   try {

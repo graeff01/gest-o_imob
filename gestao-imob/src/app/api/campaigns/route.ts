@@ -1,13 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
+import { CampaignStatus } from "@/generated/prisma/enums";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") || "";
+  const validStatus = Object.values(CampaignStatus).includes(status as CampaignStatus)
+    ? (status as CampaignStatus)
+    : null;
 
   const where = {
-    ...(status ? { status: status as any } : {}),
+    ...(validStatus ? { status: validStatus } : {}),
   };
 
   try {
