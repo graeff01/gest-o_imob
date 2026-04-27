@@ -12,6 +12,8 @@ Fechar lacunas que poderiam mascarar erro real em homologacao/producao e prepara
 - Expor configuracao tecnica da empresa emissora por API restrita ao `ADMIN_MASTER`.
 - Criar endpoint controlado para limpeza de notas DW pendentes.
 - Documentar checklist manual de validacao.
+- Melhorar operacao de NFS-e com erro claro, painel de situacao por nota e historico visual.
+- Preparar a tela de emissao para encaixe operacional do NFS.io em HML/PRD.
 
 ## Fora do escopo
 

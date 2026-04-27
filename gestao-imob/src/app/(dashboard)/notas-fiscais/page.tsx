@@ -40,10 +40,12 @@ interface Invoice {
   paid_at: string | null;
   cancelled_at: string | null;
   gateway_id: string | null;
+  gateway_provider: string | null;
   gateway_pdf_url: string | null;
   gateway_xml_url: string | null;
   gateway_status: string | null;
   last_emit_error: string | null;
+  last_emit_at: string | null;
   emit_attempts: number;
   imported_from_dw: boolean;
   dw_agency_name: string | null;
@@ -124,6 +126,110 @@ function buildManualDescription(
     `Valor: ${formatCurrency(amount)}.`,
   ].filter(Boolean).join(" ");
   return { title, body };
+}
+
+function invoiceCode(inv: Invoice) {
+  if (inv.nfse_number) return `NFS-e ${inv.nfse_number}`;
+  if (inv.year_sequence) return `NF-${inv.reference_year}-${String(inv.year_sequence).padStart(3, "0")}`;
+  return "Nota sem sequencia";
+}
+
+function explainEmitError(raw?: string | null) {
+  const text = raw || "Falha nao detalhada pelo gateway.";
+  const lower = text.toLowerCase();
+
+  if (lower.includes("credenciais") || lower.includes("api_key") || lower.includes("401") || lower.includes("403")) {
+    return {
+      title: "Credenciais do gateway nao configuradas ou recusadas.",
+      action: "Validar NFSE_GATEWAY_API_KEY, NFSE_COMPANY_ID e permissao da empresa no NFS.io.",
+    };
+  }
+
+  if (lower.includes("conectar") || lower.includes("timeout") || lower.includes("network") || lower.includes("fetch")) {
+    return {
+      title: "Nao foi possivel conectar ao gateway.",
+      action: "Tentar novamente e verificar se o gateway esta disponivel. Em PRD, acompanhar logs do Railway.",
+    };
+  }
+
+  if (lower.includes("tomador") || lower.includes("cpf") || lower.includes("cnpj") || lower.includes("borrower")) {
+    return {
+      title: "Dados do tomador podem estar invalidos.",
+      action: "Conferir nome, CPF/CNPJ, contato e endereco antes de reenviar.",
+    };
+  }
+
+  if (lower.includes("servico") || lower.includes("service") || lower.includes("aliquota") || lower.includes("iss")) {
+    return {
+      title: "Dados do servico ou tributacao podem estar invalidos.",
+      action: "Conferir descricao, valor, aliquota, codigo de servico e configuracao fiscal da empresa.",
+    };
+  }
+
+  return {
+    title: "O gateway recusou a emissao.",
+    action: "Ler o detalhe tecnico abaixo, ajustar os dados indicados e reenviar a nota.",
+  };
+}
+
+function operationMessage(inv: Invoice) {
+  if (inv.status === "PENDENTE") return "A nota esta pronta para revisao e emissao.";
+  if (inv.status === "PROCESSANDO") return "A emissao foi iniciada e aguarda retorno do gateway.";
+  if (inv.status === "ERRO") return "A emissao falhou. Corrija o ponto indicado e tente novamente.";
+  if (inv.status === "EMITIDA") return "A nota foi emitida. Proximo passo: enviar ao cliente ou marcar pagamento.";
+  if (inv.status === "ENVIADA") return "A nota foi enviada ao cliente e aguarda pagamento.";
+  if (inv.status === "PAGA") return "Ciclo concluido: nota emitida, enviada e paga.";
+  return "Nota cancelada. Ela fica registrada para rastreabilidade.";
+}
+
+function buildInvoiceTimeline(inv: Invoice) {
+  const events: Array<{
+    label: string;
+    date: string | null;
+    detail: string;
+    tone: "blue" | "green" | "red" | "amber" | "purple" | "gray";
+  }> = [
+    {
+      label: inv.imported_from_dw ? "Importada do DW" : "Criada manualmente",
+      date: inv.created_at,
+      detail: inv.imported_from_dw
+        ? "Entrada criada a partir da planilha do DW."
+        : "Entrada criada manualmente no sistema.",
+      tone: "blue",
+    },
+  ];
+
+  if (inv.emit_attempts > 0) {
+    events.push({
+      label: inv.status === "ERRO" ? "Tentativa de emissao falhou" : "Tentativa de emissao registrada",
+      date: inv.last_emit_at,
+      detail: `${inv.emit_attempts} tentativa(s) de emissao. Gateway: ${inv.gateway_provider || "stub/local"}.`,
+      tone: inv.status === "ERRO" ? "red" : "amber",
+    });
+  }
+
+  if (inv.issued_at) {
+    events.push({
+      label: "NFS-e emitida",
+      date: inv.issued_at,
+      detail: inv.gateway_status ? `Status do gateway: ${inv.gateway_status}.` : "Emissao registrada com sucesso.",
+      tone: "green",
+    });
+  }
+
+  if (inv.sent_at) {
+    events.push({ label: "Enviada ao cliente", date: inv.sent_at, detail: "Marcada como enviada.", tone: "purple" });
+  }
+
+  if (inv.paid_at) {
+    events.push({ label: "Pagamento confirmado", date: inv.paid_at, detail: "Marcada como paga.", tone: "green" });
+  }
+
+  if (inv.cancelled_at) {
+    events.push({ label: "Nota cancelada", date: inv.cancelled_at, detail: inv.notes || "Cancelamento registrado.", tone: "gray" });
+  }
+
+  return events;
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -401,7 +507,7 @@ export default function NotasFiscaisPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setEmitError(data.error ?? data.details ?? "Falha ao emitir."); return; }
+      if (!res.ok) { setEmitError(data.details ?? data.error ?? "Falha ao emitir."); return; }
       setEmitModal(null);
       await fetchInvoices();
     } catch {
@@ -1107,6 +1213,99 @@ export default function NotasFiscaisPage() {
                       {isExpanded && (
                         <tr key={`${inv.id}-detail`} className="bg-gray-50/80">
                           <td colSpan={9} className="px-6 py-4 border-t border-gray-100">
+                            <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-4 mb-4">
+                              <div className="space-y-3">
+                                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Situacao da nota</p>
+                                      <h3 className="text-sm font-semibold text-gray-900 mt-1">{invoiceCode(inv)}</h3>
+                                      <p className="text-xs text-gray-500 mt-1">{operationMessage(inv)}</p>
+                                    </div>
+                                    <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border", st.color)}>
+                                      <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
+                                      {st.label}
+                                    </span>
+                                  </div>
+
+                                  {inv.status === "ERRO" && (
+                                    <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                                      {(() => {
+                                        const explained = explainEmitError(inv.last_emit_error);
+                                        return (
+                                          <>
+                                            <p className="text-sm font-semibold text-red-800">{explained.title}</p>
+                                            <p className="text-xs text-red-700 mt-1">{explained.action}</p>
+                                            {inv.last_emit_error && (
+                                              <details className="mt-2">
+                                                <summary className="text-[11px] text-red-600 cursor-pointer">Ver detalhe tecnico</summary>
+                                                <p className="mt-1 text-[11px] text-red-700 font-mono break-words">{inv.last_emit_error}</p>
+                                              </details>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-3">Gateway e emissao</p>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                    <div>
+                                      <p className="text-gray-400 mb-0.5">Provider</p>
+                                      <p className="font-mono text-gray-700">{inv.gateway_provider || "aguardando"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-gray-400 mb-0.5">Status gateway</p>
+                                      <p className="font-mono text-gray-700">{inv.gateway_status || "-"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-gray-400 mb-0.5">Tentativas</p>
+                                      <p className="font-medium text-gray-700">{inv.emit_attempts}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-gray-400 mb-0.5">Ultima tentativa</p>
+                                      <p className="font-medium text-gray-700">{inv.last_emit_at ? formatDate(inv.last_emit_at) : "-"}</p>
+                                    </div>
+                                  </div>
+                                  {inv.gateway_id && (
+                                    <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-2 text-xs">
+                                      <p className="text-gray-400 mb-1">ID no gateway</p>
+                                      <p className="font-mono text-gray-700 break-all">{inv.gateway_id}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Historico visual</p>
+                                <div className="space-y-4">
+                                  {buildInvoiceTimeline(inv).map((event, index) => (
+                                    <div key={`${event.label}-${index}`} className="relative flex gap-3">
+                                      {index < buildInvoiceTimeline(inv).length - 1 && (
+                                        <div className="absolute left-[7px] top-4 h-full w-px bg-gray-200" />
+                                      )}
+                                      <div className={cn(
+                                        "relative z-10 mt-1 h-3.5 w-3.5 rounded-full border-2 bg-white",
+                                        event.tone === "green" && "border-green-500",
+                                        event.tone === "red" && "border-red-500",
+                                        event.tone === "amber" && "border-amber-500",
+                                        event.tone === "purple" && "border-purple-500",
+                                        event.tone === "blue" && "border-blue-500",
+                                        event.tone === "gray" && "border-gray-400",
+                                      )} />
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-semibold text-gray-900">{event.label}</p>
+                                        <p className="text-[11px] text-gray-400">{event.date ? formatDate(event.date) : "Data nao registrada"}</p>
+                                        <p className="text-xs text-gray-600 mt-0.5">{event.detail}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs mb-3">
                               <div>
                                 <p className="text-gray-400 mb-0.5">Código do Imóvel</p>
@@ -1315,12 +1514,34 @@ export default function NotasFiscaisPage() {
                 <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <p>Modo de desenvolvimento — a nota será registrada no sistema, mas <strong>não enviada à prefeitura</strong> até o certificado digital ser configurado.</p>
               </div>
+              <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
+                <Zap className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Preparado para NFS.io</p>
+                  <p className="mt-0.5">Quando HML/PRD estiverem prontos, este mesmo fluxo usara as variaveis NFSE_* e o certificado A1 configurados no ambiente.</p>
+                </div>
+              </div>
               {emitModal.emit_attempts > 0 && (
                 <p className="text-xs text-gray-400">Tentativas anteriores: {emitModal.emit_attempts}</p>
               )}
               {emitError && (
                 <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
-                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" /><p>{emitError}</p>
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <div>
+                    {(() => {
+                      const explained = explainEmitError(emitError);
+                      return (
+                        <>
+                          <p className="font-semibold">{explained.title}</p>
+                          <p className="mt-0.5">{explained.action}</p>
+                          <details className="mt-2">
+                            <summary className="text-red-600 cursor-pointer">Ver detalhe tecnico</summary>
+                            <p className="mt-1 font-mono break-words">{emitError}</p>
+                          </details>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
             </div>
