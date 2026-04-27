@@ -26,6 +26,34 @@ interface HealthCheck {
   details?: string;
 }
 
+interface SystemHealth {
+  generatedAt: string;
+  environment: {
+    appEnv: string;
+    gatewayMode: string;
+    isProduction: boolean;
+  };
+  score: number;
+  summary: {
+    ok: number;
+    warn: number;
+    fail: number;
+  };
+  checks: Array<{
+    id: string;
+    label: string;
+    status: "OK" | "WARN" | "FAIL";
+    detail: string;
+  }>;
+  database: {
+    connected: boolean;
+    usersActive?: number;
+    invoicesTotal?: number;
+    invoicesPending?: number;
+    error?: string;
+  };
+}
+
 function runChecks(): HealthCheck[] {
   const fornecedores = getFornecedores();
   const proprietarios = getProprietarios();
@@ -151,8 +179,23 @@ const STATUS_STYLES = {
 
 export default function SaudePage() {
   const [checks, setChecks] = useState<HealthCheck[]>([]);
+  const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
+  const [systemHealthError, setSystemHealthError] = useState<string | null>(null);
 
-  const refresh = () => setChecks(runChecks());
+  const refresh = async () => {
+    setChecks(runChecks());
+    setSystemHealthError(null);
+
+    try {
+      const response = await fetch("/api/system/health", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Falha ao checar saude tecnica.");
+      setSystemHealth(data);
+    } catch (error) {
+      setSystemHealth(null);
+      setSystemHealthError(error instanceof Error ? error.message : "Falha ao checar saude tecnica.");
+    }
+  };
 
   useEffect(() => {
     refresh();
@@ -183,6 +226,77 @@ export default function SaudePage() {
         </button>
       }
     >
+      {/* Diagnostico tecnico */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900">Diagnostico tecnico</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              Visivel apenas para Admin Master. Donos nao acessam esta tela.
+            </p>
+          </div>
+          {systemHealth && (
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-1 text-xs font-semibold",
+                systemHealth.summary.fail > 0
+                  ? "bg-red-50 text-red-700"
+                  : systemHealth.summary.warn > 0
+                  ? "bg-amber-50 text-amber-700"
+                  : "bg-emerald-50 text-emerald-700"
+              )}
+            >
+              {systemHealth.score}%
+            </span>
+          )}
+        </div>
+
+        {systemHealthError && (
+          <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {systemHealthError}
+          </div>
+        )}
+
+        {systemHealth && (
+          <>
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[10px] uppercase text-gray-500 font-semibold">Ambiente</p>
+                <p className="mt-1 text-sm font-bold text-gray-900">{systemHealth.environment.appEnv}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[10px] uppercase text-gray-500 font-semibold">Gateway</p>
+                <p className="mt-1 text-sm font-bold text-gray-900">{systemHealth.environment.gatewayMode}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[10px] uppercase text-gray-500 font-semibold">Usuarios ativos</p>
+                <p className="mt-1 text-sm font-bold text-gray-900">{systemHealth.database.usersActive ?? "-"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[10px] uppercase text-gray-500 font-semibold">Notas pendentes</p>
+                <p className="mt-1 text-sm font-bold text-gray-900">{systemHealth.database.invoicesPending ?? "-"}</p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 md:grid-cols-2">
+              {systemHealth.checks.map((item) => {
+                const s = STATUS_STYLES[item.status];
+                const Icon = s.icon;
+                return (
+                  <div key={item.id} className={cn("rounded-lg border px-3 py-2 flex gap-2", s.bg)}>
+                    <Icon className={cn("h-4 w-4 mt-0.5 flex-shrink-0", s.color)} />
+                    <div>
+                      <p className="text-xs font-semibold text-gray-900">{item.label}</p>
+                      <p className="text-[11px] text-gray-600">{item.detail}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+
       {/* Score geral */}
       <div
         className={cn(
