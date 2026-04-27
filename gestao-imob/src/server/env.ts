@@ -33,6 +33,23 @@ export function assertRuntimeSafety() {
     errors.push("DATABASE_URL obrigatorio fora do ambiente local.");
   }
 
+  if (!appConfig.isLocal) {
+    for (const key of [
+      "AUTH_ADMIN_EMAIL",
+      "AUTH_ADMIN_HASH",
+      "AUTH_OWNER_1_EMAIL",
+      "AUTH_OWNER_1_HASH",
+      "AUTH_OWNER_2_EMAIL",
+      "AUTH_OWNER_2_HASH",
+    ]) {
+      if (!process.env[key]) errors.push(`${key} obrigatorio fora do ambiente local.`);
+    }
+  }
+
+  if (appConfig.isProduction && !process.env.AUTH_URL?.startsWith("https://")) {
+    errors.push("AUTH_URL em production deve usar HTTPS.");
+  }
+
   if (appConfig.isProduction && appConfig.gatewayStubMode) {
     errors.push("GATEWAY_STUB_MODE=true nao pode ser usado em production.");
   }

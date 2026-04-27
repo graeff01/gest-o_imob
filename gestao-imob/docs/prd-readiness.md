@@ -20,12 +20,15 @@ Este documento define o minimo para considerar o sistema pronto para homologacao
 - `NEXT_PUBLIC_APP_ENV`
 - `DATABASE_URL`
 - `AUTH_SECRET`
+- `AUTH_URL`
 - `AUTH_ADMIN_EMAIL`
 - `AUTH_ADMIN_HASH`
 - `AUTH_OWNER_1_EMAIL`
 - `AUTH_OWNER_1_HASH`
 - `AUTH_OWNER_2_EMAIL`
 - `AUTH_OWNER_2_HASH`
+
+Em `production`, `AUTH_URL` deve usar `https://`.
 
 ## NFS-e
 
