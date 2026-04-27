@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Settings2, Save, History, AlertCircle } from "lucide-react";
+import { Settings2, Save, History, AlertCircle, Building2, ShieldCheck } from "lucide-react";
 import { PageShell } from "@/components/shared/page-shell";
 import { cn } from "@/lib/utils";
 import {
@@ -24,6 +24,18 @@ interface SectionDef {
   title: string;
   description: string;
   fields: FieldDef[];
+}
+
+interface NfseConfig {
+  provider: string;
+  companyIdConfigured: boolean;
+  companyCnpjConfigured: boolean;
+  municipalRegistrationConfigured: boolean;
+  cityCode: string;
+  serviceCode: string;
+  serviceCodeComplement: string;
+  defaultAliquota: string;
+  homologacao: boolean;
 }
 
 const SECTIONS: SectionDef[] = [
@@ -107,12 +119,23 @@ export default function ConfiguracoesPage() {
   const [motivo, setMotivo] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [nfseConfig, setNfseConfig] = useState<NfseConfig | null>(null);
+  const [nfseConfigError, setNfseConfigError] = useState<string | null>(null);
 
   useEffect(() => {
     const v = getParametrosVigentes();
     setVigente(v);
     setForm(v);
     setHistorico(getParametrosHistorico());
+    fetch("/api/system/nfse-config", { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Falha ao carregar configuracao fiscal.");
+        setNfseConfig(data);
+      })
+      .catch((error) => {
+        setNfseConfigError(error instanceof Error ? error.message : "Falha ao carregar configuracao fiscal.");
+      });
   }, []);
 
   if (!form || !vigente) return null;
@@ -165,6 +188,53 @@ export default function ConfiguracoesPage() {
             antigas continuam disponíveis para consulta histórica.
           </p>
         </div>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="flex items-start justify-between gap-4 mb-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-lg bg-slate-50 border border-slate-100">
+              <Building2 className="h-5 w-5 text-slate-700" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900">Empresa emissora de NFS-e</h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Leitura tecnica dos dados fiscais usados na emissao. Somente Admin Master acessa esta tela.
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-gray-50 border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-600">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Somente leitura
+          </span>
+        </div>
+
+        {nfseConfigError && (
+          <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {nfseConfigError}
+          </div>
+        )}
+
+        {nfseConfig && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              ["Gateway", nfseConfig.provider],
+              ["Modo", nfseConfig.homologacao ? "Homologacao" : "Local/Producao"],
+              ["Company ID", nfseConfig.companyIdConfigured ? "Configurado" : "Pendente"],
+              ["CNPJ emissor", nfseConfig.companyCnpjConfigured ? "Configurado" : "Pendente"],
+              ["Inscricao municipal", nfseConfig.municipalRegistrationConfigured ? "Configurada" : "Pendente"],
+              ["Cidade IBGE", nfseConfig.cityCode],
+              ["Codigo servico", nfseConfig.serviceCode],
+              ["Codigo complementar", nfseConfig.serviceCodeComplement],
+              ["Aliquota padrao", `${nfseConfig.defaultAliquota}%`],
+            ].map(([label, value]) => (
+              <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                <p className="text-[10px] uppercase text-gray-500 font-semibold">{label}</p>
+                <p className="mt-1 text-sm font-bold text-gray-900">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {showHistory && (

@@ -46,6 +46,15 @@ const ACTION_COLORS: Record<AuditAction, string> = {
   IMPORT: "bg-blue-50 text-blue-700",
 };
 
+function describeAuditImpact(entry: AuditEntry) {
+  if (entry.action === "DELETE") return "Registro removido. Revisar se a exclusao foi autorizada.";
+  if (entry.action === "CONFIG_CHANGE") return "Regra/configuracao alterada. Impacta calculos futuros.";
+  if (entry.action === "IMPORT") return "Dados importados. Conferir origem e duplicidades.";
+  if (entry.action === "AI_AUTO_APPROVE") return "Aprovacao automatica. Conferir score de confianca.";
+  if (entry.action === "EXPORT") return "Dados exportados. Conferir finalidade e destino.";
+  return "Evento registrado para rastreabilidade.";
+}
+
 export default function AuditoriaPage() {
   const [log, setLog] = useState<AuditEntry[]>([]);
   const [query, setQuery] = useState("");
@@ -75,6 +84,12 @@ export default function AuditoriaPage() {
 
   const totalIA = log.filter((e) => e.actorType === "AI").length;
   const totalHumano = log.filter((e) => e.actorType === "HUMAN").length;
+  const eventosCriticos = log.filter((e) =>
+    ["DELETE", "CONFIG_CHANGE", "EXPORT", "IMPORT"].includes(e.action)
+  ).length;
+  const recentesCriticos = filtered
+    .filter((e) => ["DELETE", "CONFIG_CHANGE", "EXPORT", "IMPORT"].includes(e.action))
+    .slice(0, 5);
 
   const exportCSV = () => {
     const header = "Data,Ator,Tipo,Ação,Entidade,Item,Resumo,Confiança";
@@ -123,6 +138,35 @@ export default function AuditoriaPage() {
           value={log.length > 0 ? `${Math.round((totalIA / log.length) * 100)}%` : "—"}
           color="amber"
         />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Leitura operacional</p>
+          <h2 className="mt-2 text-lg font-bold text-gray-900">{eventosCriticos} evento(s) sensivel(is)</h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Eventos sensiveis incluem importacao, exportacao, remocao e mudanca de configuracao.
+          </p>
+        </div>
+        <div className="bg-white rounded-xl border border-gray-200 p-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Ultimos eventos sensiveis</p>
+          {recentesCriticos.length === 0 ? (
+            <p className="text-xs text-gray-400">Nenhum evento sensivel no filtro atual.</p>
+          ) : (
+            <div className="space-y-2">
+              {recentesCriticos.map((event) => (
+                <div key={event.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold text-gray-900">{ACTION_LABELS[event.action]}</p>
+                    <p className="text-[11px] text-gray-400">{new Date(event.timestamp).toLocaleString("pt-BR")}</p>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-0.5">{event.summary}</p>
+                  <p className="text-[11px] text-amber-700 mt-1">{describeAuditImpact(event)}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">

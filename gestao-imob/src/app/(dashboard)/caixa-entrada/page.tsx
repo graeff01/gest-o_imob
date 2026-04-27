@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -19,18 +19,17 @@ import {
   ExceptionSeverity,
   ExceptionStatus,
   getExceptions,
-  raiseException,
   updateException,
   logAudit,
 } from "@/lib/stores/core-store";
 
 const KIND_LABELS: Record<ExceptionKind, string> = {
-  AI_LOW_CONFIDENCE: "IA — baixa confiança",
+  AI_LOW_CONFIDENCE: "IA â€” baixa confianÃ§a",
   DUPLICATE: "Duplicata suspeita",
-  DIVERGENCE: "Divergência",
-  MISSING_LINK: "Vínculo ausente",
+  DIVERGENCE: "DivergÃªncia",
+  MISSING_LINK: "VÃ­nculo ausente",
   ANOMALY: "Anomalia",
-  MANUAL_REVIEW: "Revisão manual",
+  MANUAL_REVIEW: "RevisÃ£o manual",
 };
 
 const SEVERITY_STYLES: Record<ExceptionSeverity, { bg: string; text: string; icon: React.ElementType }> = {
@@ -47,13 +46,6 @@ export default function CaixaEntradaPage() {
 
   useEffect(() => {
     refresh();
-    // Se a caixa estiver vazia, semeia alguns exemplos representativos
-    // (apenas no primeiro acesso, para o sistema parecer "vivo")
-    const existing = getExceptions();
-    if (existing.length === 0) {
-      seedExamples();
-      refresh();
-    }
   }, []);
 
   const filtered = useMemo(
@@ -80,10 +72,10 @@ export default function CaixaEntradaPage() {
         actor: "Gestor",
         actorType: "HUMAN",
         action: "APPROVE",
-        entityType: "Exceção",
+        entityType: "ExceÃ§Ã£o",
         entityId: id,
         entityLabel: item.title,
-        summary: `Exceção resolvida: ${item.title}`,
+        summary: `ExceÃ§Ã£o resolvida: ${item.title}`,
       });
     }
     refresh();
@@ -101,10 +93,10 @@ export default function CaixaEntradaPage() {
         actor: "Gestor",
         actorType: "HUMAN",
         action: "REJECT",
-        entityType: "Exceção",
+        entityType: "ExceÃ§Ã£o",
         entityId: id,
         entityLabel: item.title,
-        summary: `Exceção descartada: ${item.title}`,
+        summary: `ExceÃ§Ã£o descartada: ${item.title}`,
       });
     }
     refresh();
@@ -113,24 +105,24 @@ export default function CaixaEntradaPage() {
   return (
     <PageShell
       title="Caixa de Entrada"
-      description="Tudo que exige atenção humana — fila unificada de exceções e revisões"
+      description="Tudo que exige atenÃ§Ã£o humana â€” fila unificada de exceÃ§Ãµes e revisÃµes"
       icon={Inbox}
     >
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Stat label="Pendentes" value={counts.open} color="amber" />
-        <Stat label="Críticas" value={counts.critical} color="rose" />
-        <Stat label="Atenção" value={counts.warn} color="amber" />
+        <Stat label="CrÃ­ticas" value={counts.critical} color="rose" />
+        <Stat label="AtenÃ§Ã£o" value={counts.warn} color="amber" />
         <Stat label="Resolvidas" value={counts.resolved} color="emerald" />
       </div>
 
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3">
         <Sparkles className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-xs text-blue-700">
-          <p className="font-medium mb-0.5">A "1 dia/mês de revisão"</p>
+          <p className="font-medium mb-0.5">A "1 dia/mÃªs de revisÃ£o"</p>
           <p className="text-blue-600/80">
-            Esta caixa concentra tudo que a IA não conseguiu decidir sozinha: classificações de baixa
-            confiança, duplicatas suspeitas, divergências de repasse, vínculos ausentes e anomalias
-            estatísticas. O gestor revisa, aprova ou descarta — e cada decisão alimenta o aprendizado
+            Esta caixa concentra tudo que a IA nÃ£o conseguiu decidir sozinha: classificaÃ§Ãµes de baixa
+            confianÃ§a, duplicatas suspeitas, divergÃªncias de repasse, vÃ­nculos ausentes e anomalias
+            estatÃ­sticas. O gestor revisa, aprova ou descarta â€” e cada decisÃ£o alimenta o aprendizado
             da IA.
           </p>
         </div>
@@ -167,7 +159,7 @@ export default function CaixaEntradaPage() {
         <EmptyState
           icon={Inbox}
           title="Caixa vazia"
-          description="Quando a IA encontrar divergências, duplicatas ou classificações de baixa confiança, elas aparecerão aqui."
+          description="Quando a IA encontrar divergÃªncias, duplicatas ou classificaÃ§Ãµes de baixa confianÃ§a, elas aparecerÃ£o aqui."
         />
       ) : (
         <div className="space-y-3">
@@ -188,7 +180,7 @@ export default function CaixaEntradaPage() {
                         {KIND_LABELS[item.kind]}
                       </span>
                       <span className="text-[10px] text-gray-500">
-                        {item.source} · {new Date(item.createdAt).toLocaleString("pt-BR")}
+                        {item.source} Â· {new Date(item.createdAt).toLocaleString("pt-BR")}
                       </span>
                     </div>
                     <p className="text-xs text-gray-700">{item.description}</p>
@@ -251,56 +243,4 @@ export default function CaixaEntradaPage() {
   );
 }
 
-// ─── Seed inicial de exemplos representativos ─────
-
-function seedExamples() {
-  raiseException({
-    kind: "DIVERGENCE",
-    severity: "CRITICAL",
-    title: "Repasse divergente — contrato MV-2026-0024",
-    description:
-      "O repasse esperado era R$ 3.000,00 mas o crédito identificado no extrato Caixa foi de R$ 2.880,00 (diferença de 4%). Verificar com o proprietário ou contestar com a conta corrente.",
-    source: "conciliação bancária",
-    entityType: "Contrato",
-    meta: { esperado: "R$ 3.000,00", recebido: "R$ 2.880,00", diferenca: "4%" },
-  });
-  raiseException({
-    kind: "AI_LOW_CONFIDENCE",
-    severity: "WARN",
-    title: "Classificação incerta — boleto Engie Sul",
-    description:
-      "A IA não tem confiança suficiente (62%) para classificar este boleto sozinha. Sugestão: Energia Elétrica / Administrativo.",
-    source: "Central IA",
-    entityType: "Despesa",
-    meta: { confianca: "62%", sugestao: "Energia Elétrica / Admin" },
-  });
-  raiseException({
-    kind: "DUPLICATE",
-    severity: "WARN",
-    title: "Possível duplicata — NF 1284",
-    description:
-      "Encontrada outra NF com mesmo número, valor e fornecedor lançada há 3 dias. Verificar se é re-envio.",
-    source: "Notas Fiscais",
-    entityType: "Nota Fiscal",
-    meta: { valor: "R$ 1.450,00", original: "há 3 dias" },
-  });
-  raiseException({
-    kind: "MISSING_LINK",
-    severity: "INFO",
-    title: "NF sem contrato vinculado",
-    description:
-      "A NF #1290 foi cadastrada mas não está vinculada a nenhum contrato ativo. Pode atrapalhar conciliação e DIMOB.",
-    source: "Notas Fiscais",
-    entityType: "Nota Fiscal",
-  });
-  raiseException({
-    kind: "ANOMALY",
-    severity: "INFO",
-    title: "Despesa fora do padrão — Manutenção Predial",
-    description:
-      "Despesa de R$ 4.200 em manutenção predial é 215% maior que a média dos últimos 6 meses (R$ 1.330). Validar nota.",
-    source: "Financeiro",
-    entityType: "Despesa",
-    meta: { valor: "R$ 4.200,00", media6m: "R$ 1.330,00" },
-  });
-}
+// â”€â”€â”€ Seed inicial de exemplos representativos â”€â”€â”€â”€â”€

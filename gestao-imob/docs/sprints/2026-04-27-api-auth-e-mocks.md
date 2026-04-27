@@ -14,6 +14,10 @@ Fechar lacunas que poderiam mascarar erro real em homologacao/producao e prepara
 - Documentar checklist manual de validacao.
 - Melhorar operacao de NFS-e com erro claro, painel de situacao por nota e historico visual.
 - Preparar a tela de emissao para encaixe operacional do NFS.io em HML/PRD.
+- Estruturar configuracao fiscal da empresa emissora em tela somente leitura para Admin Master.
+- Adicionar checklist manual de PRD e revisao tecnica de seguranca dentro de `/saude`.
+- Melhorar leitura operacional da auditoria para eventos sensiveis.
+- Remover endpoints e links de arquivos de exemplo de DW/extrato do produto.
 
 ## Fora do escopo
 
