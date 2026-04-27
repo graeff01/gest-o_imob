@@ -5,11 +5,8 @@ import { assertRuntimeSafety } from "@/server/env";
 
 assertRuntimeSafety();
 
-// ─── Usuários carregados de variáveis de ambiente ─────────────────────────────
-// Senhas armazenadas como hash bcrypt (nunca em texto puro).
-// Para trocar a senha: gere um novo hash com `node -e "require('bcryptjs').hash('nova_senha', 12).then(console.log)"`
-// e atualize a variável de ambiente correspondente.
-
+// Usuarios carregados de variaveis de ambiente.
+// Senhas ficam sempre como hash bcrypt, nunca em texto puro.
 interface EnvUser {
   id: string;
   name: string;
@@ -22,26 +19,79 @@ function normalizeBcryptHash(hash: string) {
   return hash.replace(/\\\$/g, "$");
 }
 
+function appendEnvUser(users: EnvUser[], user: EnvUser | null) {
+  if (user) users.push(user);
+}
+
 function loadUsers(): EnvUser[] {
   const users: EnvUser[] = [];
 
   const adminEmail = process.env.AUTH_ADMIN_EMAIL;
-  const adminHash  = process.env.AUTH_ADMIN_HASH;
-  const adminName  = process.env.AUTH_ADMIN_NAME ?? "Admin Master";
+  const adminHash = process.env.AUTH_ADMIN_HASH;
+  const adminName = process.env.AUTH_ADMIN_NAME ?? "Admin Master";
 
-  const donoEmail  = process.env.AUTH_DONO_EMAIL;
-  const donoHash   = process.env.AUTH_DONO_HASH;
-  const donoName   = process.env.AUTH_DONO_NAME ?? "Proprietário";
+  appendEnvUser(
+    users,
+    adminEmail && adminHash
+      ? {
+          id: "user-admin",
+          name: adminName,
+          email: adminEmail.toLowerCase(),
+          passwordHash: normalizeBcryptHash(adminHash),
+          role: "ADMIN_MASTER",
+        }
+      : null
+  );
 
-  if (adminEmail && adminHash) {
-    users.push({ id: "user-admin", name: adminName, email: adminEmail.toLowerCase(), passwordHash: normalizeBcryptHash(adminHash), role: "ADMIN_MASTER" });
+  // Compatibilidade com a variavel antiga de um dono.
+  const legacyOwnerEmail = process.env.AUTH_DONO_EMAIL;
+  const legacyOwnerHash = process.env.AUTH_DONO_HASH;
+  const legacyOwnerName = process.env.AUTH_DONO_NAME ?? "Proprietario";
+
+  appendEnvUser(
+    users,
+    legacyOwnerEmail && legacyOwnerHash
+      ? {
+          id: "user-dono",
+          name: legacyOwnerName,
+          email: legacyOwnerEmail.toLowerCase(),
+          passwordHash: normalizeBcryptHash(legacyOwnerHash),
+          role: "DONO",
+        }
+      : null
+  );
+
+  for (const slot of ["1", "2"]) {
+    const ownerEmail = process.env[`AUTH_OWNER_${slot}_EMAIL`];
+    const ownerHash = process.env[`AUTH_OWNER_${slot}_HASH`];
+    const ownerName = process.env[`AUTH_OWNER_${slot}_NAME`] ?? `Dono ${slot}`;
+
+    appendEnvUser(
+      users,
+      ownerEmail && ownerHash
+        ? {
+            id: `user-owner-${slot}`,
+            name: ownerName,
+            email: ownerEmail.toLowerCase(),
+            passwordHash: normalizeBcryptHash(ownerHash),
+            role: "DONO",
+          }
+        : null
+    );
   }
-  if (donoEmail && donoHash) {
-    users.push({ id: "user-dono", name: donoName, email: donoEmail.toLowerCase(), passwordHash: normalizeBcryptHash(donoHash), role: "DONO" });
+
+  const duplicatedEmail = users.find(
+    (user, index) => users.findIndex((candidate) => candidate.email === user.email) !== index
+  );
+  if (duplicatedEmail) {
+    console.error(`[auth] Email duplicado nas variaveis de ambiente: ${duplicatedEmail.email}`);
+    return [];
   }
 
   if (users.length === 0) {
-    console.error("[auth] Nenhum usuário configurado. Defina AUTH_ADMIN_EMAIL, AUTH_ADMIN_HASH, AUTH_DONO_EMAIL e AUTH_DONO_HASH nas variáveis de ambiente.");
+    console.error(
+      "[auth] Nenhum usuario configurado. Defina AUTH_ADMIN_EMAIL/AUTH_ADMIN_HASH e AUTH_OWNER_1_EMAIL/AUTH_OWNER_1_HASH."
+    );
   }
 
   return users;
@@ -51,24 +101,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
     Credentials({
       credentials: {
-        email:    { label: "Email", type: "email" },
+        email: { label: "Email", type: "email" },
         password: { label: "Senha", type: "password" },
       },
       async authorize(credentials) {
-        const email    = String(credentials?.email    ?? "").toLowerCase().trim();
+        const email = String(credentials?.email ?? "").toLowerCase().trim();
         const password = String(credentials?.password ?? "");
 
         if (!email || !password) return null;
 
         const users = loadUsers();
-        const user  = users.find(u => u.email === email);
+        const user = users.find((candidate) => candidate.email === email);
         if (!user) return null;
 
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) return null;
 
         return {
-          id:   user.id,
+          id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
@@ -79,14 +129,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.id   = (user as { id: string }).id;
+        token.id = (user as { id: string }).id;
         token.role = (user as { role: string }).role;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as unknown as Record<string, unknown>).id   = token.id;
+        (session.user as unknown as Record<string, unknown>).id = token.id;
         (session.user as unknown as Record<string, unknown>).role = token.role;
       }
       return session;

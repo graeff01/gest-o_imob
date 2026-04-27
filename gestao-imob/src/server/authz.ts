@@ -11,6 +11,7 @@ export interface AuthContext {
 }
 
 const elevatedRoles = new Set<AppRole>(["ADMIN_MASTER", "DONO", "ADMIN"]);
+const technicalRoles = new Set<AppRole>(["ADMIN_MASTER"]);
 
 export class AuthError extends Error {
   constructor(message: string, public status = 401) {
@@ -49,6 +50,14 @@ export async function requireElevatedRole(): Promise<AuthContext> {
   const ctx = await requireAuth();
   if (!elevatedRoles.has(ctx.role)) {
     throw new AuthError("Sem permissao para executar esta acao.", 403);
+  }
+  return ctx;
+}
+
+export async function requireTechnicalRole(): Promise<AuthContext> {
+  const ctx = await requireAuth();
+  if (!technicalRoles.has(ctx.role)) {
+    throw new AuthError("Acesso restrito ao administrador tecnico.", 403);
   }
   return ctx;
 }
