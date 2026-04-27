@@ -25,6 +25,10 @@ Avancar a preparacao para homologacao e producao sem implementar testes automati
   - `X-Content-Type-Options`
   - `Referrer-Policy`
   - `Permissions-Policy`
+- Processo de desenvolvimento documentado.
+- Backlog pos-PRD documentado para separar o que bloqueia de agora do que pode ficar para depois.
+- Guard de ambiente criado para impedir `ALLOW_MOCK_FALLBACKS=true` fora do local.
+- Tela de saude passa a exibir o estado de mocks/fallbacks.
 - `verify:ci` validado apos as mudancas.
 
 ## Validacao

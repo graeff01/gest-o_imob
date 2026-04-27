@@ -16,6 +16,7 @@ export const appConfig = {
   isHomolog: readAppEnv() === "homolog",
   isProduction: readAppEnv() === "production",
   gatewayStubMode: process.env.GATEWAY_STUB_MODE !== "false",
+  allowMockFallbacks: process.env.ALLOW_MOCK_FALLBACKS === "true",
 };
 
 export function assertRuntimeSafety() {
@@ -54,6 +55,10 @@ export function assertRuntimeSafety() {
     errors.push("GATEWAY_STUB_MODE=true nao pode ser usado em production.");
   }
 
+  if (!appConfig.isLocal && appConfig.allowMockFallbacks) {
+    errors.push("ALLOW_MOCK_FALLBACKS=true nao pode ser usado fora do ambiente local.");
+  }
+
   if (!appConfig.gatewayStubMode) {
     for (const key of ["NFSE_GATEWAY_API_KEY", "NFSE_COMPANY_ID"]) {
       if (!process.env[key]) errors.push(`${key} obrigatorio quando gateway real esta ativo.`);
@@ -70,5 +75,6 @@ export function publicRuntimeFlags() {
     appEnv: appConfig.appEnv,
     showDemoCredentials: appConfig.isLocal,
     gatewayMode: appConfig.gatewayStubMode ? "stub" : "real",
+    mockFallbacks: appConfig.allowMockFallbacks ? "enabled" : "disabled",
   };
 }

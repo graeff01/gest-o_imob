@@ -44,6 +44,14 @@ export async function GET() {
   );
   checks.push(
     check(
+      "mock-fallbacks",
+      "Fallbacks mock",
+      appConfig.allowMockFallbacks ? "WARN" : "OK",
+      appConfig.allowMockFallbacks ? "Permitidos apenas para desenvolvimento local" : "Desligados"
+    )
+  );
+  checks.push(
+    check(
       "auth-secret",
       "Segredo de autenticacao",
       envDefined("AUTH_SECRET") ? "OK" : "FAIL",
@@ -119,6 +127,7 @@ export async function GET() {
     environment: {
       appEnv: appConfig.appEnv,
       gatewayMode: appConfig.gatewayStubMode ? "stub" : "real",
+      mockFallbacks: appConfig.allowMockFallbacks ? "enabled" : "disabled",
       isProduction: appConfig.isProduction,
     },
     score: Math.round((okCount / scoreBase) * 100),
