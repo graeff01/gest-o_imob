@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit --pretty false",
     "lint:ci": "eslint src/server src/app/api/invoices src/app/api/system src/lib/auth.ts src/lib/utils.ts src/lib/utils/dw-parser.ts src/middleware.ts",
-    "verify:ci": "npm run typecheck && npm run lint:ci && npm run build",
+    "verify:ci": "npm run typecheck && npm run lint && npm run build",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
