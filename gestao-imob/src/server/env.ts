@@ -38,15 +38,19 @@ export function assertRuntimeSafety() {
   }
 
   if (!appConfig.isLocal) {
+    for (const key of ["AUTH_ADMIN_EMAIL", "AUTH_ADMIN_HASH"]) {
+      if (!process.env[key]) errors.push(`${key} obrigatorio fora do ambiente local.`);
+    }
+  }
+
+  if (appConfig.isProduction) {
     for (const key of [
-      "AUTH_ADMIN_EMAIL",
-      "AUTH_ADMIN_HASH",
       "AUTH_OWNER_1_EMAIL",
       "AUTH_OWNER_1_HASH",
       "AUTH_OWNER_2_EMAIL",
       "AUTH_OWNER_2_HASH",
     ]) {
-      if (!process.env[key]) errors.push(`${key} obrigatorio fora do ambiente local.`);
+      if (!process.env[key]) errors.push(`${key} obrigatorio em production.`);
     }
   }
 
