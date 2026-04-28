@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search, Users, Building, UserCheck } from "lucide-react";
+import { AlertCircle, Plus, Search, Users, Building, UserCheck } from "lucide-react";
 import { cn, formatCPF, formatCNPJ } from "@/lib/utils";
 import { EmployeeForm } from "./employee-form";
 import { OwnerForm } from "./owner-form";
@@ -62,24 +62,33 @@ export default function PessoasPage() {
   const [owners, setOwners] = useState<Owner[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const params = new URLSearchParams();
     if (search) params.set("search", search);
 
-    if (activeTab === "funcionarios") {
-      const res = await fetch(`/api/employees?${params}`);
-      const data = await res.json();
-      setEmployees(data.employees || []);
-    } else if (activeTab === "proprietarios") {
-      const res = await fetch(`/api/property-owners?${params}`);
-      const data = await res.json();
-      setOwners(data.owners || []);
-    } else {
-      const res = await fetch(`/api/clients?${params}`);
-      const data = await res.json();
-      setClients(data.clients || []);
+    try {
+      if (activeTab === "funcionarios") {
+        const res = await fetch(`/api/employees?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Falha ao carregar funcionarios.");
+        setEmployees(data.employees || []);
+      } else if (activeTab === "proprietarios") {
+        const res = await fetch(`/api/property-owners?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Falha ao carregar proprietarios.");
+        setOwners(data.owners || []);
+      } else {
+        const res = await fetch(`/api/clients?${params}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Falha ao carregar clientes.");
+        setClients(data.clients || []);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Banco indisponivel para carregar pessoas.");
     }
     setLoading(false);
   }, [activeTab, search]);
@@ -160,7 +169,15 @@ export default function PessoasPage() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? (
+        {error ? (
+          <div className="p-6 text-sm text-red-700 bg-red-50 border-b border-red-100 flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold">Nao foi possivel carregar dados reais.</p>
+              <p className="text-red-600">{error}</p>
+            </div>
+          </div>
+        ) : loading ? (
           <div className="p-8 text-center text-gray-500">Carregando...</div>
         ) : (
           <div className="overflow-x-auto">

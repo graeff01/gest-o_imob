@@ -180,7 +180,7 @@ export default function CentralIAPage() {
       }
 
       updateMessage(processingId, {
-        content: `Documento analisado (${result.mode === "ai" ? "GPT-4o" : "mock"})`,
+        content: `Documento analisado (${result.mode === "ai" ? "GPT-4o" : "modo local sem persistencia"})`,
         extraction: result.data as AIExtractionResult,
         status: "success",
       });
@@ -208,7 +208,7 @@ export default function CentralIAPage() {
 
       if (result.success) {
         updateMessage(confirmId, {
-          content: `LanÃ§ado com sucesso em ${getDestinoLabel(extraction.destino)}!`,
+          content: `Registro persistido em ${getDestinoLabel(extraction.destino)}.`,
           status: "success",
         });
       } else {
@@ -239,7 +239,7 @@ export default function CentralIAPage() {
 
       if (result.success) {
         updateMessage(confirmId, {
-          content: `Registro manual lanÃ§ado em ${getDestinoLabel(extraction.destino)}!`,
+          content: `Registro manual persistido em ${getDestinoLabel(extraction.destino)}.`,
           status: "success",
         });
         setManualForm({
