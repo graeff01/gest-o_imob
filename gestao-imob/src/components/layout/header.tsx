@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { navigationItems } from "@/lib/constants/navigation";
 import { Bell } from "lucide-react";
 import { GlobalSearch } from "@/components/shared/global-search";
+import { environmentLabel, environmentName, isNonProduction } from "@/lib/app-env";
 
 export function Header() {
   const pathname = usePathname();
@@ -22,6 +23,15 @@ export function Header() {
         {title}
       </h1>
       <div className="flex items-center gap-3">
+        {isNonProduction && (
+          <div
+            className="hidden items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 sm:flex"
+            title={`Ambiente de ${environmentName}`}
+          >
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            {environmentLabel}
+          </div>
+        )}
         <GlobalSearch />
         <button className="p-2 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors relative">
           <Bell className="h-5 w-5" />

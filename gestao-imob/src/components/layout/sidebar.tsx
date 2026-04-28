@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 import { navigationItems, SECTION_LABELS, type NavItem, type Role } from "@/lib/constants/navigation";
 import { useState } from "react";
 import { Crown, ShieldCheck } from "lucide-react";
+import { environmentLabel, environmentName, isNonProduction } from "@/lib/app-env";
 
 const iconMap: Record<string, React.ElementType> = {
   LayoutDashboard,
@@ -94,9 +95,21 @@ export function Sidebar({ userName, role }: SidebarProps) {
           </div>
           <div>
             <h2 className="text-sm font-bold text-white">Moinhos de Vento</h2>
-            <p className="text-[11px] text-gray-400">Gestão Financeira</p>
+            <div className="mt-1 flex items-center gap-2">
+              <p className="text-[11px] text-gray-400">Gestao Financeira</p>
+              {isNonProduction && (
+                <span className="rounded border border-amber-300/30 bg-amber-300/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-200">
+                  {environmentLabel}
+                </span>
+              )}
+            </div>
           </div>
         </div>
+        {isNonProduction && (
+          <div className="mt-4 rounded-lg border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-[11px] font-medium text-amber-100">
+            Ambiente de {environmentName}. Dados e emissoes devem ser usados apenas para teste.
+          </div>
+        )}
       </div>
 
       {/* Navigation */}

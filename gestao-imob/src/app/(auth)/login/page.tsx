@@ -12,6 +12,7 @@ import {
   Mail,
   ShieldCheck,
 } from "lucide-react";
+import { environmentLabel, environmentName, isNonProduction } from "@/lib/app-env";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,7 +53,14 @@ export default function LoginPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold leading-tight">Moinhos de Vento</h1>
-            <p className="text-xs text-slate-400">Auxiliadora Predial</p>
+            <div className="mt-1 flex items-center gap-2">
+              <p className="text-xs text-slate-400">Auxiliadora Predial</p>
+              {isNonProduction && (
+                <span className="rounded border border-amber-300/30 bg-amber-300/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-200">
+                  {environmentLabel}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -94,20 +102,29 @@ export default function LoginPage() {
             </div>
             <div>
               <h1 className="text-base font-semibold text-slate-950">Moinhos de Vento</h1>
-              <p className="text-xs text-slate-500">Gestao Financeira</p>
+              <div className="mt-1 flex items-center gap-2">
+                <p className="text-xs text-slate-500">Gestao Financeira</p>
+                {isNonProduction && (
+                  <span className="rounded border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                    {environmentLabel}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white p-7 shadow-sm">
             <div className="mb-7">
               <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Sistema interno
+                {isNonProduction ? `Ambiente de ${environmentName}` : "Sistema interno"}
               </p>
               <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
                 Entrar na plataforma
               </h2>
               <p className="mt-2 text-sm text-slate-500">
-                Informe suas credenciais corporativas.
+                {isNonProduction
+                  ? "Use este ambiente apenas para validacao antes da producao."
+                  : "Informe suas credenciais corporativas."}
               </p>
             </div>
 
