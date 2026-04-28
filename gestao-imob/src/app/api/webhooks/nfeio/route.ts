@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/prisma";
 
 // Mapeamento dos eventos NFE.io → InvoiceStatus interno
 const STATUS_MAP: Record<string, { status: "EMITIDA" | "ERRO" | "CANCELADA" } | null> = {
