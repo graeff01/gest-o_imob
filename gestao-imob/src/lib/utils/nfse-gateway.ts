@@ -315,6 +315,63 @@ function emitStub(payload: NfseEmitPayload): NfseEmitResult {
   };
 }
 
+// ─── Consulta de status ───────────────────────────────────────────────────────
+
+export interface NfseSyncResult {
+  success: boolean;
+  gatewayStatus: string;
+  nfseNumber: number | null;
+  pdfUrl: string | null;
+  xmlUrl: string | null;
+  error?: string;
+}
+
+export async function syncNfseStatus(gatewayId: string): Promise<NfseSyncResult> {
+  const config = getGatewayConfig();
+
+  if (config.isStub) {
+    return { success: true, gatewayStatus: "stub", nfseNumber: null, pdfUrl: null, xmlUrl: null };
+  }
+
+  if (!config.apiKey || !config.companyId) {
+    return { success: false, gatewayStatus: "error", nfseNumber: null, pdfUrl: null, xmlUrl: null, error: "Credenciais não configuradas." };
+  }
+
+  try {
+    let url: string;
+    if (config.provider === "nfeio") {
+      const base = config.isHomolog ? "https://api.nfe.io/v1" : "https://api.nfe.io/v1";
+      url = `${base}/companies/${config.companyId}/serviceinvoices/${gatewayId}`;
+    } else {
+      const base = config.isHomolog ? "https://api.sandbox.nfse.io/v1" : "https://api.nfse.io/v1";
+      url = `${base}/companies/${config.companyId}/serviceinvoices/${gatewayId}`;
+    }
+
+    const res = await fetch(url, {
+      headers: { "Authorization": config.apiKey, "X-NFEIO-APIKEY": config.apiKey },
+      signal: AbortSignal.timeout(15_000),
+    });
+
+    if (!res.ok) {
+      return { success: false, gatewayStatus: "error", nfseNumber: null, pdfUrl: null, xmlUrl: null, error: `Gateway retornou ${res.status}` };
+    }
+
+    const data = await res.json() as Record<string, unknown>;
+
+    // NFE.io retorna o objeto dentro de serviceInvoice
+    const obj = (data.serviceInvoice ?? data) as Record<string, unknown>;
+    const status      = String(obj.status ?? obj.flowStatus ?? "");
+    const nfseNumber  = obj.number ? Number(obj.number) : null;
+    const pdfUrl      = (obj.pdfUrl ?? obj.pdf_url ?? null) as string | null;
+    const xmlUrl      = (obj.xmlUrl ?? obj.xml_url ?? null) as string | null;
+
+    return { success: true, gatewayStatus: status, nfseNumber, pdfUrl, xmlUrl };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, gatewayStatus: "error", nfseNumber: null, pdfUrl: null, xmlUrl: null, error: msg };
+  }
+}
+
 // ─── Função pública ───────────────────────────────────────────────────────────
 
 export async function emitNfse(payload: NfseEmitPayload): Promise<NfseEmitResult> {

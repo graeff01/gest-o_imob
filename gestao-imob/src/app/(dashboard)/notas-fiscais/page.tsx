@@ -462,6 +462,22 @@ export default function NotasFiscaisPage() {
     }
   };
 
+  // ── Sincronizar status com gateway ──
+  const [syncingId, setSyncingId] = useState<string | null>(null);
+  const syncInvoice = async (id: string) => {
+    setSyncingId(id);
+    try {
+      const res = await fetch(`/api/invoices/${id}/sync`, { method: "POST" });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error ?? "Erro ao sincronizar.");
+      await fetchInvoices();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro ao sincronizar com o gateway.");
+    } finally {
+      setSyncingId(null);
+    }
+  };
+
   // ── Cancelamento com motivo ──
   const handleCancelConfirm = async () => {
     if (!cancelModal) return;
@@ -1360,6 +1376,19 @@ export default function NotasFiscaisPage() {
                                 title="Marcar como paga"
                               >
                                 <DollarSign className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                            {/* Sincronizar com gateway */}
+                            {inv.gateway_id && ["PROCESSANDO","ERRO","EMITIDA"].includes(inv.status) && (
+                              <button
+                                onClick={() => syncInvoice(inv.id)}
+                                disabled={syncingId === inv.id}
+                                className="p-1.5 border border-blue-200 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                                title="Sincronizar status com NFE.io"
+                              >
+                                {syncingId === inv.id
+                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  : <RefreshCw className="h-3.5 w-3.5" />}
                               </button>
                             )}
                             {/* Download PDF */}
