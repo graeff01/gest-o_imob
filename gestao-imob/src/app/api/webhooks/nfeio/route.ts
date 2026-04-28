@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+export async function GET() {
+  return NextResponse.json({ ok: true });
+}
+
 // Mapeamento dos eventos NFE.io → InvoiceStatus interno
 const STATUS_MAP: Record<string, { status: "EMITIDA" | "ERRO" | "CANCELADA" } | null> = {
   "ServiceInvoice.Issued":    { status: "EMITIDA" },
