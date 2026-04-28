@@ -165,7 +165,8 @@ async function emitViaNfseIo(
       method: "POST",
       headers: {
         "Content-Type":  "application/json",
-        "Authorization": `Bearer ${config.apiKey}`,
+        "Authorization": config.apiKey,
+        "X-NFEIO-APIKEY": config.apiKey,
         "X-Request-Id":  payload.invoiceId,
       },
       body: JSON.stringify(body),
@@ -235,7 +236,8 @@ async function emitViaNfeio(
       method: "POST",
       headers: {
         "Content-Type":  "application/json",
-        "Authorization": `Bearer ${config.apiKey}`,
+        "Authorization": config.apiKey,
+        "X-NFEIO-APIKEY": config.apiKey,
         "X-Request-Id":  payload.invoiceId,
       },
       body: JSON.stringify(body),
