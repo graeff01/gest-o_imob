@@ -5,9 +5,12 @@ export type AppEnv = "local" | "homolog" | "production";
 const allowedEnvs = new Set<AppEnv>(["local", "homolog", "production"]);
 
 function readAppEnv(): AppEnv {
-  const value = process.env.APP_ENV ?? process.env.NEXT_PUBLIC_APP_ENV ?? "local";
-  if (allowedEnvs.has(value as AppEnv)) return value as AppEnv;
-  throw new Error(`APP_ENV invalido: ${value}. Use local, homolog ou production.`);
+  const value = (process.env.APP_ENV ?? process.env.NEXT_PUBLIC_APP_ENV ?? "local")
+    .trim()
+    .toLowerCase();
+  const normalizedValue = value === "homologacao" || value === "hml" ? "homolog" : value;
+  if (allowedEnvs.has(normalizedValue as AppEnv)) return normalizedValue as AppEnv;
+  throw new Error(`APP_ENV invalido: ${value}. Use local, homolog, homologacao ou production.`);
 }
 
 export const appConfig = {

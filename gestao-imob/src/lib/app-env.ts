@@ -1,10 +1,14 @@
 type AppEnvironment = "production" | "homologacao" | "local";
 
 const rawEnvironment = process.env.NEXT_PUBLIC_APP_ENV?.trim().toLowerCase();
+const normalizedEnvironment =
+  rawEnvironment === "homolog" || rawEnvironment === "hml" ? "homologacao" : rawEnvironment;
 
 export const appEnvironment: AppEnvironment =
-  rawEnvironment === "production" || rawEnvironment === "homologacao" || rawEnvironment === "local"
-    ? rawEnvironment
+  normalizedEnvironment === "production" ||
+  normalizedEnvironment === "homologacao" ||
+  normalizedEnvironment === "local"
+    ? normalizedEnvironment
     : "production";
 
 export const isNonProduction = appEnvironment !== "production";
