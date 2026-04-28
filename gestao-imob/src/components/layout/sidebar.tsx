@@ -94,7 +94,7 @@ export function Sidebar({ userName, role }: SidebarProps) {
             <Building2 className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h2 className="text-sm font-bold text-white">Moinhos de Vento</h2>
+            <h2 className="text-sm font-bold text-white">Jardim do Lago</h2>
             <div className="mt-1 flex items-center gap-2">
               <p className="text-[11px] text-gray-400">Gestao Financeira</p>
               {isNonProduction && (

@@ -52,7 +52,7 @@ export default function LoginPage() {
             <Building2 className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold leading-tight">Moinhos de Vento</h1>
+            <h1 className="text-lg font-semibold leading-tight">Jardim do Lago</h1>
             <div className="mt-1 flex items-center gap-2">
               <p className="text-xs text-slate-400">Auxiliadora Predial</p>
               {isNonProduction && (
@@ -101,7 +101,7 @@ export default function LoginPage() {
               <Building2 className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-base font-semibold text-slate-950">Moinhos de Vento</h1>
+              <h1 className="text-base font-semibold text-slate-950">Jardim do Lago</h1>
               <div className="mt-1 flex items-center gap-2">
                 <p className="text-xs text-slate-500">Gestao Financeira</p>
                 {isNonProduction && (
@@ -206,7 +206,7 @@ export default function LoginPage() {
           </div>
 
           <p className="mt-5 text-center text-xs text-slate-400">
-            Moinhos de Vento - Gestao Financeira v1.0
+            Jardim do Lago - Gestao Financeira v1.0
           </p>
         </div>
       </section>

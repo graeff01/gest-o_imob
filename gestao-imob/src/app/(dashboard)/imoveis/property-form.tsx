@@ -37,7 +37,7 @@ export function PropertyForm({ onSuccess, onCancel }: Props) {
       address_number: form.get("address_number") || undefined,
       address_complement: form.get("address_complement") || undefined,
       address_neighborhood: form.get("address_neighborhood"),
-      address_city: form.get("address_city") || "Porto Alegre",
+      address_city: form.get("address_city") || "Canoas",
       address_state: form.get("address_state") || "RS",
       address_cep: form.get("address_cep") || undefined,
       property_type: form.get("property_type"),
@@ -118,7 +118,7 @@ export function PropertyForm({ onSuccess, onCancel }: Props) {
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Cidade</label>
-          <input name="address_city" defaultValue="Porto Alegre" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <input name="address_city" defaultValue="Canoas" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>

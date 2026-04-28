@@ -38,7 +38,7 @@ export function Header() {
           <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
         </button>
         <div className="h-6 w-px bg-gray-200" />
-        <span className="text-xs text-gray-400">Moinhos de Vento</span>
+        <span className="text-xs text-gray-400">Jardim do Lago</span>
       </div>
     </header>
   );

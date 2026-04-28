@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Gestao Financeira - Moinhos de Vento",
+  title: "Gestao Financeira - Jardim do Lago",
   description: "Sistema de gestao financeira e administrativa - Auxiliadora Predial",
 };
 

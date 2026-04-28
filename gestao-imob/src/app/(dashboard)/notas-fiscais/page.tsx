@@ -831,7 +831,7 @@ export default function NotasFiscaisPage() {
   <div class="header">
     <div class="tag">Relatório Fiscal</div>
     <h1>Notas Fiscais de Serviço<br>${monthName} / ${yr}</h1>
-    <p>Imobiliária Moinhos de Vento — Auxiliadora Predial</p>
+    <p>Imobiliária Jardim do Lago — Auxiliadora Predial</p>
     <div class="header-meta">
       <div class="meta-item"><label>Competência</label><span>${monthName}/${yr}</span></div>
       <div class="meta-item"><label>Total de notas</label><span>${mi.length}</span></div>
@@ -927,7 +927,7 @@ export default function NotasFiscaisPage() {
   </div>
 
   <div class="footer">
-    <p><strong>Imobiliária Moinhos de Vento</strong> — Relatório gerado automaticamente pelo sistema de gestão</p>
+    <p><strong>Imobiliária Jardim do Lago</strong> — Relatório gerado automaticamente pelo sistema de gestão</p>
     <button class="btn-print" onclick="window.print()">Imprimir / Salvar PDF</button>
   </div>
 </div>
