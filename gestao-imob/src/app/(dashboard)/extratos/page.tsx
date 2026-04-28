@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Upload, Search, ArrowUpCircle, ArrowDownCircle,
   ChevronDown, ChevronRight, FileText, Loader2, X,
-  RefreshCw, Download, AlertTriangle, Pencil, Check,
+  RefreshCw, AlertTriangle, Pencil, Check,
 } from "lucide-react";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
@@ -509,14 +509,6 @@ export default function ExtratosPage() {
                       {uploading ? "Importando e categorizando..." : "Clique ou arraste o arquivo"}
                     </p>
                     <p className="text-xs text-gray-400 mt-1">OFX, CSV ou TXT · Caixa Econômica Federal</p>
-                    <a
-                      href="/api/extratos/sample"
-                      download
-                      onClick={(e) => e.stopPropagation()}
-                      className="mt-3 text-xs text-blue-500 hover:text-blue-700 underline underline-offset-2"
-                    >
-                      Baixar extrato de exemplo (OFX)
-                    </a>
                   </label>
 
                   {uploadError && (

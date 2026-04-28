@@ -1,229 +1,126 @@
 "use client";
 
-import { useState } from "react";
-import { Calculator, Percent, Award, Shield, ChevronDown, ChevronUp, Plus } from "lucide-react";
-import { cn, formatCurrency } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { Calculator, Database, FileClock, Percent, Shield } from "lucide-react";
+import { EmptyState, PageShell, Stat } from "@/components/shared/page-shell";
+import { formatCurrency } from "@/lib/utils";
 
-type Tab = "rules" | "historico";
-
-// Dados demonstrativos — substituídos por dados reais quando o banco estiver conectado
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MOCK_RULES: any[] = [
-  { id: "rule-001", rule_type: "CONSULTOR_INTERMEDIACAO", employee_type: "CLT", min_threshold: 0, max_threshold: 3, percentage: "10.0", fixed_amount: null, description: "Até 3 locações/mês — 10% sobre valor de intermediação" },
-  { id: "rule-002", rule_type: "CONSULTOR_INTERMEDIACAO", employee_type: "CLT", min_threshold: 4, max_threshold: 9, percentage: "11.0", fixed_amount: null, description: "De 4 a 9 locações/mês — 11% sobre valor de intermediação" },
-  { id: "rule-003", rule_type: "CONSULTOR_INTERMEDIACAO", employee_type: "CLT", min_threshold: 10, max_threshold: null, percentage: "13.0", fixed_amount: null, description: "A partir de 10 locações/mês — 13% sobre valor de intermediação" },
-  { id: "rule-004", rule_type: "CAPTADOR_INTERMEDIACAO", employee_type: "CONTRACT", min_threshold: 0, max_threshold: 15, percentage: "10.0", fixed_amount: null, description: "Até 15 imóveis captados/mês — 10% sobre intermediação" },
-  { id: "rule-005", rule_type: "CAPTADOR_INTERMEDIACAO", employee_type: "CONTRACT", min_threshold: 16, max_threshold: 20, percentage: "11.0", fixed_amount: null, description: "De 16 a 20 imóveis captados/mês — 11% sobre intermediação" },
-  { id: "rule-006", rule_type: "CAPTADOR_INTERMEDIACAO", employee_type: "CONTRACT", min_threshold: 21, max_threshold: null, percentage: "13.0", fixed_amount: null, description: "A partir de 21 imóveis captados/mês — 13% + bônus" },
-  { id: "rule-007", rule_type: "CAPTADOR_BONUS", employee_type: null, min_threshold: 0, max_threshold: null, percentage: null, fixed_amount: "50.00", description: "Bônus de R$50 por imóvel captado (adicional à comissão de intermediação)" },
-  { id: "rule-008", rule_type: "VENDA", employee_type: null, min_threshold: 0, max_threshold: null, percentage: "6.0", fixed_amount: null, description: "Comissão de venda — 6% sobre valor de comissão ajustada" },
-  { id: "rule-009", rule_type: "CAMPANHA_SUCESSO", employee_type: null, min_threshold: 0, max_threshold: null, percentage: null, fixed_amount: "100.00", description: "R$100 por contrato fechado durante campanha sucesso" },
-];
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const MOCK_HISTORICO: any[] = [
-  { mes: "Janeiro/2026", corretores: 5, total: 14800, status: "Pago" },
-  { mes: "Fevereiro/2026", corretores: 5, total: 12600, status: "Pago" },
-  { mes: "Março/2026", corretores: 5, total: 21400, status: "Pago" },
-  { mes: "Abril/2026", corretores: 5, total: 18200, status: "Calculado" },
-];
+interface CommissionRule {
+  id: string;
+  rule_type: string;
+  employee_type: string | null;
+  min_threshold: number | null;
+  max_threshold: number | null;
+  percentage: string | null;
+  fixed_amount: string | null;
+  description: string | null;
+}
 
 const ruleTypeLabels: Record<string, string> = {
-  CONSULTOR_INTERMEDIACAO: "Intermediação — Consultor",
-  CAPTADOR_INTERMEDIACAO: "Intermediação — Captador",
-  CAPTADOR_BONUS: "Bônus — Captador",
+  CONSULTOR_INTERMEDIACAO: "Intermediacao - Consultor",
+  CAPTADOR_INTERMEDIACAO: "Intermediacao - Captador",
+  CAPTADOR_BONUS: "Bonus - Captador",
   VENDA: "Venda",
   CAMPANHA_SUCESSO: "Campanha Sucesso",
 };
 
 export default function ComissoesPage() {
-  const [activeTab, setActiveTab] = useState<Tab>("rules");
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [showNewRule, setShowNewRule] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [rules, setRules] = useState<CommissionRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSave = () => {
-    setSaved(true);
-    setTimeout(() => { setSaved(false); setShowNewRule(false); }, 1800);
-  };
+  useEffect(() => {
+    fetch("/api/commissions/rules", { cache: "no-store" })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Falha ao carregar regras.");
+        setRules(data.rules ?? []);
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Falha ao carregar regras."))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
-    <div className="space-y-4">
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setActiveTab("rules")}
-          className={cn("flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
-            activeTab === "rules" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-          )}
+    <PageShell
+      title="Comissoes"
+      description="Regras e fechamentos sem dados demonstrativos. Historico real depende da folha consolidada."
+      icon={Percent}
+      actions={
+        <Link
+          href="/folha-corretores"
+          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
-          <Shield className="h-4 w-4" />Regras Definidas
-        </button>
-        <button
-          onClick={() => setActiveTab("historico")}
-          className={cn("flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors",
-            activeTab === "historico" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-          )}
-        >
-          <Calculator className="h-4 w-4" />Histórico de Fechamentos
-        </button>
+          <Calculator className="h-4 w-4" />
+          Folha de pagamento
+        </Link>
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Stat label="Regras reais cadastradas" value={loading ? "..." : rules.length} color="blue" />
+        <Stat label="Historico mock ativo" value="0" color="emerald" />
+        <Stat label="Fechamento mensal" value="Aguardando banco" color="amber" />
       </div>
 
-      {activeTab === "rules" && (
-        <div className="space-y-4">
-          <div className="flex justify-end">
-            <button
-              onClick={() => setShowNewRule(!showNewRule)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
-            >
-              <Plus className="h-4 w-4" />Nova Regra
-            </button>
-          </div>
-
-          {showNewRule && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-4">
-              <h3 className="font-semibold text-gray-900">Adicionar Regra de Comissão</h3>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Regra</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                    {Object.entries(ruleTypeLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Funcionário</label>
-                  <select className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm">
-                    <option value="">Todos</option>
-                    <option value="CLT">CLT</option>
-                    <option value="CONTRACT">PJ / Contrato</option>
-                    <option value="AUTONOMO">Autônomo</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">% de Comissão</label>
-                  <input type="number" step="0.5" placeholder="Ex: 30" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-                <div className="col-span-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-                  <input type="text" placeholder="Descreva quando esta regra se aplica..." className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => setShowNewRule(false)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600">Cancelar</button>
-                <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">
-                  {saved ? "✓ Salvo!" : "Salvar Regra"}
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Tipo de Regra</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Funcionário</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Gatilho (mín. contratos)</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Comissão</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Descrição</th>
-                  <th className="w-8"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {MOCK_RULES.map((rule) => (
-                  <>
-                    <tr
-                      key={rule.id}
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
-                      onClick={() => setExpanded(expanded === rule.id ? null : rule.id)}
-                    >
-                      <td className="px-4 py-3 font-medium text-gray-900 flex items-center gap-2">
-                        <Award className="h-4 w-4 text-purple-600" />
-                        {ruleTypeLabels[rule.rule_type] || rule.rule_type}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium",
-                          rule.employee_type === "CLT" ? "bg-green-100 text-green-700" :
-                          rule.employee_type === "CONTRACT" ? "bg-orange-100 text-orange-700" : "bg-gray-100 text-gray-700"
-                        )}>
-                          {rule.employee_type === "CONTRACT" ? "PJ" : (rule.employee_type || "Todos")}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 font-mono text-xs">
-                        {rule.min_threshold === 0 && !rule.max_threshold ? "Independente" : `≥ ${rule.min_threshold} contratos`}
-                      </td>
-                      <td className="px-4 py-3 font-bold">
-                        {rule.percentage
-                          ? <span className="flex items-center gap-1 text-blue-600"><Percent className="h-3 w-3" />{Number(rule.percentage).toFixed(1)}%</span>
-                          : <span className="text-green-600">{formatCurrency(rule.fixed_amount || "0")}</span>}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{rule.description}</td>
-                      <td className="px-4 py-3 text-gray-400">
-                        {expanded === rule.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                      </td>
-                    </tr>
-                    {expanded === rule.id && (
-                      <tr key={`${rule.id}-detail`} className="bg-purple-50">
-                        <td colSpan={6} className="px-6 py-4">
-                          <div className="grid grid-cols-3 gap-4 text-xs">
-                            <div><p className="text-gray-500 mb-1">Tipo de Regra</p><p className="font-medium">{ruleTypeLabels[rule.rule_type]}</p></div>
-                            <div><p className="text-gray-500 mb-1">Válida desde</p><p className="font-medium">01/01/2025</p></div>
-                            <div><p className="text-gray-500 mb-1">Válida até</p><p className="font-medium">Indeterminado</p></div>
-                          </div>
-                          <div className="mt-3 flex gap-2">
-                            <button className="px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">Editar</button>
-                            <button className="px-3 py-1.5 text-xs border border-red-100 rounded-lg text-red-500 hover:bg-red-50">Desativar</button>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      {error && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+          {error}
         </div>
       )}
 
-      {activeTab === "historico" && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="mb-4 flex items-center gap-2">
+          <Shield className="h-5 w-5 text-blue-600" />
+          <h2 className="text-sm font-semibold text-gray-900">Regras cadastradas no sistema</h2>
+        </div>
+
+        {loading ? (
+          <p className="text-sm text-gray-500">Carregando regras...</p>
+        ) : rules.length > 0 ? (
+          <div className="overflow-hidden rounded-lg border border-gray-200">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="text-left px-6 py-3 font-medium text-gray-600">Período</th>
-                  <th className="text-center px-6 py-3 font-medium text-gray-600">Corretores</th>
-                  <th className="text-right px-6 py-3 font-medium text-gray-600">Total Pago</th>
-                  <th className="text-left px-6 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-left px-6 py-3 font-medium text-gray-600">Ações</th>
+                  <th className="px-4 py-3">Regra</th>
+                  <th className="px-4 py-3">Perfil</th>
+                  <th className="px-4 py-3">Gatilho</th>
+                  <th className="px-4 py-3 text-right">Valor</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {MOCK_HISTORICO.map((h, i) => (
-                  <tr key={i} className="hover:bg-gray-50">
-                    <td className="px-6 py-3 font-medium text-gray-900">{h.mes}</td>
-                    <td className="px-6 py-3 text-center text-gray-600">{h.corretores}</td>
-                    <td className="px-6 py-3 text-right font-bold text-green-700">{formatCurrency(h.total)}</td>
-                    <td className="px-6 py-3">
-                      <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                        {h.status}
-                      </span>
+                {rules.map((rule) => (
+                  <tr key={rule.id}>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-gray-900">{ruleTypeLabels[rule.rule_type] ?? rule.rule_type}</p>
+                      {rule.description && <p className="text-xs text-gray-500">{rule.description}</p>}
                     </td>
-                    <td className="px-6 py-3">
-                      <a href="/folha-corretores" className="text-xs text-blue-600 hover:underline">
-                        Ver Folha →
-                      </a>
+                    <td className="px-4 py-3 text-gray-600">{rule.employee_type ?? "Todos"}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {rule.min_threshold ?? 0}
+                      {rule.max_threshold ? ` ate ${rule.max_threshold}` : "+"}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                      {rule.percentage ? `${Number(rule.percentage).toFixed(2)}%` : formatCurrency(rule.fixed_amount ?? 0)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        ) : (
+          <EmptyState
+            icon={Database}
+            title="Nenhuma regra real cadastrada"
+            description="A tela nao carrega mais regras mockadas. Cadastre regras reais quando a base definitiva estiver pronta."
+          />
+        )}
+      </div>
 
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 text-sm text-blue-800">
-            Para gerar a folha do mês atual, acesse{" "}
-            <a href="/folha-corretores" className="font-semibold hover:underline">Folha de Corretores →</a>
-          </div>
-        </div>
-      )}
-    </div>
+      <EmptyState
+        icon={FileClock}
+        title="Historico de fechamento aguardando dados reais"
+        description="O historico mensal foi removido porque era demonstrativo. Ele volta quando a folha de corretores gravar fechamentos reais no banco."
+      />
+    </PageShell>
   );
 }

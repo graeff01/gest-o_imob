@@ -22,6 +22,7 @@ import {
   Percent,
   FileOutput,
   BarChart3,
+  GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSession } from "next-auth/react";
@@ -53,6 +54,7 @@ const PAGES: SearchResult[] = [
   { id: "p-imoveis", type: "page", title: "Imóveis", href: "/imoveis", icon: Building },
   { id: "p-config", type: "page", title: "Parâmetros do Sistema", subtitle: "Configurações", href: "/configuracoes", icon: Settings2, roles: ["ADMIN_MASTER"] },
   { id: "p-auditoria", type: "page", title: "Auditoria", subtitle: "Log imutável", href: "/auditoria", icon: Shield, roles: ["ADMIN_MASTER"] },
+  { id: "p-release", type: "page", title: "Release Atual", subtitle: "Versao e checklist", href: "/release-atual", icon: GitBranch, roles: ["ADMIN_MASTER"] },
   { id: "p-dimob", type: "page", title: "DIMOB", href: "/dimob", icon: FileOutput },
   { id: "p-relatorios", type: "page", title: "Relatórios", href: "/relatorios", icon: BarChart3 },
 ];

@@ -55,6 +55,40 @@ interface SystemHealth {
   };
 }
 
+interface ManualReadinessItem {
+  id: string;
+  title: string;
+  description: string;
+}
+
+const MANUAL_READINESS: ManualReadinessItem[] = [
+  {
+    id: "login-admin",
+    title: "Login Admin Master validado",
+    description: "Entrar com o perfil tecnico e confirmar acesso a Saude, Auditoria e Configuracoes.",
+  },
+  {
+    id: "login-donos",
+    title: "Logins dos dois Donos validados",
+    description: "Entrar com cada dono e confirmar que telas tecnicas continuam bloqueadas.",
+  },
+  {
+    id: "dw-real",
+    title: "Arquivo DW real importado e reimportado",
+    description: "Validar preview, confirmacao e duplicatas usando o arquivo real do DW.",
+  },
+  {
+    id: "nfse-ciclo",
+    title: "Ciclo NFS-e validado em stub",
+    description: "Emitir, marcar enviada, marcar paga e cancelar uma nota de teste.",
+  },
+  {
+    id: "auditoria-operacional",
+    title: "Auditoria conferida",
+    description: "Conferir se eventos importantes aparecem de forma compreensivel.",
+  },
+];
+
 function runChecks(): HealthCheck[] {
   const fornecedores = getFornecedores();
   const proprietarios = getProprietarios();
@@ -182,6 +216,7 @@ export default function SaudePage() {
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [systemHealthError, setSystemHealthError] = useState<string | null>(null);
+  const [manualReady, setManualReady] = useState<Record<string, boolean>>({});
 
   const refresh = async () => {
     setChecks(runChecks());
@@ -212,6 +247,37 @@ export default function SaudePage() {
     (acc[c.category] = acc[c.category] || []).push(c);
     return acc;
   }, {});
+
+  const manualDone = MANUAL_READINESS.filter((item) => manualReady[item.id]).length;
+  const technicalReadyItems = systemHealth
+    ? [
+        {
+          title: "Ambiente identificado",
+          ok: Boolean(systemHealth.environment.appEnv),
+          detail: systemHealth.environment.appEnv,
+        },
+        {
+          title: "Fallbacks mock desligados",
+          ok: systemHealth.environment.mockFallbacks === "disabled",
+          detail: systemHealth.environment.mockFallbacks,
+        },
+        {
+          title: "Gateway nao esta real por acidente",
+          ok: systemHealth.environment.gatewayMode === "stub" || !systemHealth.environment.isProduction,
+          detail: systemHealth.environment.gatewayMode,
+        },
+        {
+          title: "Banco respondeu",
+          ok: systemHealth.database.connected,
+          detail: systemHealth.database.connected ? "conectado" : systemHealth.database.error ?? "falha",
+        },
+        {
+          title: "Usuarios ativos esperados",
+          ok: systemHealth.database.usersActive === 3,
+          detail: `${systemHealth.database.usersActive ?? 0} ativo(s), esperado: 3`,
+        },
+      ]
+    : [];
 
   return (
     <PageShell
@@ -300,6 +366,79 @@ export default function SaudePage() {
             </div>
           </>
         )}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Checklist manual de PRD</h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Itens que precisam ser validados por uma pessoa antes de liberar ambiente real.
+              </p>
+            </div>
+            <span className="rounded-full bg-gray-50 border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-700">
+              {manualDone}/{MANUAL_READINESS.length}
+            </span>
+          </div>
+          <div className="mt-4 space-y-2">
+            {MANUAL_READINESS.map((item) => (
+              <label
+                key={item.id}
+                className={cn(
+                  "flex cursor-pointer gap-3 rounded-lg border p-3",
+                  manualReady[item.id] ? "border-emerald-100 bg-emerald-50" : "border-gray-100 bg-gray-50"
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={Boolean(manualReady[item.id])}
+                  onChange={(event) =>
+                    setManualReady((current) => ({ ...current, [item.id]: event.target.checked }))
+                  }
+                  className="mt-0.5"
+                />
+                <div>
+                  <p className="text-xs font-semibold text-gray-900">{item.title}</p>
+                  <p className="text-[11px] text-gray-600">{item.description}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-gray-200 bg-white p-5">
+          <h2 className="text-sm font-bold text-gray-900">Revisao tecnica de seguranca</h2>
+          <p className="text-xs text-gray-500 mt-1">
+            Checagens objetivas para evitar liberar ambiente com configuracao perigosa.
+          </p>
+          <div className="mt-4 space-y-2">
+            {technicalReadyItems.map((item) => (
+              <div
+                key={item.title}
+                className={cn(
+                  "flex items-start gap-2 rounded-lg border px-3 py-2",
+                  item.ok ? "border-emerald-100 bg-emerald-50" : "border-amber-100 bg-amber-50"
+                )}
+              >
+                {item.ok ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                )}
+                <div>
+                  <p className="text-xs font-semibold text-gray-900">{item.title}</p>
+                  <p className="text-[11px] text-gray-600">{item.detail}</p>
+                </div>
+              </div>
+            ))}
+            {!systemHealth && (
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                Carregue o diagnostico tecnico para ver a revisao de seguranca.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Score geral */}

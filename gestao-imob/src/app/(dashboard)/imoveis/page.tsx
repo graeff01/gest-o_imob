@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Search } from "lucide-react";
+import { AlertCircle, Plus, Search } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { PropertyForm } from "./property-form";
 
@@ -41,16 +41,23 @@ export default function ImoveisPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (statusFilter) params.set("status", statusFilter);
 
-    const res = await fetch(`/api/properties?${params}`);
-    const data = await res.json();
-    setProperties(data.properties || []);
+    try {
+      const res = await fetch(`/api/properties?${params}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha ao carregar imoveis.");
+      setProperties(data.properties || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Banco indisponivel para carregar imoveis.");
+    }
     setLoading(false);
   }, [search, statusFilter]);
 
@@ -111,7 +118,15 @@ export default function ImoveisPage() {
 
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        {loading ? (
+        {error ? (
+          <div className="p-6 text-sm text-red-700 bg-red-50 border-b border-red-100 flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-semibold">Nao foi possivel carregar imoveis reais.</p>
+              <p className="text-red-600">{error}</p>
+            </div>
+          </div>
+        ) : loading ? (
           <div className="p-8 text-center text-gray-500">Carregando...</div>
         ) : (
           <div className="overflow-x-auto">

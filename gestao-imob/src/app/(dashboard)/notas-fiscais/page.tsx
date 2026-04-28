@@ -8,7 +8,7 @@ import {
   Plus, Square, CheckSquare, FileSpreadsheet, Zap,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { cn, formatCurrency, formatDate, maskSensitiveCpfCnpj } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, maskSensitiveCpfCnpj, validateCNPJ, validateCPF } from "@/lib/utils";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -40,10 +40,12 @@ interface Invoice {
   paid_at: string | null;
   cancelled_at: string | null;
   gateway_id: string | null;
+  gateway_provider: string | null;
   gateway_pdf_url: string | null;
   gateway_xml_url: string | null;
   gateway_status: string | null;
   last_emit_error: string | null;
+  last_emit_at: string | null;
   emit_attempts: number;
   imported_from_dw: boolean;
   dw_agency_name: string | null;
@@ -126,6 +128,204 @@ function buildManualDescription(
   return { title, body };
 }
 
+interface ReadinessCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  detail: string;
+}
+
+function invoiceCode(inv: Invoice) {
+  if (inv.nfse_number) return `NFS-e ${inv.nfse_number}`;
+  if (inv.year_sequence) return `NF-${inv.reference_year}-${String(inv.year_sequence).padStart(3, "0")}`;
+  return "Nota sem sequencia";
+}
+
+function explainEmitError(raw?: string | null) {
+  const text = raw || "Falha nao detalhada pelo gateway.";
+  const lower = text.toLowerCase();
+
+  if (lower.includes("credenciais") || lower.includes("api_key") || lower.includes("401") || lower.includes("403")) {
+    return {
+      title: "Credenciais do gateway nao configuradas ou recusadas.",
+      action: "Validar NFSE_GATEWAY_API_KEY, NFSE_COMPANY_ID e permissao da empresa no NFS.io.",
+    };
+  }
+
+  if (lower.includes("conectar") || lower.includes("timeout") || lower.includes("network") || lower.includes("fetch")) {
+    return {
+      title: "Nao foi possivel conectar ao gateway.",
+      action: "Tentar novamente e verificar se o gateway esta disponivel. Em PRD, acompanhar logs do Railway.",
+    };
+  }
+
+  if (lower.includes("tomador") || lower.includes("cpf") || lower.includes("cnpj") || lower.includes("borrower")) {
+    return {
+      title: "Dados do tomador podem estar invalidos.",
+      action: "Conferir nome, CPF/CNPJ, contato e endereco antes de reenviar.",
+    };
+  }
+
+  if (lower.includes("servico") || lower.includes("service") || lower.includes("aliquota") || lower.includes("iss")) {
+    return {
+      title: "Dados do servico ou tributacao podem estar invalidos.",
+      action: "Conferir descricao, valor, aliquota, codigo de servico e configuracao fiscal da empresa.",
+    };
+  }
+
+  return {
+    title: "O gateway recusou a emissao.",
+    action: "Ler o detalhe tecnico abaixo, ajustar os dados indicados e reenviar a nota.",
+  };
+}
+
+function operationMessage(inv: Invoice) {
+  if (inv.status === "PENDENTE") return "A nota esta pronta para revisao e emissao.";
+  if (inv.status === "PROCESSANDO") return "A emissao foi iniciada e aguarda retorno do gateway.";
+  if (inv.status === "ERRO") return "A emissao falhou. Corrija o ponto indicado e tente novamente.";
+  if (inv.status === "EMITIDA") return "A nota foi emitida. Proximo passo: enviar ao cliente ou marcar pagamento.";
+  if (inv.status === "ENVIADA") return "A nota foi enviada ao cliente e aguarda pagamento.";
+  if (inv.status === "PAGA") return "Ciclo concluido: nota emitida, enviada e paga.";
+  return "Nota cancelada. Ela fica registrada para rastreabilidade.";
+}
+
+function buildInvoiceTimeline(inv: Invoice) {
+  const events: Array<{
+    label: string;
+    date: string | null;
+    detail: string;
+    tone: "blue" | "green" | "red" | "amber" | "purple" | "gray";
+  }> = [
+    {
+      label: inv.imported_from_dw ? "Importada do DW" : "Criada manualmente",
+      date: inv.created_at,
+      detail: inv.imported_from_dw
+        ? "Entrada criada a partir da planilha do DW."
+        : "Entrada criada manualmente no sistema.",
+      tone: "blue",
+    },
+  ];
+
+  if (inv.emit_attempts > 0) {
+    events.push({
+      label: inv.status === "ERRO" ? "Tentativa de emissao falhou" : "Tentativa de emissao registrada",
+      date: inv.last_emit_at,
+      detail: `${inv.emit_attempts} tentativa(s) de emissao. Gateway: ${inv.gateway_provider || "stub/local"}.`,
+      tone: inv.status === "ERRO" ? "red" : "amber",
+    });
+  }
+
+  if (inv.issued_at) {
+    events.push({
+      label: "NFS-e emitida",
+      date: inv.issued_at,
+      detail: inv.gateway_status ? `Status do gateway: ${inv.gateway_status}.` : "Emissao registrada com sucesso.",
+      tone: "green",
+    });
+  }
+
+  if (inv.sent_at) {
+    events.push({ label: "Enviada ao cliente", date: inv.sent_at, detail: "Marcada como enviada.", tone: "purple" });
+  }
+
+  if (inv.paid_at) {
+    events.push({ label: "Pagamento confirmado", date: inv.paid_at, detail: "Marcada como paga.", tone: "green" });
+  }
+
+  if (inv.cancelled_at) {
+    events.push({ label: "Nota cancelada", date: inv.cancelled_at, detail: inv.notes || "Cancelamento registrado.", tone: "gray" });
+  }
+
+  return events;
+}
+
+function isValidCpfCnpj(value: string) {
+  const clean = value.replace(/\D/g, "");
+  if (clean.length === 11) return validateCPF(clean);
+  if (clean.length === 14) return validateCNPJ(clean);
+  return false;
+}
+
+function validateInvoiceForEmission(inv: Invoice, cep: string, aliquota: string): ReadinessCheck[] {
+  const cleanCep = cep.replace(/\D/g, "");
+  const amount = Number(inv.amount);
+  const aliquotaNumber = Number(aliquota);
+
+  return [
+    {
+      id: "client",
+      label: "Tomador",
+      ok: inv.client_name.trim().length >= 2,
+      detail: inv.client_name.trim().length >= 2 ? "Nome preenchido." : "Informe o nome do tomador.",
+    },
+    {
+      id: "document",
+      label: "CPF/CNPJ",
+      ok: isValidCpfCnpj(inv.client_cpf_cnpj),
+      detail: isValidCpfCnpj(inv.client_cpf_cnpj) ? "Documento valido." : "CPF/CNPJ ausente ou invalido.",
+    },
+    {
+      id: "amount",
+      label: "Valor",
+      ok: Number.isFinite(amount) && amount > 0,
+      detail: Number.isFinite(amount) && amount > 0 ? "Valor maior que zero." : "Valor da nota deve ser maior que zero.",
+    },
+    {
+      id: "competence",
+      label: "Competencia",
+      ok: !!inv.reference_year && !!inv.reference_month,
+      detail: inv.reference_year && inv.reference_month ? `${MONTH_NAMES[(inv.reference_month ?? 1) - 1]}/${inv.reference_year}` : "Informe mes e ano de competencia.",
+    },
+    {
+      id: "description",
+      label: "Descricao",
+      ok: inv.description_body.trim().length >= 15,
+      detail: inv.description_body.trim().length >= 15 ? "Descricao suficiente para emissao." : "Descricao muito curta para NFS-e.",
+    },
+    {
+      id: "service",
+      label: "Servico",
+      ok: Boolean(SERVICE_LABELS[inv.service_type]),
+      detail: SERVICE_LABELS[inv.service_type] ? SERVICE_LABELS[inv.service_type] : "Tipo de servico invalido.",
+    },
+    {
+      id: "cep",
+      label: "CEP",
+      ok: cleanCep.length === 8,
+      detail: cleanCep.length === 8 ? "CEP preenchido." : "Informe o CEP do endereco do imovel/tomador.",
+    },
+    {
+      id: "tax",
+      label: "Aliquota",
+      ok: Number.isFinite(aliquotaNumber) && aliquotaNumber >= 0 && aliquotaNumber <= 100,
+      detail: Number.isFinite(aliquotaNumber) && aliquotaNumber >= 0 && aliquotaNumber <= 100 ? `${aliquotaNumber}%` : "Aliquota deve estar entre 0 e 100.",
+    },
+  ];
+}
+
+function operationalStatus(inv: Invoice, checks?: ReadinessCheck[]) {
+  const hasDataIssue = checks ? checks.some((check) => !check.ok) : false;
+  if (["EMITIDA", "ENVIADA", "PAGA", "CANCELADA", "PROCESSANDO"].includes(inv.status)) {
+    return STATUS_CONFIG[inv.status].label;
+  }
+  if (inv.status === "ERRO" && hasDataIssue) return "Erro de dados";
+  if (inv.status === "ERRO") return "Erro de gateway";
+  return hasDataIssue ? "Pendente de revisao" : "Pronta para emitir";
+}
+
+function findPotentialDuplicates(target: Invoice, all: Invoice[]) {
+  return all.filter((inv) => {
+    if (inv.id === target.id || inv.status === "CANCELADA") return false;
+    const sameTitle = target.title_number && inv.title_number && target.title_number === inv.title_number;
+    const sameCore =
+      inv.client_cpf_cnpj.replace(/\D/g, "") === target.client_cpf_cnpj.replace(/\D/g, "") &&
+      Number(inv.amount) === Number(target.amount) &&
+      inv.reference_month === target.reference_month &&
+      inv.reference_year === target.reference_year;
+    return Boolean(sameTitle || sameCore);
+  });
+}
+
 // ─── Componente principal ─────────────────────────────────────────────────────
 
 export default function NotasFiscaisPage() {
@@ -186,6 +386,8 @@ export default function NotasFiscaisPage() {
   const [importErrors, setImportErrors]   = useState<ParseError[]>([]);
   const [importing, setImporting]         = useState(false);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [dwCleanupLoading, setDwCleanupLoading] = useState(false);
+  const [dwCleanupMessage, setDwCleanupMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Carregar dados ──
@@ -389,6 +591,12 @@ export default function NotasFiscaisPage() {
   // ── Emissão via gateway ──
   const handleEmit = async () => {
     if (!emitModal) return;
+    const checks = validateInvoiceForEmission(emitModal, emitCep, emitAliquota);
+    const blockingIssues = checks.filter((check) => !check.ok);
+    if (blockingIssues.length > 0) {
+      setEmitError(`Revise antes de emitir: ${blockingIssues.map((check) => check.detail).join(" ")}`);
+      return;
+    }
     setEmitting(true);
     setEmitError(null);
     try {
@@ -401,7 +609,7 @@ export default function NotasFiscaisPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) { setEmitError(data.error ?? data.details ?? "Falha ao emitir."); return; }
+      if (!res.ok) { setEmitError(data.details ?? data.error ?? "Falha ao emitir."); return; }
       setEmitModal(null);
       await fetchInvoices();
     } catch {
@@ -453,6 +661,39 @@ export default function NotasFiscaisPage() {
     } finally { setImporting(false); }
   };
 
+  const handleClearPendingDw = async () => {
+    setDwCleanupLoading(true);
+    setDwCleanupMessage(null);
+    try {
+      const previewResponse = await fetch("/api/invoices/import-dw", { method: "DELETE" });
+      const preview = await previewResponse.json().catch(() => ({}));
+      if (!previewResponse.ok) throw new Error(preview.error ?? "Falha ao consultar importacoes DW pendentes.");
+
+      const removable = Number(preview.removable ?? 0);
+      if (removable === 0) {
+        setDwCleanupMessage("Nao ha notas DW pendentes para remover.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Remover ${removable} nota(s) importada(s) do DW que ainda estao pendentes? Notas emitidas, enviadas, pagas ou canceladas nao serao apagadas.`
+      );
+      if (!confirmed) return;
+
+      const cleanupResponse = await fetch("/api/invoices/import-dw?dryRun=false", { method: "DELETE" });
+      const cleanup = await cleanupResponse.json().catch(() => ({}));
+      if (!cleanupResponse.ok) throw new Error(cleanup.error ?? "Falha ao limpar importacoes DW pendentes.");
+
+      setDwCleanupMessage(cleanup.message ?? `${cleanup.deleted ?? 0} nota(s) removida(s).`);
+      setSelectedIds(new Set());
+      await fetchInvoices();
+    } catch (err) {
+      setDwCleanupMessage(err instanceof Error ? err.message : "Falha ao limpar importacoes DW pendentes.");
+    } finally {
+      setDwCleanupLoading(false);
+    }
+  };
+
   const resetImport = () => {
     setImportFile(null); setImportPreview(null); setImportSummary(null);
     setImportErrors([]); setImportSuccess(null);
@@ -473,6 +714,10 @@ export default function NotasFiscaisPage() {
     const emittedValue = mi.filter(i => ["EMITIDA","ENVIADA"].includes(i.status)).reduce((s, i) => s + Number(i.amount), 0);
     const pendingValue = mi.filter(i => i.status === "PENDENTE").reduce((s, i) => s + Number(i.amount), 0);
     const issTotal     = totalValue * ISS_RATE;
+    const errorCount    = mi.filter(i => i.status === "ERRO").length;
+    const cancelledCount = mi.filter(i => i.status === "CANCELADA").length;
+    const importedDwCount = mi.filter(i => i.imported_from_dw).length;
+    const gatewayReadyCount = mi.filter(i => i.gateway_id || i.gateway_status || i.gateway_pdf_url || i.gateway_xml_url).length;
 
     const byService = (["INTERMEDIACAO","AGENCIAMENTO","ADMINISTRACAO"] as const).map(key => {
       const items = mi.filter(i => i.service_type === key);
@@ -646,6 +891,20 @@ export default function NotasFiscaisPage() {
     </div>
 
     <div class="section">
+      <div class="section-title">Resumo Operacional</div>
+      <table>
+        <tbody>
+          <tr><td>Notas pendentes de emissao</td><td style="text-align:right;font-weight:700">${mi.filter(i => i.status === "PENDENTE").length}</td></tr>
+          <tr><td>Notas com erro de emissao</td><td style="text-align:right;font-weight:700;color:#dc2626">${errorCount}</td></tr>
+          <tr><td>Notas canceladas</td><td style="text-align:right;font-weight:700;color:#6b7280">${cancelledCount}</td></tr>
+          <tr><td>Notas importadas do DW</td><td style="text-align:right;font-weight:700;color:#1d4ed8">${importedDwCount}</td></tr>
+          <tr><td>Notas com retorno/ID do gateway</td><td style="text-align:right;font-weight:700;color:#4338ca">${gatewayReadyCount}</td></tr>
+          <tr><td>ISS estimado total</td><td style="text-align:right;font-weight:700;color:#1d4ed8">${fmt(issTotal)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
       <div class="section-title">Detalhamento das Notas (${mi.length})</div>
       ${mi.length === 0 ? '<p style="color:#94a3b8;text-align:center;padding:24px">Nenhuma nota para este período.</p>' : `
       <table>
@@ -693,6 +952,10 @@ export default function NotasFiscaisPage() {
     else setSelectedIds(new Set(pendentesInView.map(i => i.id)));
   };
 
+  const emitChecks = emitModal ? validateInvoiceForEmission(emitModal, emitCep, emitAliquota) : [];
+  const emitReady = emitChecks.length > 0 && emitChecks.every((check) => check.ok);
+  const emitDuplicates = emitModal ? findPotentialDuplicates(emitModal, invoices) : [];
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
@@ -728,6 +991,15 @@ export default function NotasFiscaisPage() {
             Exportar
           </button>
           <button
+            onClick={handleClearPendingDw}
+            disabled={dwCleanupLoading}
+            className="flex items-center gap-2 px-3 py-2 border border-amber-300 text-amber-700 bg-amber-50 rounded-lg text-sm font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors"
+            title="Remove somente notas importadas do DW que ainda estao pendentes"
+          >
+            {dwCleanupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Limpar DW pendente
+          </button>
+          <button
             onClick={() => { setManualModal(true); setManualForm(EMPTY_MANUAL_FORM); setManualError(null); }}
             className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
           >
@@ -745,6 +1017,26 @@ export default function NotasFiscaisPage() {
       </div>
 
       {/* ── Cards de resumo ── */}
+      {dwCleanupMessage && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          {dwCleanupMessage}
+        </div>
+      )}
+
+      <div className="bg-white border border-blue-100 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Fluxo seguro de NFS-e</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Importe o DW, revise as pendencias, valide CPF/CNPJ, CEP, valor, competencia e descricao,
+              emita, envie ao cliente e depois marque pagamento ou cancelamento. A tela bloqueia emissao
+              incompleta antes de chamar o gateway.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-xl border border-gray-200">
           <p className="text-xs text-gray-500 mb-1">A Emitir</p>
@@ -951,6 +1243,8 @@ export default function NotasFiscaisPage() {
                   const isExpanded = expandedId === inv.id;
                   const overdue   = isOverdue(inv);
                   const isSelected = selectedIds.has(inv.id);
+                  const rowChecks = validateInvoiceForEmission(inv, "00000000", "9");
+                  const rowOperationalStatus = operationalStatus(inv, rowChecks);
 
                   return (
                     <>
@@ -1032,6 +1326,7 @@ export default function NotasFiscaisPage() {
                             <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
                             {st.label}
                           </span>
+                          <p className="mt-1 text-[10px] text-gray-400">{rowOperationalStatus}</p>
                         </td>
 
                         {/* Ações */}
@@ -1107,6 +1402,99 @@ export default function NotasFiscaisPage() {
                       {isExpanded && (
                         <tr key={`${inv.id}-detail`} className="bg-gray-50/80">
                           <td colSpan={9} className="px-6 py-4 border-t border-gray-100">
+                            <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-4 mb-4">
+                              <div className="space-y-3">
+                                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Situacao da nota</p>
+                                      <h3 className="text-sm font-semibold text-gray-900 mt-1">{invoiceCode(inv)}</h3>
+                                      <p className="text-xs text-gray-500 mt-1">{operationMessage(inv)}</p>
+                                    </div>
+                                    <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border", st.color)}>
+                                      <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
+                                      {st.label}
+                                    </span>
+                                  </div>
+
+                                  {inv.status === "ERRO" && (
+                                    <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
+                                      {(() => {
+                                        const explained = explainEmitError(inv.last_emit_error);
+                                        return (
+                                          <>
+                                            <p className="text-sm font-semibold text-red-800">{explained.title}</p>
+                                            <p className="text-xs text-red-700 mt-1">{explained.action}</p>
+                                            {inv.last_emit_error && (
+                                              <details className="mt-2">
+                                                <summary className="text-[11px] text-red-600 cursor-pointer">Ver detalhe tecnico</summary>
+                                                <p className="mt-1 text-[11px] text-red-700 font-mono break-words">{inv.last_emit_error}</p>
+                                              </details>
+                                            )}
+                                          </>
+                                        );
+                                      })()}
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-3">Gateway e emissao</p>
+                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                                    <div>
+                                      <p className="text-gray-400 mb-0.5">Provider</p>
+                                      <p className="font-mono text-gray-700">{inv.gateway_provider || "aguardando"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-gray-400 mb-0.5">Status gateway</p>
+                                      <p className="font-mono text-gray-700">{inv.gateway_status || "-"}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-gray-400 mb-0.5">Tentativas</p>
+                                      <p className="font-medium text-gray-700">{inv.emit_attempts}</p>
+                                    </div>
+                                    <div>
+                                      <p className="text-gray-400 mb-0.5">Ultima tentativa</p>
+                                      <p className="font-medium text-gray-700">{inv.last_emit_at ? formatDate(inv.last_emit_at) : "-"}</p>
+                                    </div>
+                                  </div>
+                                  {inv.gateway_id && (
+                                    <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-2 text-xs">
+                                      <p className="text-gray-400 mb-1">ID no gateway</p>
+                                      <p className="font-mono text-gray-700 break-all">{inv.gateway_id}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Historico visual</p>
+                                <div className="space-y-4">
+                                  {buildInvoiceTimeline(inv).map((event, index) => (
+                                    <div key={`${event.label}-${index}`} className="relative flex gap-3">
+                                      {index < buildInvoiceTimeline(inv).length - 1 && (
+                                        <div className="absolute left-[7px] top-4 h-full w-px bg-gray-200" />
+                                      )}
+                                      <div className={cn(
+                                        "relative z-10 mt-1 h-3.5 w-3.5 rounded-full border-2 bg-white",
+                                        event.tone === "green" && "border-green-500",
+                                        event.tone === "red" && "border-red-500",
+                                        event.tone === "amber" && "border-amber-500",
+                                        event.tone === "purple" && "border-purple-500",
+                                        event.tone === "blue" && "border-blue-500",
+                                        event.tone === "gray" && "border-gray-400",
+                                      )} />
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-semibold text-gray-900">{event.label}</p>
+                                        <p className="text-[11px] text-gray-400">{event.date ? formatDate(event.date) : "Data nao registrada"}</p>
+                                        <p className="text-xs text-gray-600 mt-0.5">{event.detail}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
                             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs mb-3">
                               <div>
                                 <p className="text-gray-400 mb-0.5">Código do Imóvel</p>
@@ -1218,6 +1606,60 @@ export default function NotasFiscaisPage() {
                   <p className="font-mono text-gray-900 bg-gray-50 rounded px-2 py-1.5">{emitModal.client_cpf_cnpj}</p>
                 </div>
               </div>
+              <div className="border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Checklist antes da emissao</p>
+                    <p className="text-xs text-gray-500">A nota so pode ser emitida quando todos os itens estiverem validos.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEmitError(emitReady ? null : `Pendencias: ${emitChecks.filter((check) => !check.ok).map((check) => check.detail).join(" ")}`)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Revalidar nota
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {emitChecks.map((check) => (
+                    <div
+                      key={check.id}
+                      className={cn(
+                        "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
+                        check.ok ? "bg-green-50 border-green-100 text-green-800" : "bg-red-50 border-red-100 text-red-800"
+                      )}
+                    >
+                      {check.ok ? <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />}
+                      <div>
+                        <p className="font-semibold">{check.label}</p>
+                        <p className={check.ok ? "text-green-700" : "text-red-700"}>{check.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {emitDuplicates.length > 0 && (
+                <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 text-xs text-amber-800">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold">Possivel duplicidade encontrada</p>
+                      <p className="mt-1">
+                        Existe(m) {emitDuplicates.length} nota(s) com mesmo titulo DW ou mesmo cliente, valor e competencia.
+                        Revise antes de emitir para evitar duplicidade fiscal.
+                      </p>
+                      <div className="mt-2 space-y-1">
+                        {emitDuplicates.slice(0, 3).map((dup) => (
+                          <p key={dup.id} className="font-mono text-amber-900">
+                            {invoiceCode(dup)} - {dup.client_name} - {formatCurrency(Number(dup.amount))} - {STATUS_CONFIG[dup.status].label}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-gray-400 mb-1">Endereço do imóvel</p>
                 {emitModal.property_address && (
@@ -1275,7 +1717,16 @@ export default function NotasFiscaisPage() {
               </div>
               <div className="text-xs">
                 <p className="text-gray-400 mb-0.5">Descrição da NFS-e</p>
-                <p className="text-gray-700 bg-gray-50 rounded px-2 py-2 leading-relaxed">{emitModal.description_body}</p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Descricao que sera enviada ao gateway</p>
+                  <p className="text-gray-700 mt-1 leading-relaxed">{emitModal.description_body}</p>
+                  <div className="grid grid-cols-2 gap-2 mt-3 text-[11px] text-gray-500">
+                    <p>Servico: <span className="font-medium text-gray-800">{SERVICE_LABELS[emitModal.service_type]}</span></p>
+                    <p>Competencia: <span className="font-medium text-gray-800">{emitModal.reference_month ? `${MONTH_NAMES[emitModal.reference_month - 1]}/${emitModal.reference_year}` : emitModal.reference_year}</span></p>
+                    <p>Valor: <span className="font-medium text-gray-800">{formatCurrency(Number(emitModal.amount))}</span></p>
+                    <p>Tomador: <span className="font-medium text-gray-800">{emitModal.client_name}</span></p>
+                  </div>
+                </div>
               </div>
               <div className="border border-gray-100 rounded-lg overflow-hidden">
                 <button
@@ -1315,19 +1766,44 @@ export default function NotasFiscaisPage() {
                 <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <p>Modo de desenvolvimento — a nota será registrada no sistema, mas <strong>não enviada à prefeitura</strong> até o certificado digital ser configurado.</p>
               </div>
+              <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
+                <Zap className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">Preparado para NFS.io</p>
+                  <p className="mt-0.5">Quando HML/PRD estiverem prontos, este mesmo fluxo usara as variaveis NFSE_* e o certificado A1 configurados no ambiente.</p>
+                </div>
+              </div>
               {emitModal.emit_attempts > 0 && (
                 <p className="text-xs text-gray-400">Tentativas anteriores: {emitModal.emit_attempts}</p>
               )}
               {emitError && (
                 <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
-                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" /><p>{emitError}</p>
+                  <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                  <div>
+                    {(() => {
+                      const explained = explainEmitError(emitError);
+                      return (
+                        <>
+                          <p className="font-semibold">{explained.title}</p>
+                          <p className="mt-0.5">{explained.action}</p>
+                          <details className="mt-2">
+                            <summary className="text-red-600 cursor-pointer">Ver detalhe tecnico</summary>
+                            <p className="mt-1 font-mono break-words">{emitError}</p>
+                          </details>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
             </div>
             <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100">
+              {!emitReady && (
+                <p className="mr-auto text-xs font-medium text-red-600">Resolva as pendencias do checklist para emitir.</p>
+              )}
               <button onClick={() => setEmitModal(null)} disabled={emitting} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">Cancelar</button>
               <button
-                onClick={handleEmit} disabled={emitting}
+                onClick={handleEmit} disabled={emitting || !emitReady}
                 className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {emitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Emitindo...</> : <><FileText className="h-4 w-4" /> Confirmar Emissão</>}
@@ -1634,13 +2110,6 @@ export default function NotasFiscaisPage() {
                   {importing ? <Loader2 className="h-8 w-8 text-blue-400 animate-spin mb-2" /> : <Upload className="h-8 w-8 text-gray-300 mb-2" />}
                   <p className="text-sm font-medium text-gray-700">{importing ? "Lendo arquivo..." : "Clique ou arraste o arquivo Excel do DW"}</p>
                   <p className="text-xs text-gray-400 mt-1">Aceita .xlsx, .xls ou .csv (exportação DW) · Máximo 10MB</p>
-                  <a
-                    href="/api/invoices/sample-dw" download
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-3 text-xs text-blue-500 hover:text-blue-700 underline underline-offset-2"
-                  >
-                    Baixar planilha de exemplo
-                  </a>
                 </label>
               )}
               {importErrors.length > 0 && (

@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { CampaignStatus } from "@/generated/prisma/enums";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth } from "@/server/authz";
 
 export async function GET(request: Request) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status") || "";
   const validStatus = Object.values(CampaignStatus).includes(status as CampaignStatus)
@@ -25,6 +34,10 @@ export async function GET(request: Request) {
     }
     throw new Error("empty_db");
   } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("campaigns.list");
+    }
+
     const { MOCK_CAMPAIGNS } = await import("@/lib/mock-data");
     let filtered = MOCK_CAMPAIGNS;
     if (status) {
@@ -61,6 +74,10 @@ export async function POST(request: Request) {
     return NextResponse.json(campaign, { status: 201 });
   } catch (error) {
     console.error("Error creating campaign:", error);
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("campaigns.create");
+    }
+
     // FALLBACK MOCK: If DB is offline, pretend it saved successfully
     const mockCampaign = {
       id: "mock-" + Date.now(),

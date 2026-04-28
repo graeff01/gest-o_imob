@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { createRevenueSchema } from "@/lib/validations/financeiro";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth } from "@/server/authz";
 
 export async function GET(request: Request) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const month = searchParams.get("month");
   const year = searchParams.get("year");
@@ -42,7 +51,11 @@ export async function GET(request: Request) {
       page,
       limit,
     });
-  } catch (error) {
+  } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("revenues.list");
+    }
+
     return NextResponse.json({ revenues: [], total: 0, totalAmount: 0, page, limit });
   }
 }
@@ -86,6 +99,10 @@ export async function POST(request: Request) {
     return NextResponse.json(revenue, { status: 201 });
   } catch (error) {
     console.error("Error creating revenue:", error);
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("revenues.create");
+    }
+
     // FALLBACK MOCK
     const mockRevenue = {
       id: "mock-" + Date.now(),

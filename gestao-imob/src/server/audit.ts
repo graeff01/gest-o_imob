@@ -7,7 +7,8 @@ type AuditAction =
   | "invoice.emit.succeeded"
   | "invoice.emit.failed"
   | "invoice.import.previewed"
-  | "invoice.import.confirmed";
+  | "invoice.import.confirmed"
+  | "invoice.import.cleaned";
 
 interface AuditPayload {
   action: AuditAction;

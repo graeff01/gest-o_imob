@@ -2,8 +2,17 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { DocumentType, ProcessingStatus } from "@/generated/prisma/enums";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth } from "@/server/authz";
 
 export async function GET(request: Request) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const type = searchParams.get("type") || "";
   const status = searchParams.get("status") || "";
@@ -71,6 +80,10 @@ export async function POST(request: Request) {
     return NextResponse.json(doc, { status: 201 });
   } catch (error) {
     console.error("Error creating document:", error);
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("documents.create");
+    }
+
     // FALLBACK MOCK: If DB is offline, pretend it saved successfully
     const mockDoc = {
       id: "mock-" + Date.now(),

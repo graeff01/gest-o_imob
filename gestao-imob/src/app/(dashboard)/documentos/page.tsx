@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useRef, useCallback } from "react";
 import {
@@ -18,10 +18,7 @@ import {
   CreditCard,
   Edit3,
   PenLine,
-  ChevronDown,
-  X,
   Send,
-  Plus,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
@@ -32,14 +29,14 @@ import {
   getDocTypeLabel,
 } from "@/lib/utils/ai-processor";
 
-// ─── Constants ─────────────────────────────────────
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const DOCUMENT_TYPES: { value: DocumentType; label: string }[] = [
   { value: "DESPESA", label: "Despesa" },
   { value: "RECEITA", label: "Receita" },
   { value: "NOTA_FISCAL", label: "Nota Fiscal" },
-  { value: "EXTRATO_BANCARIO", label: "Extrato Bancário" },
-  { value: "COMISSAO", label: "Comissão" },
+  { value: "EXTRATO_BANCARIO", label: "Extrato BancÃ¡rio" },
+  { value: "COMISSAO", label: "ComissÃ£o" },
   { value: "IMPOSTO", label: "Imposto/Tributo" },
   { value: "COMPROVANTE_PIX", label: "Comprovante PIX" },
   { value: "CONTRATO", label: "Contrato" },
@@ -47,26 +44,26 @@ const DOCUMENT_TYPES: { value: DocumentType; label: string }[] = [
 ];
 
 const CATEGORIAS_DESPESA = [
-  "Contas de Consumo", "Material", "Manutenção", "Contas Operacionais Venda",
-  "Contas Operacionais Locação", "Folha de Pagamentos", "Tarifas Bancárias",
-  "Impostos e Tributos", "Gastos Espaço Físico", "Marketing",
+  "Contas de Consumo", "Material", "ManutenÃ§Ã£o", "Contas Operacionais Venda",
+  "Contas Operacionais LocaÃ§Ã£o", "Folha de Pagamentos", "Tarifas BancÃ¡rias",
+  "Impostos e Tributos", "Gastos EspaÃ§o FÃ­sico", "Marketing",
 ];
 
 const SUBCATEGORIAS: Record<string, string[]> = {
-  "Contas de Consumo": ["Luz/Energia", "Água", "Telefone/Internet", "Gás", "Condomínio escritório"],
-  "Material": ["Escritório", "Limpeza", "Copa/Cozinha", "Informática", "Impressão"],
-  "Manutenção": ["Predial", "Equipamentos", "Ar condicionado", "Elétrica", "Hidráulica", "Pintura"],
-  "Contas Operacionais Venda": ["Publicidade venda", "Placas", "Fotos imóveis", "CRECI", "Cartório"],
-  "Contas Operacionais Locação": ["Publicidade locação", "Placas locação", "Vistorias", "Seguros", "Marketing digital"],
-  "Folha de Pagamentos": ["Salários locação", "Salários venda", "Comissões locação", "Comissões venda", "FGTS", "INSS", "Vale transporte", "Vale refeição"],
-  "Tarifas Bancárias": ["Manutenção conta", "DOC/TED", "Boletos emitidos", "Anuidade cartão", "Juros/Multas"],
-  "Impostos e Tributos": ["ISS", "IRPJ", "CSLL", "PIS", "COFINS", "IPTU escritório", "Alvará", "Simples Nacional"],
-  "Gastos Espaço Físico": ["Aluguel escritório", "Condomínio", "IPTU", "Seguro predial", "Limpeza terceirizada"],
+  "Contas de Consumo": ["Luz/Energia", "Ãgua", "Telefone/Internet", "GÃ¡s", "CondomÃ­nio escritÃ³rio"],
+  "Material": ["EscritÃ³rio", "Limpeza", "Copa/Cozinha", "InformÃ¡tica", "ImpressÃ£o"],
+  "ManutenÃ§Ã£o": ["Predial", "Equipamentos", "Ar condicionado", "ElÃ©trica", "HidrÃ¡ulica", "Pintura"],
+  "Contas Operacionais Venda": ["Publicidade venda", "Placas", "Fotos imÃ³veis", "CRECI", "CartÃ³rio"],
+  "Contas Operacionais LocaÃ§Ã£o": ["Publicidade locaÃ§Ã£o", "Placas locaÃ§Ã£o", "Vistorias", "Seguros", "Marketing digital"],
+  "Folha de Pagamentos": ["SalÃ¡rios locaÃ§Ã£o", "SalÃ¡rios venda", "ComissÃµes locaÃ§Ã£o", "ComissÃµes venda", "FGTS", "INSS", "Vale transporte", "Vale refeiÃ§Ã£o"],
+  "Tarifas BancÃ¡rias": ["ManutenÃ§Ã£o conta", "DOC/TED", "Boletos emitidos", "Anuidade cartÃ£o", "Juros/Multas"],
+  "Impostos e Tributos": ["ISS", "IRPJ", "CSLL", "PIS", "COFINS", "IPTU escritÃ³rio", "AlvarÃ¡", "Simples Nacional"],
+  "Gastos EspaÃ§o FÃ­sico": ["Aluguel escritÃ³rio", "CondomÃ­nio", "IPTU", "Seguro predial", "Limpeza terceirizada"],
   "Marketing": ["Marketing digital", "Impulsionamento", "Material impresso", "Eventos"],
 };
 
 const CATEGORIAS_RECEITA = [
-  "Intermediação", "Agenciamento", "Administração", "NFSe Aluguel",
+  "IntermediaÃ§Ã£o", "Agenciamento", "AdministraÃ§Ã£o", "NFSe Aluguel",
   "Campanha Sucesso", "Multa Contratual", "Outro",
 ];
 
@@ -74,8 +71,8 @@ const DESTINOS = [
   { value: "expenses", label: "Despesas (Financeiro)" },
   { value: "revenues", label: "Receitas (Financeiro)" },
   { value: "invoices", label: "Notas Fiscais" },
-  { value: "bank_transactions", label: "Extratos Bancários" },
-  { value: "manual", label: "Classificação Manual" },
+  { value: "bank_transactions", label: "Extratos BancÃ¡rios" },
+  { value: "manual", label: "ClassificaÃ§Ã£o Manual" },
 ];
 
 const DESTINO_ICONS: Record<string, React.ElementType> = {
@@ -86,7 +83,7 @@ const DESTINO_ICONS: Record<string, React.ElementType> = {
   manual: FileText,
 };
 
-// ─── Types ─────────────────────────────────────────
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 interface ChatMessage {
   id: string;
@@ -101,7 +98,7 @@ interface ChatMessage {
 
 type ViewMode = "chat" | "manual";
 
-// ─── Component ─────────────────────────────────────
+// â”€â”€â”€ Component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function CentralIAPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -125,7 +122,7 @@ export default function CentralIAPage() {
     destino: "expenses",
     destino_descricao: "",
     confianca: 100,
-    observacoes: "Inserção manual",
+    observacoes: "InserÃ§Ã£o manual",
   });
 
   const scrollToBottom = useCallback(() => {
@@ -146,7 +143,7 @@ export default function CentralIAPage() {
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
   }, []);
 
-  // ─── Process File ────────────────────────────────
+  // â”€â”€â”€ Process File â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const processFile = async (file: File) => {
     if (isProcessing) return;
@@ -154,7 +151,7 @@ export default function CentralIAPage() {
 
     const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
     if (!allowed.includes(file.type)) {
-      addMessage({ role: "assistant", content: `Formato não suportado. Envie JPG, PNG, WebP ou PDF.`, status: "error" });
+      addMessage({ role: "assistant", content: `Formato nÃ£o suportado. Envie JPG, PNG, WebP ou PDF.`, status: "error" });
       return;
     }
     if (file.size > 20 * 1024 * 1024) {
@@ -183,23 +180,23 @@ export default function CentralIAPage() {
       }
 
       updateMessage(processingId, {
-        content: `Documento analisado (${result.mode === "ai" ? "GPT-4o" : "mock"})`,
+        content: `Documento analisado (${result.mode === "ai" ? "GPT-4o" : "modo local sem persistencia"})`,
         extraction: result.data as AIExtractionResult,
         status: "success",
       });
     } catch {
-      updateMessage(processingId, { content: "Erro de conexão. Tente novamente.", status: "error" });
+      updateMessage(processingId, { content: "Erro de conexÃ£o. Tente novamente.", status: "error" });
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // ─── Confirm & Route ────────────────────────────
+  // â”€â”€â”€ Confirm & Route â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const confirmAndRoute = async (messageId: string, extraction: AIExtractionResult) => {
     updateMessage(messageId, { status: "confirmed", editing: false });
 
-    const confirmId = addMessage({ role: "assistant", content: "Lançando no sistema...", status: "processing" });
+    const confirmId = addMessage({ role: "assistant", content: "LanÃ§ando no sistema...", status: "processing" });
 
     try {
       const res = await fetch("/api/process-document", {
@@ -211,26 +208,26 @@ export default function CentralIAPage() {
 
       if (result.success) {
         updateMessage(confirmId, {
-          content: `Lançado com sucesso em ${getDestinoLabel(extraction.destino)}!`,
+          content: `Registro persistido em ${getDestinoLabel(extraction.destino)}.`,
           status: "success",
         });
       } else {
-        updateMessage(confirmId, { content: `Erro ao lançar: ${result.error}`, status: "error" });
+        updateMessage(confirmId, { content: `Erro ao lanÃ§ar: ${result.error}`, status: "error" });
       }
     } catch {
-      updateMessage(confirmId, { content: "Erro de conexão ao lançar.", status: "error" });
+      updateMessage(confirmId, { content: "Erro de conexÃ£o ao lanÃ§ar.", status: "error" });
     }
   };
 
-  // ─── Manual Submit ───────────────────────────────
+  // â”€â”€â”€ Manual Submit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const handleManualSubmit = async () => {
     if (!manualForm.descricao || !manualForm.valor) return;
 
     const extraction = { ...manualForm } as AIExtractionResult;
 
-    addMessage({ role: "user", content: `Inserção manual: ${manualForm.descricao}` });
-    const confirmId = addMessage({ role: "assistant", content: "Lançando registro manual...", status: "processing" });
+    addMessage({ role: "user", content: `InserÃ§Ã£o manual: ${manualForm.descricao}` });
+    const confirmId = addMessage({ role: "assistant", content: "LanÃ§ando registro manual...", status: "processing" });
 
     try {
       const res = await fetch("/api/process-document", {
@@ -242,21 +239,21 @@ export default function CentralIAPage() {
 
       if (result.success) {
         updateMessage(confirmId, {
-          content: `Registro manual lançado em ${getDestinoLabel(extraction.destino)}!`,
+          content: `Registro manual persistido em ${getDestinoLabel(extraction.destino)}.`,
           status: "success",
         });
         setManualForm({
           tipo_documento: "DESPESA", valor: 0, data_documento: new Date().toLocaleDateString("pt-BR"),
           descricao: "", emissor_nome: "", emissor_cnpj_cpf: "", categoria_sugerida: "",
           subcategoria_sugerida: "", departamento: "AMBOS", destino: "expenses",
-          destino_descricao: "", confianca: 100, observacoes: "Inserção manual",
+          destino_descricao: "", confianca: 100, observacoes: "InserÃ§Ã£o manual",
         });
         setViewMode("chat");
       } else {
         updateMessage(confirmId, { content: `Erro: ${result.error}`, status: "error" });
       }
     } catch {
-      updateMessage(confirmId, { content: "Erro de conexão.", status: "error" });
+      updateMessage(confirmId, { content: "Erro de conexÃ£o.", status: "error" });
     }
   };
 
@@ -275,7 +272,7 @@ export default function CentralIAPage() {
 
   const processedCount = messages.filter((m) => m.status === "success" || m.status === "confirmed").length;
 
-  // ─── Render ──────────────────────────────────────
+  // â”€â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <div className="flex flex-col h-[calc(100vh-6rem)]">
@@ -286,7 +283,7 @@ export default function CentralIAPage() {
         </div>
         <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-900">Central IA</h1>
-          <p className="text-xs text-gray-500">Ponto único de entrada de dados do sistema</p>
+          <p className="text-xs text-gray-500">Ponto Ãºnico de entrada de dados do sistema</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -313,14 +310,14 @@ export default function CentralIAPage() {
         </div>
       </div>
 
-      {/* ═══ MANUAL ENTRY MODE ═══ */}
+      {/* â•â•â• MANUAL ENTRY MODE â•â•â• */}
       {viewMode === "manual" && (
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-2xl mx-auto">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
               <div className="flex items-center gap-2 mb-2">
                 <PenLine className="h-5 w-5 text-blue-600" />
-                <h2 className="font-semibold text-gray-900">Inserção Manual</h2>
+                <h2 className="font-semibold text-gray-900">InserÃ§Ã£o Manual</h2>
                 <span className="text-xs text-gray-400 ml-auto">Preencha os campos abaixo</span>
               </div>
 
@@ -340,7 +337,7 @@ export default function CentralIAPage() {
                   <label className="block text-xs font-medium text-gray-600 mb-1">Departamento</label>
                   <select value={manualForm.departamento} onChange={(e) => setManualForm({ ...manualForm, departamento: e.target.value as "LOCACAO" | "VENDA" | "AMBOS" })}
                     className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                    <option value="LOCACAO">Locação</option>
+                    <option value="LOCACAO">LocaÃ§Ã£o</option>
                     <option value="VENDA">Venda</option>
                     <option value="AMBOS">Ambos</option>
                   </select>
@@ -361,9 +358,9 @@ export default function CentralIAPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Descrição *</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">DescriÃ§Ã£o *</label>
                 <input type="text" value={manualForm.descricao} onChange={(e) => setManualForm({ ...manualForm, descricao: e.target.value })}
-                  placeholder="Ex: Conta de energia do escritório" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                  placeholder="Ex: Conta de energia do escritÃ³rio" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -420,7 +417,7 @@ export default function CentralIAPage() {
                   disabled={!manualForm.descricao || !manualForm.valor}
                   className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                   <Send className="h-4 w-4" />
-                  Lançar no Sistema
+                  LanÃ§ar no Sistema
                 </button>
               </div>
             </div>
@@ -428,7 +425,7 @@ export default function CentralIAPage() {
         </div>
       )}
 
-      {/* ═══ CHAT / UPLOAD MODE ═══ */}
+      {/* â•â•â• CHAT / UPLOAD MODE â•â•â• */}
       {viewMode === "chat" && (
         <>
           <div
@@ -457,8 +454,8 @@ export default function CentralIAPage() {
                   </div>
                   <h2 className="text-lg font-bold text-gray-900 mb-2">Envie seu primeiro documento</h2>
                   <p className="text-sm text-gray-500 mb-5">
-                    A IA analisa, classifica e lança automaticamente na aba correta.
-                    Você revisa e confirma antes de salvar.
+                    A IA analisa, classifica e lanÃ§a automaticamente na aba correta.
+                    VocÃª revisa e confirma antes de salvar.
                   </p>
 
                   <button
@@ -473,42 +470,6 @@ export default function CentralIAPage() {
                     JPG, PNG, WebP, PDF (max 20MB) &middot; ou arraste e solte na tela
                   </p>
 
-                  {/* Exemplos de teste */}
-                  <div className="w-full border-t border-gray-100 pt-4">
-                    <p className="text-[11px] text-gray-400 mb-3 font-medium uppercase tracking-wide">
-                      Testar com documento de exemplo
-                    </p>
-                    <div className="grid grid-cols-3 gap-2 text-left">
-                      {[
-                        { label: "Nota Fiscal Serviço", filename: "nota-fiscal-servico.jpg", icon: Receipt, color: "border-blue-100 hover:bg-blue-50 text-blue-700" },
-                        { label: "Conta de Energia", filename: "ceee-energia-abril.jpg", icon: TrendingDown, color: "border-amber-100 hover:bg-amber-50 text-amber-700" },
-                        { label: "Compra Mercado", filename: "zaffari-mercado.jpg", icon: TrendingDown, color: "border-red-100 hover:bg-red-50 text-red-700" },
-                        { label: "Comprovante PIX", filename: "comprovante-pix-recebido.jpg", icon: TrendingUp, color: "border-green-100 hover:bg-green-50 text-green-700" },
-                        { label: "Guia de ISS", filename: "guia-iss-prefeitura.jpg", icon: Receipt, color: "border-orange-100 hover:bg-orange-50 text-orange-700" },
-                        { label: "Google Ads", filename: "marketing-google-ads.jpg", icon: TrendingDown, color: "border-purple-100 hover:bg-purple-50 text-purple-700" },
-                      ].map(({ label, filename, icon: Icon, color }) => (
-                        <button
-                          key={filename}
-                          onClick={() => {
-                            // Simula upload com arquivo de teste — o mock classifica pelo nome
-                            const blob = new Blob(["SAMPLE"], { type: "image/jpeg" });
-                            const file = new File([blob], filename, { type: "image/jpeg" });
-                            processFile(file);
-                          }}
-                          className={cn(
-                            "flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-medium transition-colors",
-                            color
-                          )}
-                        >
-                          <Icon className="h-3.5 w-3.5 flex-shrink-0" />
-                          <span className="truncate">{label}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-gray-300 mt-2">
-                      Estes botões simulam o upload — em produção com OpenAI configurado, a IA lê o documento real.
-                    </p>
-                  </div>
                 </div>
               </div>
             ) : (
@@ -560,13 +521,13 @@ export default function CentralIAPage() {
                       {msg.status === "confirmed" && msg.extraction && (
                         <div className="space-y-1 opacity-60">
                           <div className="flex items-center gap-2 text-green-600 text-xs font-medium">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Confirmado e lançado
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Confirmado e lanÃ§ado
                           </div>
                           <CompactCard data={msg.extraction} />
                         </div>
                       )}
 
-                      {/* Success with extraction — editable */}
+                      {/* Success with extraction â€” editable */}
                       {msg.status === "success" && msg.extraction && (
                         msg.editing ? (
                           <EditableExtraction
@@ -583,7 +544,7 @@ export default function CentralIAPage() {
                             <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
                               <button onClick={() => confirmAndRoute(msg.id, msg.extraction!)}
                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar e Lançar
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Confirmar e LanÃ§ar
                               </button>
                               <button onClick={() => updateMessage(msg.id, { editing: true })}
                                 className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50 transition-colors">
@@ -623,7 +584,7 @@ export default function CentralIAPage() {
             )}
           </div>
 
-          {/* Bottom bar — only when messages exist */}
+          {/* Bottom bar â€” only when messages exist */}
           {messages.length > 0 && (
             <div className="border-t border-gray-200 pt-3 pb-1 flex items-center gap-3">
               <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={handleFileSelect} />
@@ -649,7 +610,7 @@ export default function CentralIAPage() {
   );
 }
 
-// ─── Compact Card ──────────────────────────────────
+// â”€â”€â”€ Compact Card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CompactCard({ data }: { data: AIExtractionResult }) {
   const typeColor = getDocTypeColor(data.tipo_documento);
@@ -665,7 +626,7 @@ function CompactCard({ data }: { data: AIExtractionResult }) {
   );
 }
 
-// ─── Extraction Card (read-only) ───────────────────
+// â”€â”€â”€ Extraction Card (read-only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ExtractionCard({ data }: { data: AIExtractionResult }) {
   const typeColor = getDocTypeColor(data.tipo_documento);
@@ -693,7 +654,7 @@ function ExtractionCard({ data }: { data: AIExtractionResult }) {
           <p className="font-medium text-gray-700">{data.data_documento}</p>
         </div>
         <div className="col-span-2">
-          <p className="text-gray-400 text-[10px]">Descrição</p>
+          <p className="text-gray-400 text-[10px]">DescriÃ§Ã£o</p>
           <p className="font-medium text-gray-700">{data.descricao}</p>
         </div>
         {data.emissor_nome && (
@@ -735,7 +696,7 @@ function ExtractionCard({ data }: { data: AIExtractionResult }) {
   );
 }
 
-// ─── Editable Extraction ───────────────────────────
+// â”€â”€â”€ Editable Extraction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function EditableExtraction({
   data,
@@ -758,7 +719,7 @@ function EditableExtraction({
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-xs font-medium text-amber-600">
         <Edit3 className="h-3.5 w-3.5" />
-        Modo de edição — corrija os dados abaixo
+        Modo de ediÃ§Ã£o â€” corrija os dados abaixo
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -773,7 +734,7 @@ function EditableExtraction({
           <label className="block text-[10px] text-gray-400 mb-0.5">Departamento</label>
           <select value={form.departamento} onChange={(e) => setForm({ ...form, departamento: e.target.value as "LOCACAO" | "VENDA" | "AMBOS" })}
             className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500">
-            <option value="LOCACAO">Locação</option>
+            <option value="LOCACAO">LocaÃ§Ã£o</option>
             <option value="VENDA">Venda</option>
             <option value="AMBOS">Ambos</option>
           </select>
@@ -794,7 +755,7 @@ function EditableExtraction({
       </div>
 
       <div>
-        <label className="block text-[10px] text-gray-400 mb-0.5">Descrição</label>
+        <label className="block text-[10px] text-gray-400 mb-0.5">DescriÃ§Ã£o</label>
         <input type="text" value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })}
           className="w-full px-2 py-1.5 border border-gray-200 rounded-md text-xs focus:ring-1 focus:ring-blue-500" />
       </div>
@@ -843,11 +804,11 @@ function EditableExtraction({
       <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
         <button onClick={() => onConfirm(form)}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 transition-colors">
-          <CheckCircle2 className="h-3.5 w-3.5" /> Salvar e Lançar
+          <CheckCircle2 className="h-3.5 w-3.5" /> Salvar e LanÃ§ar
         </button>
         <button onClick={() => onSave(form)}
           className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50 transition-colors">
-          Salvar alterações
+          Salvar alteraÃ§Ãµes
         </button>
         <button onClick={onCancel}
           className="px-3 py-1.5 text-gray-400 rounded-lg text-xs hover:text-gray-600 transition-colors ml-auto">

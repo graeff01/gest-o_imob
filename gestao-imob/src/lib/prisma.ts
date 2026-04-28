@@ -12,7 +12,7 @@ function createPrismaClient() {
       get(_, prop) {
         // Retorna um objeto que simula os models do Prisma
         // Qualquer chamada .findMany(), .create() etc. vai lançar erro
-        // que é capturado pelo try/catch dos API routes → fallback mock
+        // que é capturado pelo try/catch dos API routes → erro controlado
         if (typeof prop === "string" && prop !== "then") {
           return new Proxy(
             {},

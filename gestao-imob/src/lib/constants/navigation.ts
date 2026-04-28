@@ -37,6 +37,7 @@ export const navigationItems: NavItem[] = [
   { title: "Saúde Operacional", href: "/saude", icon: "HeartPulse", section: "sistema", roles: ["ADMIN_MASTER"] },
   { title: "Parâmetros", href: "/configuracoes", icon: "Settings2", section: "sistema", roles: ["ADMIN_MASTER"] },
   { title: "Auditoria", href: "/auditoria", icon: "Shield", section: "sistema", roles: ["ADMIN_MASTER"] },
+  { title: "Release Atual", href: "/release-atual", icon: "GitBranch", section: "sistema", roles: ["ADMIN_MASTER"] },
 ];
 
 export const SECTION_LABELS: Record<NonNullable<NavItem["section"]>, string> = {

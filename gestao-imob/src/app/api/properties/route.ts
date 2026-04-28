@@ -1,8 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createPropertySchema } from "@/lib/validations/pessoas";
+import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth, requireElevatedRole } from "@/server/authz";
 
 export async function GET(request: Request) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const search = searchParams.get("search") || "";
   const status = searchParams.get("status") || "";
@@ -42,6 +51,10 @@ export async function GET(request: Request) {
     }
     throw new Error("empty_db");
   } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("properties.list");
+    }
+
     const { MOCK_PROPERTIES } = await import("@/lib/mock-data");
     let filtered = MOCK_PROPERTIES;
     if (search) {
@@ -66,6 +79,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  try {
+    await requireElevatedRole();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const body = await request.json();
   const parsed = createPropertySchema.safeParse(body);
 
@@ -103,7 +122,11 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(property, { status: 201 });
-  } catch (error) {
+  } catch {
+    if (!canUseMockFallback()) {
+      return mockFallbackBlockedResponse("properties.create");
+    }
+
     const mockProperty = {
       id: "mock-" + Date.now(),
       address_street: data.address_street,
