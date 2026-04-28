@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { emitNfse } from "@/lib/utils/nfse-gateway";
+import { validateCNPJ, validateCPF } from "@/lib/utils";
 import { auditEvent } from "@/server/audit";
 import type {
   CreateInvoiceInput,
@@ -39,6 +40,42 @@ function assertTransition(from: InvoiceStatus, to: InvoiceStatus) {
       `Transicao de status invalida: ${from} -> ${to}.`,
       409
     );
+  }
+}
+
+function isValidCpfCnpj(value: string) {
+  const clean = value.replace(/\D/g, "");
+  if (clean.length === 11) return validateCPF(clean);
+  if (clean.length === 14) return validateCNPJ(clean);
+  return false;
+}
+
+function assertReadyToEmit(
+  invoice: {
+    client_name: string;
+    client_cpf_cnpj: string;
+    amount: unknown;
+    reference_month: number | null;
+    reference_year: number;
+    description_body: string;
+    service_type: string;
+  },
+  options: { cep?: string; aliquota?: number }
+) {
+  const issues: string[] = [];
+  if (invoice.client_name.trim().length < 2) issues.push("tomador sem nome valido");
+  if (!isValidCpfCnpj(invoice.client_cpf_cnpj)) issues.push("CPF/CNPJ do tomador invalido");
+  if (!Number.isFinite(Number(invoice.amount)) || Number(invoice.amount) <= 0) issues.push("valor deve ser maior que zero");
+  if (!invoice.reference_month || !invoice.reference_year) issues.push("competencia incompleta");
+  if (invoice.description_body.trim().length < 15) issues.push("descricao da NFS-e muito curta");
+  if (!["INTERMEDIACAO", "AGENCIAMENTO", "ADMINISTRACAO"].includes(invoice.service_type)) issues.push("tipo de servico invalido");
+  if (!options.cep || options.cep.replace(/\D/g, "").length !== 8) issues.push("CEP obrigatorio para emissao");
+  if (options.aliquota !== undefined && (!Number.isFinite(options.aliquota) || options.aliquota < 0 || options.aliquota > 100)) {
+    issues.push("aliquota invalida");
+  }
+
+  if (issues.length > 0) {
+    throw new InvoiceServiceError(`Nota incompleta para emissao: ${issues.join("; ")}.`, 422);
   }
 }
 
@@ -182,6 +219,7 @@ export async function emitInvoice(
     return { alreadyIssued: true, invoice };
   }
 
+  assertReadyToEmit(invoice, options);
   assertTransition(invoice.status as InvoiceStatus, "PROCESSANDO");
 
   const processing = await prisma.invoice.update({

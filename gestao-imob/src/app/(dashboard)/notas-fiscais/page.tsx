@@ -8,7 +8,7 @@ import {
   Plus, Square, CheckSquare, FileSpreadsheet, Zap,
 } from "lucide-react";
 import * as XLSX from "xlsx";
-import { cn, formatCurrency, formatDate, maskSensitiveCpfCnpj } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, maskSensitiveCpfCnpj, validateCNPJ, validateCPF } from "@/lib/utils";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -128,6 +128,13 @@ function buildManualDescription(
   return { title, body };
 }
 
+interface ReadinessCheck {
+  id: string;
+  label: string;
+  ok: boolean;
+  detail: string;
+}
+
 function invoiceCode(inv: Invoice) {
   if (inv.nfse_number) return `NFS-e ${inv.nfse_number}`;
   if (inv.year_sequence) return `NF-${inv.reference_year}-${String(inv.year_sequence).padStart(3, "0")}`;
@@ -230,6 +237,93 @@ function buildInvoiceTimeline(inv: Invoice) {
   }
 
   return events;
+}
+
+function isValidCpfCnpj(value: string) {
+  const clean = value.replace(/\D/g, "");
+  if (clean.length === 11) return validateCPF(clean);
+  if (clean.length === 14) return validateCNPJ(clean);
+  return false;
+}
+
+function validateInvoiceForEmission(inv: Invoice, cep: string, aliquota: string): ReadinessCheck[] {
+  const cleanCep = cep.replace(/\D/g, "");
+  const amount = Number(inv.amount);
+  const aliquotaNumber = Number(aliquota);
+
+  return [
+    {
+      id: "client",
+      label: "Tomador",
+      ok: inv.client_name.trim().length >= 2,
+      detail: inv.client_name.trim().length >= 2 ? "Nome preenchido." : "Informe o nome do tomador.",
+    },
+    {
+      id: "document",
+      label: "CPF/CNPJ",
+      ok: isValidCpfCnpj(inv.client_cpf_cnpj),
+      detail: isValidCpfCnpj(inv.client_cpf_cnpj) ? "Documento valido." : "CPF/CNPJ ausente ou invalido.",
+    },
+    {
+      id: "amount",
+      label: "Valor",
+      ok: Number.isFinite(amount) && amount > 0,
+      detail: Number.isFinite(amount) && amount > 0 ? "Valor maior que zero." : "Valor da nota deve ser maior que zero.",
+    },
+    {
+      id: "competence",
+      label: "Competencia",
+      ok: !!inv.reference_year && !!inv.reference_month,
+      detail: inv.reference_year && inv.reference_month ? `${MONTH_NAMES[(inv.reference_month ?? 1) - 1]}/${inv.reference_year}` : "Informe mes e ano de competencia.",
+    },
+    {
+      id: "description",
+      label: "Descricao",
+      ok: inv.description_body.trim().length >= 15,
+      detail: inv.description_body.trim().length >= 15 ? "Descricao suficiente para emissao." : "Descricao muito curta para NFS-e.",
+    },
+    {
+      id: "service",
+      label: "Servico",
+      ok: Boolean(SERVICE_LABELS[inv.service_type]),
+      detail: SERVICE_LABELS[inv.service_type] ? SERVICE_LABELS[inv.service_type] : "Tipo de servico invalido.",
+    },
+    {
+      id: "cep",
+      label: "CEP",
+      ok: cleanCep.length === 8,
+      detail: cleanCep.length === 8 ? "CEP preenchido." : "Informe o CEP do endereco do imovel/tomador.",
+    },
+    {
+      id: "tax",
+      label: "Aliquota",
+      ok: Number.isFinite(aliquotaNumber) && aliquotaNumber >= 0 && aliquotaNumber <= 100,
+      detail: Number.isFinite(aliquotaNumber) && aliquotaNumber >= 0 && aliquotaNumber <= 100 ? `${aliquotaNumber}%` : "Aliquota deve estar entre 0 e 100.",
+    },
+  ];
+}
+
+function operationalStatus(inv: Invoice, checks?: ReadinessCheck[]) {
+  const hasDataIssue = checks ? checks.some((check) => !check.ok) : false;
+  if (["EMITIDA", "ENVIADA", "PAGA", "CANCELADA", "PROCESSANDO"].includes(inv.status)) {
+    return STATUS_CONFIG[inv.status].label;
+  }
+  if (inv.status === "ERRO" && hasDataIssue) return "Erro de dados";
+  if (inv.status === "ERRO") return "Erro de gateway";
+  return hasDataIssue ? "Pendente de revisao" : "Pronta para emitir";
+}
+
+function findPotentialDuplicates(target: Invoice, all: Invoice[]) {
+  return all.filter((inv) => {
+    if (inv.id === target.id || inv.status === "CANCELADA") return false;
+    const sameTitle = target.title_number && inv.title_number && target.title_number === inv.title_number;
+    const sameCore =
+      inv.client_cpf_cnpj.replace(/\D/g, "") === target.client_cpf_cnpj.replace(/\D/g, "") &&
+      Number(inv.amount) === Number(target.amount) &&
+      inv.reference_month === target.reference_month &&
+      inv.reference_year === target.reference_year;
+    return Boolean(sameTitle || sameCore);
+  });
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
@@ -497,6 +591,12 @@ export default function NotasFiscaisPage() {
   // ── Emissão via gateway ──
   const handleEmit = async () => {
     if (!emitModal) return;
+    const checks = validateInvoiceForEmission(emitModal, emitCep, emitAliquota);
+    const blockingIssues = checks.filter((check) => !check.ok);
+    if (blockingIssues.length > 0) {
+      setEmitError(`Revise antes de emitir: ${blockingIssues.map((check) => check.detail).join(" ")}`);
+      return;
+    }
     setEmitting(true);
     setEmitError(null);
     try {
@@ -614,6 +714,10 @@ export default function NotasFiscaisPage() {
     const emittedValue = mi.filter(i => ["EMITIDA","ENVIADA"].includes(i.status)).reduce((s, i) => s + Number(i.amount), 0);
     const pendingValue = mi.filter(i => i.status === "PENDENTE").reduce((s, i) => s + Number(i.amount), 0);
     const issTotal     = totalValue * ISS_RATE;
+    const errorCount    = mi.filter(i => i.status === "ERRO").length;
+    const cancelledCount = mi.filter(i => i.status === "CANCELADA").length;
+    const importedDwCount = mi.filter(i => i.imported_from_dw).length;
+    const gatewayReadyCount = mi.filter(i => i.gateway_id || i.gateway_status || i.gateway_pdf_url || i.gateway_xml_url).length;
 
     const byService = (["INTERMEDIACAO","AGENCIAMENTO","ADMINISTRACAO"] as const).map(key => {
       const items = mi.filter(i => i.service_type === key);
@@ -787,6 +891,20 @@ export default function NotasFiscaisPage() {
     </div>
 
     <div class="section">
+      <div class="section-title">Resumo Operacional</div>
+      <table>
+        <tbody>
+          <tr><td>Notas pendentes de emissao</td><td style="text-align:right;font-weight:700">${mi.filter(i => i.status === "PENDENTE").length}</td></tr>
+          <tr><td>Notas com erro de emissao</td><td style="text-align:right;font-weight:700;color:#dc2626">${errorCount}</td></tr>
+          <tr><td>Notas canceladas</td><td style="text-align:right;font-weight:700;color:#6b7280">${cancelledCount}</td></tr>
+          <tr><td>Notas importadas do DW</td><td style="text-align:right;font-weight:700;color:#1d4ed8">${importedDwCount}</td></tr>
+          <tr><td>Notas com retorno/ID do gateway</td><td style="text-align:right;font-weight:700;color:#4338ca">${gatewayReadyCount}</td></tr>
+          <tr><td>ISS estimado total</td><td style="text-align:right;font-weight:700;color:#1d4ed8">${fmt(issTotal)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
       <div class="section-title">Detalhamento das Notas (${mi.length})</div>
       ${mi.length === 0 ? '<p style="color:#94a3b8;text-align:center;padding:24px">Nenhuma nota para este período.</p>' : `
       <table>
@@ -833,6 +951,10 @@ export default function NotasFiscaisPage() {
     if (allSelected) setSelectedIds(new Set());
     else setSelectedIds(new Set(pendentesInView.map(i => i.id)));
   };
+
+  const emitChecks = emitModal ? validateInvoiceForEmission(emitModal, emitCep, emitAliquota) : [];
+  const emitReady = emitChecks.length > 0 && emitChecks.every((check) => check.ok);
+  const emitDuplicates = emitModal ? findPotentialDuplicates(emitModal, invoices) : [];
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -900,6 +1022,20 @@ export default function NotasFiscaisPage() {
           {dwCleanupMessage}
         </div>
       )}
+
+      <div className="bg-white border border-blue-100 rounded-xl p-4">
+        <div className="flex items-start gap-3">
+          <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-gray-900">Fluxo seguro de NFS-e</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Importe o DW, revise as pendencias, valide CPF/CNPJ, CEP, valor, competencia e descricao,
+              emita, envie ao cliente e depois marque pagamento ou cancelamento. A tela bloqueia emissao
+              incompleta antes de chamar o gateway.
+            </p>
+          </div>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-white p-4 rounded-xl border border-gray-200">
@@ -1107,6 +1243,8 @@ export default function NotasFiscaisPage() {
                   const isExpanded = expandedId === inv.id;
                   const overdue   = isOverdue(inv);
                   const isSelected = selectedIds.has(inv.id);
+                  const rowChecks = validateInvoiceForEmission(inv, "00000000", "9");
+                  const rowOperationalStatus = operationalStatus(inv, rowChecks);
 
                   return (
                     <>
@@ -1188,6 +1326,7 @@ export default function NotasFiscaisPage() {
                             <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
                             {st.label}
                           </span>
+                          <p className="mt-1 text-[10px] text-gray-400">{rowOperationalStatus}</p>
                         </td>
 
                         {/* Ações */}
@@ -1467,6 +1606,60 @@ export default function NotasFiscaisPage() {
                   <p className="font-mono text-gray-900 bg-gray-50 rounded px-2 py-1.5">{emitModal.client_cpf_cnpj}</p>
                 </div>
               </div>
+              <div className="border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900">Checklist antes da emissao</p>
+                    <p className="text-xs text-gray-500">A nota so pode ser emitida quando todos os itens estiverem validos.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEmitError(emitReady ? null : `Pendencias: ${emitChecks.filter((check) => !check.ok).map((check) => check.detail).join(" ")}`)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Revalidar nota
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {emitChecks.map((check) => (
+                    <div
+                      key={check.id}
+                      className={cn(
+                        "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
+                        check.ok ? "bg-green-50 border-green-100 text-green-800" : "bg-red-50 border-red-100 text-red-800"
+                      )}
+                    >
+                      {check.ok ? <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />}
+                      <div>
+                        <p className="font-semibold">{check.label}</p>
+                        <p className={check.ok ? "text-green-700" : "text-red-700"}>{check.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {emitDuplicates.length > 0 && (
+                <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 text-xs text-amber-800">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="font-semibold">Possivel duplicidade encontrada</p>
+                      <p className="mt-1">
+                        Existe(m) {emitDuplicates.length} nota(s) com mesmo titulo DW ou mesmo cliente, valor e competencia.
+                        Revise antes de emitir para evitar duplicidade fiscal.
+                      </p>
+                      <div className="mt-2 space-y-1">
+                        {emitDuplicates.slice(0, 3).map((dup) => (
+                          <p key={dup.id} className="font-mono text-amber-900">
+                            {invoiceCode(dup)} - {dup.client_name} - {formatCurrency(Number(dup.amount))} - {STATUS_CONFIG[dup.status].label}
+                          </p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div>
                 <p className="text-xs text-gray-400 mb-1">Endereço do imóvel</p>
                 {emitModal.property_address && (
@@ -1524,7 +1717,16 @@ export default function NotasFiscaisPage() {
               </div>
               <div className="text-xs">
                 <p className="text-gray-400 mb-0.5">Descrição da NFS-e</p>
-                <p className="text-gray-700 bg-gray-50 rounded px-2 py-2 leading-relaxed">{emitModal.description_body}</p>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                  <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Descricao que sera enviada ao gateway</p>
+                  <p className="text-gray-700 mt-1 leading-relaxed">{emitModal.description_body}</p>
+                  <div className="grid grid-cols-2 gap-2 mt-3 text-[11px] text-gray-500">
+                    <p>Servico: <span className="font-medium text-gray-800">{SERVICE_LABELS[emitModal.service_type]}</span></p>
+                    <p>Competencia: <span className="font-medium text-gray-800">{emitModal.reference_month ? `${MONTH_NAMES[emitModal.reference_month - 1]}/${emitModal.reference_year}` : emitModal.reference_year}</span></p>
+                    <p>Valor: <span className="font-medium text-gray-800">{formatCurrency(Number(emitModal.amount))}</span></p>
+                    <p>Tomador: <span className="font-medium text-gray-800">{emitModal.client_name}</span></p>
+                  </div>
+                </div>
               </div>
               <div className="border border-gray-100 rounded-lg overflow-hidden">
                 <button
@@ -1596,9 +1798,12 @@ export default function NotasFiscaisPage() {
               )}
             </div>
             <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-100">
+              {!emitReady && (
+                <p className="mr-auto text-xs font-medium text-red-600">Resolva as pendencias do checklist para emitir.</p>
+              )}
               <button onClick={() => setEmitModal(null)} disabled={emitting} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">Cancelar</button>
               <button
-                onClick={handleEmit} disabled={emitting}
+                onClick={handleEmit} disabled={emitting || !emitReady}
                 className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {emitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Emitindo...</> : <><FileText className="h-4 w-4" /> Confirmar Emissão</>}
