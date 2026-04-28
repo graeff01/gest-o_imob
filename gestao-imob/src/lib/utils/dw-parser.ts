@@ -263,7 +263,7 @@ function parseAmount(raw: unknown): number | null {
 }
 
 /**
- * Gera o título e o corpo da NFS-e no formato exigido pela Prefeitura de Porto Alegre.
+ * Gera o título e o corpo da NFS-e no formato exigido pela Prefeitura de Canoas.
  * Formato: "Intermediação no contrato de locação (título) - endereço completo"
  */
 function generateNFSeDescription(row: {

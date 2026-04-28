@@ -332,7 +332,7 @@ export function processDocumentMock(fileName: string): ProcessingResult {
         tipo_documento: "DESPESA",
         valor: 1500.00,
         data_documento: new Date().toLocaleDateString("pt-BR"),
-        descricao: "Google Ads - Campanha Locação Moinhos de Vento",
+        descricao: "Google Ads - Campanha Locação Jardim do Lago",
         emissor_nome: "GOOGLE BRASIL INTERNET LTDA",
         emissor_cnpj_cpf: "06.990.590/0001-23",
         categoria_sugerida: "Contas Operacionais Locação",

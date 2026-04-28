@@ -99,11 +99,11 @@ const STORAGE = {
 };
 
 const SEED_EMPLOYEES: Employee[] = [
-  { id: "fe-001", nome: "Lucas Rodrigues", cpf: "123.456.789-01", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "lucas.rodrigues@moinhosimob.com.br", ativo: true },
-  { id: "fe-002", nome: "Thiago Lima", cpf: "234.567.890-12", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "thiago.lima@moinhosimob.com.br", ativo: true },
-  { id: "fe-003", nome: "Fernanda Souza", cpf: "345.678.901-23", cargo: "CAPTADOR", tipoContrato: "PJ", salarioFixo: 0, valeRefeicao: 0, valeTransporte: 0, pix: "fernanda.souza@moinhosimob.com.br", ativo: true },
-  { id: "fe-004", nome: "Ana Paula Müller", cpf: "456.789.012-34", cargo: "ADMIN", tipoContrato: "CLT", salarioFixo: 2800, valeRefeicao: 550, valeTransporte: 220, pix: "ana.muller@moinhosimob.com.br", ativo: true },
-  { id: "fe-005", nome: "Roberto Costa", cpf: "567.890.123-45", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "roberto.costa@moinhosimob.com.br", ativo: true },
+  { id: "fe-001", nome: "Lucas Rodrigues", cpf: "123.456.789-01", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "lucas.rodrigues@jardimimob.com.br", ativo: true },
+  { id: "fe-002", nome: "Thiago Lima", cpf: "234.567.890-12", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "thiago.lima@jardimimob.com.br", ativo: true },
+  { id: "fe-003", nome: "Fernanda Souza", cpf: "345.678.901-23", cargo: "CAPTADOR", tipoContrato: "PJ", salarioFixo: 0, valeRefeicao: 0, valeTransporte: 0, pix: "fernanda.souza@jardimimob.com.br", ativo: true },
+  { id: "fe-004", nome: "Ana Paula Müller", cpf: "456.789.012-34", cargo: "ADMIN", tipoContrato: "CLT", salarioFixo: 2800, valeRefeicao: 550, valeTransporte: 220, pix: "ana.muller@jardimimob.com.br", ativo: true },
+  { id: "fe-005", nome: "Roberto Costa", cpf: "567.890.123-45", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "roberto.costa@jardimimob.com.br", ativo: true },
 ];
 
 function loadJSON<T>(key: string, fallback: T): T {

@@ -136,14 +136,14 @@ export default function ConfiguracoesPage() {
   const [nfseConfig, setNfseConfig] = useState<NfseConfig | null>(null);
   const [nfseConfigError, setNfseConfigError] = useState<string | null>(null);
   const [nfseDraft, setNfseDraft] = useState<NfseCompanyDraft>({
-    legalName: "Imobiliaria Moinhos de Vento",
-    tradeName: "Moinhos de Vento",
+    legalName: "Imobiliaria Jardim do Lago",
+    tradeName: "Jardim do Lago",
     cnpj: "",
     municipalRegistration: "",
     cityCode: "",
     serviceCode: "",
     serviceCodeComplement: "",
-    defaultAliquota: "9",
+    defaultAliquota: "2",
     environment: "homologacao",
   });
   const [nfseDraftSaved, setNfseDraftSaved] = useState(false);

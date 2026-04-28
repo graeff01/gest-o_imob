@@ -9,7 +9,7 @@
  * ─── COMO ATIVAR ──────────────────────────────────────────────────────────────
  *
  * 1. Crie conta em https://nfse.io e faça upload do certificado A1 (.pfx)
- * 2. Cadastre a empresa com o CNPJ e a Inscrição Municipal de Porto Alegre
+ * 2. Cadastre a empresa com o CNPJ e a Inscrição Municipal de Canoas
  * 3. Copie a API Key e o Company ID do painel do nfse.io
  * 4. Preencha as variáveis abaixo no .env.local (dev) e no Railway (produção):
  *
@@ -18,11 +18,11 @@
  *    NFSE_GATEWAY_API_KEY=sua_api_key_do_nfseio
  *    NFSE_COMPANY_ID=id_da_empresa_no_nfseio
  *    NFSE_COMPANY_CNPJ=XX.XXX.XXX/XXXX-XX  (CNPJ da imobiliária)
- *    NFSE_COMPANY_IM=XXXXXXX               (Inscrição Municipal em Porto Alegre)
- *    NFSE_CITY_CODE=4314902                (IBGE de Porto Alegre — não muda)
- *    NFSE_SERVICE_CODE=10.05.01            (código tributação POA para intermediação)
+ *    NFSE_COMPANY_IM=XXXXXXX               (Inscrição Municipal em Canoas)
+ *    NFSE_CITY_CODE=4304606                (IBGE de Canoas — não muda)
+ *    NFSE_SERVICE_CODE=10.05.01            (código tributação Canoas para intermediação)
  *    NFSE_SERVICE_CODE_COMPLEMENT=10.05.01.002
- *    NFSE_DEFAULT_ALIQUOTA=9.0             (alíquota Simples Nacional — confirmar com contador)
+ *    NFSE_DEFAULT_ALIQUOTA=2.0             (alíquota ISS Canoas — confirmar com contador)
  *
  * 5. Teste em homologação antes de produção:
  *    NFSE_HOMOLOGACAO=true  → aponta para ambiente de testes do gateway
