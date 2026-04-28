@@ -83,11 +83,11 @@ function getGatewayConfig() {
     apiKey:        process.env.NFSE_GATEWAY_API_KEY ?? "",
     companyId:     process.env.NFSE_COMPANY_ID ?? "",
     companyCnpj:   (process.env.NFSE_COMPANY_CNPJ ?? "").replace(/\D/g, ""),
-    companyIM:     process.env.NFSE_COMPANY_IM ?? "",            // Inscrição Municipal POA
-    cityCode:      process.env.NFSE_CITY_CODE ?? "4314902",      // IBGE Porto Alegre
-    serviceCode:   process.env.NFSE_SERVICE_CODE ?? "10.05.01",  // Código tributação POA
+    companyIM:     process.env.NFSE_COMPANY_IM ?? "",            // Inscrição Municipal Canoas
+    cityCode:      process.env.NFSE_CITY_CODE ?? "4304606",      // IBGE Canoas
+    serviceCode:   process.env.NFSE_SERVICE_CODE ?? "10.05.01",  // Código tributação Canoas
     serviceCodeComplement: process.env.NFSE_SERVICE_CODE_COMPLEMENT ?? "10.05.01.002",
-    defaultAliquota: parseFloat(process.env.NFSE_DEFAULT_ALIQUOTA ?? "9.0"),
+    defaultAliquota: parseFloat(process.env.NFSE_DEFAULT_ALIQUOTA ?? "2.0"),
   };
 }
 
@@ -142,7 +142,7 @@ async function emitViaNfseIo(
         address: {
           zip_code:      payload.borrower.address.cep.replace(/\D/g, ""),
           street:        payload.borrower.address.logradouro ?? "",
-          city:          payload.borrower.address.municipio ?? "Porto Alegre",
+          city:          payload.borrower.address.municipio ?? "Canoas",
           state:         payload.borrower.address.uf ?? "RS",
           country:       "BRA",
         },
@@ -151,7 +151,7 @@ async function emitViaNfseIo(
 
     // Dados do serviço
     service: {
-      // Campos obrigatórios Porto Alegre
+      // Campos obrigatórios Canoas
       city_service_code:      config.serviceCode,
       city_service_code_complement: config.serviceCodeComplement,
       description:            payload.service.description,
@@ -248,7 +248,7 @@ async function emitViaNfeio(
           state:        payload.borrower.address.uf ?? "RS",
           city: {
             code: config.cityCode,
-            name: payload.borrower.address.municipio ?? "Porto Alegre",
+            name: payload.borrower.address.municipio ?? "Canoas",
           },
         },
       } : {}),

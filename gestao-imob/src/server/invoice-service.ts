@@ -250,7 +250,7 @@ export async function emitInvoice(
             address: {
               cep: options.cep ?? "",
               logradouro: processing.property_address ?? undefined,
-              municipio: "Porto Alegre",
+              municipio: "Canoas",
               uf: "RS",
             },
           }

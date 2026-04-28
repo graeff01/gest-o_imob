@@ -67,7 +67,7 @@ export interface ProcessingResult {
 const SYSTEM_PROMPT = `Você é um assistente financeiro especializado em imobiliárias brasileiras.
 Sua função é analisar imagens de documentos financeiros e extrair TODOS os dados relevantes.
 
-CONTEXTO: Imobiliária Moinhos de Vento (franquia Auxiliadora Predial), Porto Alegre/RS.
+CONTEXTO: Imobiliária Jardim do Lago (franquia Auxiliadora Predial), Canoas/RS.
 Trabalha com locação e venda de imóveis. Possui corretores CLT e PJ.
 
 CATEGORIAS DE DESPESA DO SISTEMA (use exatamente estes nomes):

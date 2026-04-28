@@ -352,7 +352,7 @@ export default function NotasFiscaisPage() {
   const [emitting, setEmitting]       = useState(false);
   const [emitError, setEmitError]     = useState<string | null>(null);
   const [emitCep, setEmitCep]         = useState("");
-  const [emitAliquota, setEmitAliquota] = useState("9");
+  const [emitAliquota, setEmitAliquota] = useState("2");
   const [cepLoading, setCepLoading]   = useState(false);
   const [cepResults, setCepResults]   = useState<{ cep_formatted: string; logradouro: string; bairro: string }[]>([]);
   const [showFixedFields, setShowFixedFields] = useState(false);
@@ -506,7 +506,7 @@ export default function NotasFiscaisPage() {
         await fetch(`/api/invoices/${id}/emit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ aliquota: 9 }),
+          body: JSON.stringify({ aliquota: 2 }),
         });
       } catch { /* continua próxima */ }
       setBatchProgress(p => ({ ...p, done: p.done + 1 }));
@@ -705,7 +705,7 @@ export default function NotasFiscaisPage() {
     const mo = Number(reportMonth);
     const yr = Number(reportYear);
     const monthName = MONTH_NAMES[mo - 1];
-    const ISS_RATE = 0.09;
+    const ISS_RATE = 0.02;
 
     const mi = invoices.filter(i => i.reference_month === mo && i.reference_year === yr);
 
@@ -836,7 +836,7 @@ export default function NotasFiscaisPage() {
       <div class="meta-item"><label>Competência</label><span>${monthName}/${yr}</span></div>
       <div class="meta-item"><label>Total de notas</label><span>${mi.length}</span></div>
       <div class="meta-item"><label>Gerado em</label><span>${new Date().toLocaleDateString("pt-BR")} às ${new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}</span></div>
-      <div class="meta-item"><label>Alíquota ISS</label><span>9% (Simples Nacional)</span></div>
+      <div class="meta-item"><label>Alíquota ISS</label><span>2% (ISS Canoas)</span></div>
     </div>
   </div>
 
@@ -850,7 +850,7 @@ export default function NotasFiscaisPage() {
     </div>
 
     <div class="iss-box">
-      <h3>ISS — Imposto Sobre Serviços (9% Simples Nacional)</h3>
+      <h3>ISS — Imposto Sobre Serviços (2% Canoas)</h3>
       <div class="iss-grid">
         <div class="iss-item"><div class="il">ISS Total (base: ${fmt(totalValue)})</div><div class="iv">${fmt(issTotal)}</div><div class="is">sobre todas as notas do mês</div></div>
         <div class="iss-item"><div class="il">ISS Recolhido (base: ${fmt(paidValue)})</div><div class="iv">${fmt(paidValue * ISS_RATE)}</div><div class="is">notas já pagas</div></div>
@@ -1335,7 +1335,7 @@ export default function NotasFiscaisPage() {
                             {/* Emitir */}
                             {(inv.status === "PENDENTE" || inv.status === "ERRO") && (
                               <button
-                                onClick={() => { setEmitModal(inv); setEmitError(null); setEmitCep(""); setEmitAliquota("9"); setCepResults([]); }}
+                                onClick={() => { setEmitModal(inv); setEmitError(null); setEmitCep(""); setEmitAliquota("2"); setCepResults([]); }}
                                 className="p-1.5 border border-blue-200 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
                                 title="Emitir NFS-e"
                               >
@@ -1707,7 +1707,7 @@ export default function NotasFiscaisPage() {
                   <p className="text-xl font-bold text-gray-900 bg-gray-50 rounded px-2 py-1.5">{formatCurrency(Number(emitModal.amount))}</p>
                 </div>
                 <div>
-                  <label className="text-gray-400 mb-0.5 block">Alíquota Simples Nacional (%)</label>
+                  <label className="text-gray-400 mb-0.5 block">Alíquota ISS (%)</label>
                   <input
                     type="number" min="0" max="100" step="0.5" value={emitAliquota}
                     onChange={(e) => setEmitAliquota(e.target.value)}
@@ -1745,7 +1745,7 @@ export default function NotasFiscaisPage() {
                       ["Data de emissão", new Date().toLocaleDateString("pt-BR")],
                       ["Regime de apuração", "Simples Nacional"],
                       ["País do tomador", "Brasil"],
-                      ["Município de incidência", "Porto Alegre – RS"],
+                      ["Município de incidência", "Canoas – RS"],
                       ["Cód. tributação nacional", "10.05.01"],
                       ["Cód. complementar municipal", "10.05.01.002"],
                       ["Imunidade", "Não"],
@@ -1762,10 +1762,12 @@ export default function NotasFiscaisPage() {
                   </div>
                 )}
               </div>
+              {process.env.NEXT_PUBLIC_APP_ENV !== "production" && (
               <div className="flex items-start gap-2 bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-700">
                 <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-                <p>Modo de desenvolvimento — a nota será registrada no sistema, mas <strong>não enviada à prefeitura</strong> até o certificado digital ser configurado.</p>
+                <p>Ambiente de homologação — emissões são enviadas ao sandbox do gateway e <strong>não geram notas fiscais reais</strong>.</p>
               </div>
+              )}
               <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
                 <Zap className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <div>

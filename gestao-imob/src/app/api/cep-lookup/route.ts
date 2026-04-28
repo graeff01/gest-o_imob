@@ -1,7 +1,7 @@
 /**
  * GET /api/cep-lookup?address=Rua+General+Lima+e+Silva
  * -------------------------------------------------------
- * Proxy para a API ViaCEP — busca CEP a partir do logradouro em Porto Alegre/RS.
+ * Proxy para a API ViaCEP — busca CEP a partir do logradouro em Canoas/RS.
  * Retorna até 5 resultados ordenados por relevância.
  */
 
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   // ViaCEP: /ws/{UF}/{Cidade}/{Logradouro}/json/
   const encoded = encodeURIComponent(streetOnly);
-  const url = `https://viacep.com.br/ws/RS/Porto%20Alegre/${encoded}/json/`;
+  const url = `https://viacep.com.br/ws/RS/Canoas/${encoded}/json/`;
 
   try {
     const res = await fetch(url, {

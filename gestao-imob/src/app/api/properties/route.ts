@@ -107,7 +107,7 @@ export async function POST(request: Request) {
         address_number: data.address_number || null,
         address_complement: data.address_complement || null,
         address_neighborhood: data.address_neighborhood,
-        address_city: data.address_city || "Porto Alegre",
+        address_city: data.address_city || "Canoas",
         address_state: data.address_state || "RS",
         address_cep: data.address_cep || null,
         property_type: data.property_type,

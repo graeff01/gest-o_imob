@@ -44,7 +44,7 @@ export const createPropertySchema = z.object({
   address_number: z.string().optional(),
   address_complement: z.string().optional(),
   address_neighborhood: z.string().min(2, "Bairro obrigatorio"),
-  address_city: z.string().default("Porto Alegre"),
+  address_city: z.string().default("Canoas"),
   address_state: z.string().default("RS"),
   address_cep: z.string().optional(),
   property_type: z.enum(["APARTAMENTO", "CASA", "COMERCIAL", "SALA", "TERRENO", "OUTRO"]),
