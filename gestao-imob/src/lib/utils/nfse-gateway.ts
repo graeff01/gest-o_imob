@@ -91,6 +91,23 @@ function getGatewayConfig() {
   };
 }
 
+function formatGatewayError(data: unknown, fallback: string) {
+  if (!data) return fallback;
+  if (typeof data === "string") return data || fallback;
+  if (typeof data !== "object") return fallback;
+
+  const record = data as Record<string, unknown>;
+  const directMessage = record.message ?? record.error ?? record.detail ?? record.title;
+  const details = record.errors ?? record.validationErrors ?? record.notifications;
+
+  const parts = [
+    typeof directMessage === "string" ? directMessage : null,
+    details ? JSON.stringify(details) : null,
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(" | ") : JSON.stringify(record);
+}
+
 // ─── nfse.io ──────────────────────────────────────────────────────────────────
 
 async function emitViaNfseIo(
@@ -177,11 +194,12 @@ async function emitViaNfseIo(
     return { success: false, error: `Falha ao conectar com nfse.io: ${msg}` };
   }
 
-  let data: Record<string, unknown> = {};
-  try { data = await response.json() as Record<string, unknown>; } catch { /* ignora */ }
+  const rawResponse = await response.text();
+  let data: unknown = rawResponse;
+  try { data = rawResponse ? JSON.parse(rawResponse) as unknown : null; } catch { /* usa texto bruto */ }
 
   if (!response.ok) {
-    const detail = (data?.message as string) || (data?.error as string) || response.statusText;
+    const detail = formatGatewayError(data, response.statusText);
     return {
       success: false,
       error: `nfse.io retornou erro ${response.status}: ${detail}`,
@@ -191,11 +209,11 @@ async function emitViaNfseIo(
 
   return {
     success:       true,
-    gatewayId:     String(data.id ?? data.external_id ?? ""),
-    nfseNumber:    data.number ? Number(data.number) : null,
-    pdfUrl:        (data.pdf_url as string) ?? (data.pdfUrl as string) ?? null,
-    xmlUrl:        (data.xml_url as string) ?? (data.xmlUrl as string) ?? null,
-    gatewayStatus: String(data.status ?? "processing"),
+    gatewayId:     String((data as Record<string, unknown>)?.id ?? (data as Record<string, unknown>)?.external_id ?? ""),
+    nfseNumber:    (data as Record<string, unknown>)?.number ? Number((data as Record<string, unknown>).number) : null,
+    pdfUrl:        ((data as Record<string, unknown>)?.pdf_url as string) ?? ((data as Record<string, unknown>)?.pdfUrl as string) ?? null,
+    xmlUrl:        ((data as Record<string, unknown>)?.xml_url as string) ?? ((data as Record<string, unknown>)?.xmlUrl as string) ?? null,
+    gatewayStatus: String((data as Record<string, unknown>)?.status ?? "processing"),
     provider:      "nfseio",
   };
 }
@@ -216,6 +234,7 @@ async function emitViaNfeio(
     description:      payload.service.description,
     competence:       new Date(payload.service.competence.year, payload.service.competence.month - 1, 1).toISOString(),
     borrower: {
+      type:             payload.borrower.federalTaxNumber.length === 14 ? "LegalEntity" : "NaturalPerson",
       name:             payload.borrower.name,
       federalTaxNumber: payload.borrower.federalTaxNumber,
       email:            payload.borrower.email,
@@ -223,8 +242,14 @@ async function emitViaNfeio(
         address: {
           postalCode:   payload.borrower.address.cep.replace(/\D/g, ""),
           country:      "BRA",
+          street:       payload.borrower.address.logradouro || "RUA NAO INFORMADA",
+          number:       "S/N",
+          district:     "NAO INFORMADO",
           state:        payload.borrower.address.uf ?? "RS",
-          city:         payload.borrower.address.municipio ?? "Porto Alegre",
+          city: {
+            code: config.cityCode,
+            name: payload.borrower.address.municipio ?? "Porto Alegre",
+          },
         },
       } : {}),
     },
@@ -248,11 +273,12 @@ async function emitViaNfeio(
     return { success: false, error: `Falha ao conectar com NFe.io: ${msg}` };
   }
 
-  let data: Record<string, unknown> = {};
-  try { data = await response.json() as Record<string, unknown>; } catch { /* ignora */ }
+  const rawResponse = await response.text();
+  let data: unknown = rawResponse;
+  try { data = rawResponse ? JSON.parse(rawResponse) as unknown : null; } catch { /* usa texto bruto */ }
 
   if (!response.ok) {
-    const detail = (data?.message as string) || response.statusText;
+    const detail = formatGatewayError(data, response.statusText);
     return {
       success: false,
       error: `NFe.io retornou erro ${response.status}: ${detail}`,
@@ -262,11 +288,11 @@ async function emitViaNfeio(
 
   return {
     success:       true,
-    gatewayId:     String(data.id ?? ""),
-    nfseNumber:    data.number ? Number(data.number) : null,
-    pdfUrl:        (data.pdfUrl as string) ?? null,
-    xmlUrl:        (data.xmlUrl as string) ?? null,
-    gatewayStatus: String(data.status ?? "processing"),
+    gatewayId:     String((data as Record<string, unknown>)?.id ?? ""),
+    nfseNumber:    (data as Record<string, unknown>)?.number ? Number((data as Record<string, unknown>).number) : null,
+    pdfUrl:        ((data as Record<string, unknown>)?.pdfUrl as string) ?? null,
+    xmlUrl:        ((data as Record<string, unknown>)?.xmlUrl as string) ?? null,
+    gatewayStatus: String((data as Record<string, unknown>)?.status ?? "processing"),
     provider:      "nfeio",
   };
 }
