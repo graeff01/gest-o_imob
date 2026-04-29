@@ -1493,6 +1493,17 @@ export default function NotasFiscaisPage() {
                                       <p className="font-mono text-gray-700 break-all">{inv.gateway_id}</p>
                                     </div>
                                   )}
+                                  {inv.gateway_id && ["PROCESSANDO","ERRO","EMITIDA"].includes(inv.status) && (
+                                    <button
+                                      onClick={() => syncInvoice(inv.id)}
+                                      disabled={syncingId === inv.id}
+                                      className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-blue-200 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                                    >
+                                      {syncingId === inv.id
+                                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Sincronizando...</>
+                                        : <><RefreshCw className="h-3 w-3" /> Sincronizar com NFE.io</>}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
 
@@ -1562,34 +1573,80 @@ export default function NotasFiscaisPage() {
                               </div>
                             )}
 
-                            {inv.last_emit_error && (
+                            {/* Comprovante oficial — destaque quando nota foi emitida */}
+                            {inv.status === "EMITIDA" && (inv.gateway_pdf_url || inv.gateway_xml_url || inv.nfse_number) && (
+                              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4 mb-3">
+                                <div className="flex items-start gap-3">
+                                  <div className="flex-shrink-0 p-2 bg-green-600 rounded-lg">
+                                    <CheckCircle2 className="h-5 w-5 text-white" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-green-900">NFS-e emitida pela Prefeitura</p>
+                                    <p className="text-xs text-green-700 mt-0.5">
+                                      {inv.nfse_number ? `Número oficial: ${inv.nfse_number}` : "Documento fiscal oficial disponível"}
+                                      {inv.issued_at && ` · Emitida em ${formatDate(inv.issued_at)}`}
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 mt-3">
+                                      {inv.gateway_pdf_url && (
+                                        <a href={inv.gateway_pdf_url} target="_blank" rel="noopener noreferrer"
+                                          download
+                                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm">
+                                          <Download className="h-3.5 w-3.5" />Baixar DANFE (PDF)
+                                        </a>
+                                      )}
+                                      {inv.gateway_xml_url && (
+                                        <a href={inv.gateway_xml_url} target="_blank" rel="noopener noreferrer"
+                                          download
+                                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors">
+                                          <FileText className="h-3.5 w-3.5" />XML Fiscal
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Aguardando processamento da prefeitura */}
+                            {inv.status === "EMITIDA" && !inv.gateway_pdf_url && !inv.nfse_number && (
+                              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-amber-600 flex-shrink-0" />
+                                <p className="text-xs text-amber-800">
+                                  Nota enviada ao gateway. Aguardando processamento da Prefeitura para liberar o comprovante oficial.
+                                  {inv.gateway_id && (
+                                    <button onClick={() => syncInvoice(inv.id)} disabled={syncingId === inv.id}
+                                      className="ml-2 underline font-medium hover:text-amber-900 disabled:opacity-50">
+                                      {syncingId === inv.id ? "Verificando..." : "Verificar agora"}
+                                    </button>
+                                  )}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Erro de emissão — destaque */}
+                            {inv.status === "ERRO" && (
+                              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-3">
+                                <div className="flex items-start gap-3">
+                                  <div className="flex-shrink-0 p-2 bg-red-600 rounded-lg">
+                                    <AlertTriangle className="h-5 w-5 text-white" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-red-900">Falha na emissão da NFS-e</p>
+                                    {inv.last_emit_error && (
+                                      <p className="text-xs text-red-700 font-mono mt-1 bg-white/60 rounded p-2 break-words">{inv.last_emit_error}</p>
+                                    )}
+                                    {inv.emit_attempts > 0 && (
+                                      <p className="text-[11px] text-red-600 mt-1">{inv.emit_attempts} tentativa(s) realizadas</p>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+
+                            {inv.last_emit_error && inv.status !== "ERRO" && (
                               <div className="text-xs bg-red-50 border border-red-100 rounded-lg p-2 mb-2">
-                                <p className="text-red-500 font-medium mb-0.5">Erro na última emissão:</p>
+                                <p className="text-red-500 font-medium mb-0.5">Última mensagem do gateway:</p>
                                 <p className="text-red-600 font-mono">{inv.last_emit_error}</p>
-                              </div>
-                            )}
-
-                            {inv.gateway_id && (
-                              <div className="text-xs text-gray-400 mb-1">
-                                Gateway ID: <span className="font-mono text-gray-600">{inv.gateway_id}</span>
-                                {inv.emit_attempts > 0 && ` · ${inv.emit_attempts} tentativa(s)`}
-                              </div>
-                            )}
-
-                            {(inv.gateway_pdf_url || inv.gateway_xml_url) && (
-                              <div className="flex gap-2 mt-1">
-                                {inv.gateway_pdf_url && (
-                                  <a href={inv.gateway_pdf_url} target="_blank" rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
-                                    <Download className="h-3 w-3" />DANFE (PDF)
-                                  </a>
-                                )}
-                                {inv.gateway_xml_url && (
-                                  <a href={inv.gateway_xml_url} target="_blank" rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50">
-                                    <Download className="h-3 w-3" />XML
-                                  </a>
-                                )}
                               </div>
                             )}
 
