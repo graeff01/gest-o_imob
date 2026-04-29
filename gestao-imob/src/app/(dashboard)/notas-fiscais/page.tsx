@@ -454,6 +454,11 @@ export default function NotasFiscaisPage() {
   const totalEmitido      = invoices.filter(i => ["EMITIDA","ENVIADA"].includes(i.status)).reduce((s, i) => s + Number(i.amount), 0);
   const totalPago         = invoices.filter(i => i.status === "PAGA").reduce((s, i) => s + Number(i.amount), 0);
   const totalErro         = invoices.filter(i => i.status === "ERRO").length;
+  const attentionCount    = totalErro + overdueCount;
+  const readyToEmitCount  = invoices.filter((inv) =>
+    ["PENDENTE", "ERRO"].includes(inv.status) &&
+    validateInvoiceForEmission(inv, "00000000", "9").every((check) => check.ok)
+  ).length;
 
   // ── Atualizar status ──
   const updateStatus = async (id: string, newStatus: InvoiceStatus) => {
@@ -1023,214 +1028,236 @@ export default function NotasFiscaisPage() {
   return (
     <div className="space-y-6">
 
-      {/* ── Header ── */}
-      <div className="flex items-start justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Notas Fiscais</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Importação do DW, emissão de NFS-e e controle de ciclo de vida.</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={fetchInvoices}
-            className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
-            title={hasPendingSync ? "Atualizar (auto-refresh ativo a cada 30s)" : "Atualizar"}
-          >
-            <RefreshCw className={cn("h-4 w-4", hasPendingSync && "animate-pulse text-blue-500")} />
-          </button>
-          {totalErro > 0 && (
-            <button
-              onClick={handleRetryFailed}
-              disabled={retryingFailed}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-200 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
-              title="Tenta reenviar notas com erros recuperaveis (timeout, 502, etc.)"
-            >
-              {retryingFailed
-                ? <><Loader2 className="h-3 w-3 animate-spin" /> Tentando...</>
-                : <><AlertTriangle className="h-3 w-3" /> Reenviar erros ({totalErro})</>}
-            </button>
-          )}
-          <button
-            onClick={() => setReportModal(true)}
-            className="flex items-center gap-2 px-3 py-2 border border-indigo-300 text-indigo-700 bg-indigo-50 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
-          >
-            <FileText className="h-4 w-4" />
-            Relatório Mensal
-          </button>
-          <button
-            onClick={handleExportExcel}
-            className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-            title="Exportar lista atual para Excel"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            Exportar
-          </button>
-          <button
-            onClick={handleClearPendingDw}
-            disabled={dwCleanupLoading}
-            className="flex items-center gap-2 px-3 py-2 border border-amber-300 text-amber-700 bg-amber-50 rounded-lg text-sm font-medium hover:bg-amber-100 disabled:opacity-50 transition-colors"
-            title="Remove somente notas importadas do DW que ainda estao pendentes"
-          >
-            {dwCleanupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Limpar DW pendente
-          </button>
-          <button
-            onClick={() => { setManualModal(true); setManualForm(EMPTY_MANUAL_FORM); setManualError(null); }}
-            className="flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-50 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Nova Nota
-          </button>
-          <button
-            onClick={() => { setImportModal(true); resetImport(); }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
-          >
-            <Upload className="h-4 w-4" />
-            Importar DW
-          </button>
-        </div>
-      </div>
-
-      {/* ── Cards de resumo ── */}
-      {dwCleanupMessage && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-          {dwCleanupMessage}
-        </div>
-      )}
-
-      <div className="bg-white border border-blue-100 rounded-xl p-4">
-        <div className="flex items-start gap-3">
-          <Info className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+      <div className="flex flex-col gap-4">
+        <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <p className="text-sm font-semibold text-gray-900">Fluxo seguro de NFS-e</p>
-            <p className="text-xs text-gray-500 mt-1">
-              Importe o DW, revise as pendencias, valide CPF/CNPJ, CEP, valor, competencia e descricao,
-              emita, envie ao cliente e depois marque pagamento ou cancelamento. A tela bloqueia emissao
-              incompleta antes de chamar o gateway.
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Fiscal</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-gray-950">Notas Fiscais</h1>
+            <p className="mt-1 text-sm text-gray-500">Revisao, emissao e acompanhamento de NFS-e importadas do DW.</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={fetchInvoices}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+              title={hasPendingSync ? "Atualizar (auto-refresh ativo a cada 30s)" : "Atualizar"}
+            >
+              <RefreshCw className={cn("h-4 w-4", hasPendingSync && "animate-pulse text-blue-500")} />
+            </button>
+            <button
+              onClick={() => { setImportModal(true); resetImport(); }}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition-colors"
+            >
+              <Upload className="h-4 w-4" />
+              Importar DW
+            </button>
           </div>
         </div>
+
+        {dwCleanupMessage && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+            {dwCleanupMessage}
+          </div>
+        )}
+
+        <section className="rounded-xl border border-gray-200 bg-white">
+          <div className="grid grid-cols-1 divide-y divide-gray-100 md:grid-cols-[1.1fr_0.9fr] md:divide-x md:divide-y-0">
+            <div className="p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Fila de emissao</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {readyToEmitCount > 0
+                      ? `${readyToEmitCount} nota(s) pronta(s) para emitir.`
+                      : "Revise as pendencias antes de emitir."}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-semibold text-gray-950">{summary?.pendentes ?? 0}</p>
+                  <p className="text-xs text-gray-400">pendente(s)</p>
+                </div>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-gray-100">
+                <div
+                  className="h-full rounded-full bg-blue-600 transition-all"
+                  style={{ width: `${invoices.length > 0 ? Math.min(100, ((summary?.pagas ?? 0) / invoices.length) * 100) : 0}%` }}
+                />
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-xs text-gray-400">A emitir</p>
+                  <p className="mt-1 text-sm font-semibold text-amber-700">{formatCurrency(totalPendente)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Emitido/enviado</p>
+                  <p className="mt-1 text-sm font-semibold text-indigo-700">{formatCurrency(totalEmitido)}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Recebido</p>
+                  <p className="mt-1 text-sm font-semibold text-green-700">{formatCurrency(totalPago)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-5">
+              <p className="text-sm font-semibold text-gray-900">Atencao operacional</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setActiveTab("erro")}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-colors",
+                    totalErro > 0 ? "border-red-200 bg-red-50 hover:bg-red-100" : "border-gray-200 bg-gray-50"
+                  )}
+                >
+                  <p className={cn("text-xl font-semibold", totalErro > 0 ? "text-red-700" : "text-gray-400")}>{totalErro}</p>
+                  <p className="text-xs text-gray-500">erro(s) de emissao</p>
+                </button>
+                <button
+                  onClick={() => setActiveTab("vencidas")}
+                  className={cn(
+                    "rounded-lg border p-3 text-left transition-colors",
+                    overdueCount > 0 ? "border-orange-200 bg-orange-50 hover:bg-orange-100" : "border-gray-200 bg-gray-50"
+                  )}
+                >
+                  <p className={cn("text-xl font-semibold", overdueCount > 0 ? "text-orange-700" : "text-gray-400")}>{overdueCount}</p>
+                  <p className="text-xs text-gray-500">vencida(s)</p>
+                </button>
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {totalErro > 0 && (
+                  <button
+                    onClick={handleRetryFailed}
+                    disabled={retryingFailed}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                  >
+                    {retryingFailed
+                      ? <><Loader2 className="h-3 w-3 animate-spin" /> Reenviando...</>
+                      : <><AlertTriangle className="h-3 w-3" /> Reenviar erros</>}
+                  </button>
+                )}
+                <button
+                  onClick={handleClearPendingDw}
+                  disabled={dwCleanupLoading}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {dwCleanupLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  Limpar DW pendente
+                </button>
+                <button
+                  onClick={() => setReportModal(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  <FileText className="h-3 w-3" />
+                  Relatorio
+                </button>
+                <button
+                  onClick={handleExportExcel}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  <FileSpreadsheet className="h-3 w-3" />
+                  Exportar
+                </button>
+                <button
+                  onClick={() => { setManualModal(true); setManualForm(EMPTY_MANUAL_FORM); setManualError(null); }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
+                >
+                  <Plus className="h-3 w-3" />
+                  Nova nota
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white p-4 rounded-xl border border-gray-200">
-          <p className="text-xs text-gray-500 mb-1">A Emitir</p>
-          <p className="text-xl font-bold text-amber-600">{formatCurrency(totalPendente)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{summary?.pendentes ?? 0} nota(s)</p>
+      <div className="rounded-xl border border-gray-200 bg-white p-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-1 w-fit flex-wrap">
+            {[
+              { id: "todas",     label: `Todas (${invoices.length})` },
+              { id: "pendentes", label: `Pendentes (${summary?.pendentes ?? 0})` },
+              { id: "vencidas",  label: `Vencidas (${overdueCount})`, alert: overdueCount > 0 },
+              { id: "erro",      label: `Erros (${totalErro})`, alert: totalErro > 0 },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                className={cn(
+                  "px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5",
+                  activeTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                {tab.label}
+                {tab.alert && <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs text-gray-400">
+            {attentionCount > 0 ? `${attentionCount} item(ns) precisam de atencao` : "Operacao sem alertas criticos"}
+          </div>
         </div>
-        <div className="bg-white p-4 rounded-xl border border-gray-200">
-          <p className="text-xs text-gray-500 mb-1">Em Trânsito</p>
-          <p className="text-xl font-bold text-indigo-700">{formatCurrency(totalEmitido)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{(summary?.emitidas ?? 0) + (summary?.enviadas ?? 0)} nota(s)</p>
-        </div>
-        <div className="bg-white p-4 rounded-xl border border-gray-200">
-          <p className="text-xs text-gray-500 mb-1">Recebido</p>
-          <p className="text-xl font-bold text-green-700">{formatCurrency(totalPago)}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{summary?.pagas ?? 0} nota(s)</p>
-        </div>
-        <div className={cn(
-          "bg-white p-4 rounded-xl border transition-colors",
-          overdueCount > 0 ? "border-orange-200 bg-orange-50" : "border-gray-200"
-        )}>
-          <p className={cn("text-xs mb-1", overdueCount > 0 ? "text-orange-500" : "text-gray-500")}>Vencidas</p>
-          <p className={cn("text-xl font-bold", overdueCount > 0 ? "text-orange-700" : "text-gray-400")}>{overdueCount}</p>
-          <p className="text-xs text-gray-400 mt-0.5">pendentes vencidas</p>
-        </div>
-        <div className={cn(
-          "bg-white p-4 rounded-xl border transition-colors",
-          totalErro > 0 ? "border-red-200 bg-red-50" : "border-gray-200"
-        )}>
-          <p className={cn("text-xs mb-1", totalErro > 0 ? "text-red-500" : "text-gray-500")}>Com Erro</p>
-          <p className={cn("text-xl font-bold", totalErro > 0 ? "text-red-700" : "text-gray-400")}>{totalErro}</p>
-          <p className="text-xs text-gray-400 mt-0.5">requer atenção</p>
-        </div>
-      </div>
 
-      {/* ── Tabs ── */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 w-fit flex-wrap">
-        {[
-          { id: "todas",     label: `Todas (${invoices.length})` },
-          { id: "pendentes", label: `Pendentes (${summary?.pendentes ?? 0})` },
-          { id: "vencidas",  label: `Vencidas (${overdueCount})`, alert: overdueCount > 0 },
-          { id: "erro",      label: `Erros (${totalErro})`, alert: totalErro > 0 },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as typeof activeTab)}
-            className={cn(
-              "px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5",
-              activeTab === tab.id ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-            )}
-          >
-            {tab.label}
-            {tab.alert && <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />}
-          </button>
-        ))}
-      </div>
-
-      {/* ── Filtros ── */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Buscar por cliente, CPF/CNPJ, endereço..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        {activeTab === "todas" && (
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar cliente, CPF/CNPJ ou endereco"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {activeTab === "todas" && (
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            >
+              <option value="">Todos os status</option>
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+          )}
           <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            value={filterService}
+            onChange={(e) => setFilterService(e.target.value)}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
           >
-            <option value="">Todos os status</option>
-            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
+            <option value="">Todos os servicos</option>
+            {Object.entries(SERVICE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
             ))}
           </select>
-        )}
-        <select
-          value={filterService}
-          onChange={(e) => setFilterService(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-        >
-          <option value="">Todos os serviços</option>
-          {Object.entries(SERVICE_LABELS).map(([k, v]) => (
-            <option key={k} value={k}>{v}</option>
-          ))}
-        </select>
-        <select
-          value={filterMonth}
-          onChange={(e) => setFilterMonth(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-        >
-          <option value="">Todos os meses</option>
-          {MONTH_NAMES.map((m, i) => (
-            <option key={i + 1} value={String(i + 1)}>{m}</option>
-          ))}
-        </select>
-        <select
-          value={filterYear}
-          onChange={(e) => setFilterYear(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
-        >
-          <option value="">Todos os anos</option>
-          {[2024, 2025, 2026, 2027].map(y => (
-            <option key={y} value={String(y)}>{y}</option>
-          ))}
-        </select>
-        {(filterMonth || filterYear || filterStatus || filterService) && (
-          <button
-            onClick={() => { setFilterMonth(""); setFilterYear(""); setFilterStatus(""); setFilterService(""); }}
-            className="text-xs text-gray-400 hover:text-gray-600 underline"
+          <select
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
           >
-            Limpar filtros
-          </button>
-        )}
+            <option value="">Todos os meses</option>
+            {MONTH_NAMES.map((m, i) => (
+              <option key={i + 1} value={String(i + 1)}>{m}</option>
+            ))}
+          </select>
+          <select
+            value={filterYear}
+            onChange={(e) => setFilterYear(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+          >
+            <option value="">Todos os anos</option>
+            {[2024, 2025, 2026, 2027].map(y => (
+              <option key={y} value={String(y)}>{y}</option>
+            ))}
+          </select>
+          {(filterMonth || filterYear || filterStatus || filterService) && (
+            <button
+              onClick={() => { setFilterMonth(""); setFilterYear(""); setFilterStatus(""); setFilterService(""); }}
+              className="text-xs text-gray-400 hover:text-gray-600 underline"
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
       </div>
-
       {/* ── Barra de ação em lote ── */}
       {selectedIds.size > 0 && (
         <div className="flex items-center gap-4 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl">
