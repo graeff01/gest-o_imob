@@ -28,6 +28,10 @@ const STATUS_MAP: Record<string, "EMITIDA" | "ERRO" | "CANCELADA"> = {
   "ServiceInvoice.IssueError":   "ERRO",
 };
 
+function internalDocumentUrl(invoiceId: string, type: "pdf" | "xml") {
+  return `/api/invoices/${invoiceId}/download?type=${type}`;
+}
+
 function verifyHmac(rawBody: string, headerSig: string | null, secret: string): boolean {
   if (!headerSig) return false;
   const expected = createHmac("sha1", secret).update(rawBody).digest("base64");
@@ -178,6 +182,8 @@ export async function POST(req: NextRequest) {
 
   if (newStatus === "EMITIDA") {
     if (!invoice.issued_at) updateData.issued_at = new Date();
+    updateData.gateway_pdf_url = pdfUrl ?? internalDocumentUrl(invoice.id, "pdf");
+    updateData.gateway_xml_url = xmlUrl ?? internalDocumentUrl(invoice.id, "xml");
     updateData.last_emit_error = null;
     updateData.retry_after = null;
   } else if (newStatus === "CANCELADA") {

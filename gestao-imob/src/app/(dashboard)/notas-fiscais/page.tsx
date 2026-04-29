@@ -389,6 +389,7 @@ export default function NotasFiscaisPage() {
   const [dwCleanupLoading, setDwCleanupLoading] = useState(false);
   const [dwCleanupMessage, setDwCleanupMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const autoSyncInFlightRef = useRef(false);
   const runtimeEnv = (process.env.NEXT_PUBLIC_APP_ENV ?? "").toLowerCase();
   const canClearAllDw = ["homolog", "homologacao", "hml"].includes(runtimeEnv);
 
@@ -432,15 +433,33 @@ export default function NotasFiscaisPage() {
   // Roda apenas quando ha notas em PROCESSANDO ou EMITIDA-sem-PDF aguardando webhook.
   // Evita gerar trafego desnecessario quando o usuario nao tem nada pra acompanhar.
   const hasPendingSync = invoices.some(
-    (i) => i.status === "PROCESSANDO" || (i.status === "EMITIDA" && !i.gateway_pdf_url)
+    (i) => !!i.gateway_id && (i.status === "PROCESSANDO" || (i.status === "EMITIDA" && (!i.gateway_pdf_url || !i.gateway_xml_url)))
   );
+  const autoSyncGatewayInvoices = useCallback(async () => {
+    const targets = invoices
+      .filter((i) => !!i.gateway_id && (i.status === "PROCESSANDO" || (i.status === "EMITIDA" && (!i.gateway_pdf_url || !i.gateway_xml_url))))
+      .slice(0, 5);
+
+    if (targets.length === 0 || autoSyncInFlightRef.current) return;
+
+    autoSyncInFlightRef.current = true;
+    try {
+      await Promise.allSettled(
+        targets.map((invoice) => fetch(`/api/invoices/${invoice.id}/sync`, { method: "POST" }))
+      );
+      await fetchInvoices();
+    } finally {
+      autoSyncInFlightRef.current = false;
+    }
+  }, [fetchInvoices, invoices]);
   useEffect(() => {
     if (!hasPendingSync) return;
+    void autoSyncGatewayInvoices();
     const interval = setInterval(() => {
-      fetchInvoices();
+      void autoSyncGatewayInvoices();
     }, 30_000);
     return () => clearInterval(interval);
-  }, [hasPendingSync, fetchInvoices]);
+  }, [autoSyncGatewayInvoices, hasPendingSync]);
 
   // ── Computed ──
   const today = new Date();

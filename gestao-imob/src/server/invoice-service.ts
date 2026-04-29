@@ -27,6 +27,10 @@ const allowedTransitions: Record<InvoiceStatus, InvoiceStatus[]> = {
   CANCELADA: [],
 };
 
+function internalDocumentUrl(invoiceId: string, type: "pdf" | "xml") {
+  return `/api/invoices/${invoiceId}/download?type=${type}`;
+}
+
 export class InvoiceServiceError extends Error {
   constructor(message: string, public status = 400) {
     super(message);
@@ -296,8 +300,8 @@ export async function emitInvoice(
       gateway_id: result.gatewayId,
       gateway_provider: result.provider,
       gateway_status: result.gatewayStatus,
-      gateway_pdf_url: result.pdfUrl,
-      gateway_xml_url: result.xmlUrl,
+      gateway_pdf_url: result.pdfUrl ?? (result.provider !== "stub" ? internalDocumentUrl(id, "pdf") : null),
+      gateway_xml_url: result.xmlUrl ?? (result.provider !== "stub" ? internalDocumentUrl(id, "xml") : null),
       nfse_number: result.nfseNumber,
       last_emit_error: null,
     },

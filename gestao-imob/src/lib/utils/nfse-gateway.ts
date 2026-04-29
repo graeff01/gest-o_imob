@@ -328,6 +328,24 @@ export interface NfseSyncResult {
   error?: string;
 }
 
+export type NfseDocumentType = "pdf" | "xml";
+
+export interface NfseDocumentResult {
+  success: boolean;
+  contentType?: string;
+  content?: ArrayBuffer;
+  error?: string;
+}
+
+function getServiceInvoiceBaseUrl(config: ReturnType<typeof getGatewayConfig>) {
+  if (config.provider === "nfeio") {
+    return `https://api.nfe.io/v1/companies/${config.companyId}/serviceinvoices`;
+  }
+
+  const base = config.isHomolog ? "https://api.sandbox.nfse.io/v1" : "https://api.nfse.io/v1";
+  return `${base}/companies/${config.companyId}/serviceinvoices`;
+}
+
 export async function syncNfseStatus(gatewayId: string): Promise<NfseSyncResult> {
   const config = getGatewayConfig();
 
@@ -340,14 +358,7 @@ export async function syncNfseStatus(gatewayId: string): Promise<NfseSyncResult>
   }
 
   try {
-    let url: string;
-    if (config.provider === "nfeio") {
-      const base = config.isHomolog ? "https://api.nfe.io/v1" : "https://api.nfe.io/v1";
-      url = `${base}/companies/${config.companyId}/serviceinvoices/${gatewayId}`;
-    } else {
-      const base = config.isHomolog ? "https://api.sandbox.nfse.io/v1" : "https://api.nfse.io/v1";
-      url = `${base}/companies/${config.companyId}/serviceinvoices/${gatewayId}`;
-    }
+    const url = `${getServiceInvoiceBaseUrl(config)}/${gatewayId}`;
 
     const res = await fetch(url, {
       headers: { "Authorization": config.apiKey, "X-NFEIO-APIKEY": config.apiKey },
@@ -375,6 +386,48 @@ export async function syncNfseStatus(gatewayId: string): Promise<NfseSyncResult>
 }
 
 // ─── Cancelamento na prefeitura ───────────────────────────────────────────────
+
+export async function downloadNfseDocument(
+  gatewayId: string,
+  type: NfseDocumentType
+): Promise<NfseDocumentResult> {
+  const config = getGatewayConfig();
+
+  if (config.isStub) {
+    return { success: false, error: "Documento indisponivel em modo stub." };
+  }
+
+  if (!config.apiKey || !config.companyId) {
+    return { success: false, error: "Credenciais do gateway nao configuradas." };
+  }
+
+  try {
+    const res = await fetch(`${getServiceInvoiceBaseUrl(config)}/${gatewayId}/${type}`, {
+      headers: {
+        "Authorization": config.apiKey,
+        "X-NFEIO-APIKEY": config.apiKey,
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => "");
+      return {
+        success: false,
+        error: `Gateway retornou ${res.status}${detail ? `: ${detail.slice(0, 250)}` : ""}`,
+      };
+    }
+
+    return {
+      success: true,
+      contentType: res.headers.get("content-type") ?? (type === "pdf" ? "application/pdf" : "application/xml"),
+      content: await res.arrayBuffer(),
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Falha ao baixar documento no gateway: ${msg}` };
+  }
+}
 
 export interface NfseCancelResult {
   success: boolean;

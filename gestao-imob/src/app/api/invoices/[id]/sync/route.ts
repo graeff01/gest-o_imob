@@ -7,6 +7,10 @@ const ISSUED_STATUSES   = new Set(["Issued", "issued", "Created", "created", "No
 const ERROR_STATUSES    = new Set(["IssueFailed", "Error", "error", "Cancelled", "cancelled"]);
 const CANCELLED_STATUSES = new Set(["Cancelled", "cancelled", "Cancelado"]);
 
+function internalDocumentUrl(invoiceId: string, type: "pdf" | "xml") {
+  return `/api/invoices/${invoiceId}/download?type=${type}`;
+}
+
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -46,8 +50,12 @@ export async function POST(
         status:         newStatus,
         gateway_status: result.gatewayStatus,
         ...(result.nfseNumber ? { nfse_number: result.nfseNumber } : {}),
-        ...(result.pdfUrl     ? { gateway_pdf_url: result.pdfUrl } : {}),
-        ...(result.xmlUrl     ? { gateway_xml_url: result.xmlUrl } : {}),
+        ...(newStatus === "EMITIDA"
+          ? {
+              gateway_pdf_url: result.pdfUrl ?? invoice.gateway_pdf_url ?? internalDocumentUrl(id, "pdf"),
+              gateway_xml_url: result.xmlUrl ?? invoice.gateway_xml_url ?? internalDocumentUrl(id, "xml"),
+            }
+          : {}),
         ...(newStatus === "EMITIDA" && !invoice.issued_at ? { issued_at: new Date() } : {}),
         ...(newStatus === "CANCELADA" && !invoice.cancelled_at ? { cancelled_at: new Date() } : {}),
       },
