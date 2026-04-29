@@ -401,7 +401,16 @@ export default function NotasFiscaisPage() {
       if (filterService) params.set("service_type",  filterService);
 
       const res = await fetch(`/api/invoices?${params.toString()}`);
-      if (!res.ok) throw new Error("Erro ao carregar notas fiscais.");
+      if (!res.ok) {
+        let message = "Erro ao carregar notas fiscais.";
+        try {
+          const payload = await res.json() as { error?: string };
+          if (payload.error) message = payload.error;
+        } catch {
+          // Mantem mensagem padrao.
+        }
+        throw new Error(message);
+      }
       const data = await res.json();
       setInvoices(data.invoices ?? []);
       setSummary(data.summary ?? null);
@@ -1516,6 +1525,184 @@ export default function NotasFiscaisPage() {
                       {isExpanded && (
                         <tr key={`${inv.id}-detail`} className="bg-gray-50/80">
                           <td colSpan={9} className="px-6 py-4 border-t border-gray-100">
+                            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mb-4">
+                              <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-sm font-semibold text-gray-900">{invoiceCode(inv)}</h3>
+                                    <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border", st.color)}>
+                                      <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
+                                      {st.label}
+                                    </span>
+                                    {overdue && (
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
+                                        <Clock className="h-3 w-3" />
+                                        Vencida
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 text-xs text-gray-500">{operationMessage(inv)}</p>
+                                </div>
+
+                                {inv.gateway_id && ["PROCESSANDO", "ERRO", "EMITIDA"].includes(inv.status) && (
+                                  <button
+                                    onClick={() => syncInvoice(inv.id)}
+                                    disabled={syncingId === inv.id}
+                                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
+                                  >
+                                    {syncingId === inv.id
+                                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Sincronizando</>
+                                      : <><RefreshCw className="h-3.5 w-3.5" /> Sincronizar NFE.io</>}
+                                  </button>
+                                )}
+                              </div>
+
+                              {inv.status === "ERRO" && (
+                                <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
+                                  {(() => {
+                                    const explained = explainEmitError(inv.last_emit_error);
+                                    return (
+                                      <div className="flex gap-3">
+                                        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
+                                        <div className="min-w-0">
+                                          <p className="text-sm font-semibold text-red-900">{explained.title}</p>
+                                          <p className="mt-0.5 text-xs text-red-700">{explained.action}</p>
+                                          {inv.last_emit_error && (
+                                            <details className="mt-2">
+                                              <summary className="cursor-pointer text-[11px] font-medium text-red-700">Ver detalhe tecnico</summary>
+                                              <p className="mt-1 break-words rounded bg-white/70 p-2 font-mono text-[11px] text-red-700">{inv.last_emit_error}</p>
+                                            </details>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
+                                </div>
+                              )}
+
+                              <div className="grid gap-0 border-b border-gray-100 md:grid-cols-4">
+                                <div className="border-b border-gray-100 px-4 py-3 md:border-b-0 md:border-r">
+                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Cliente</p>
+                                  <p className="mt-1 truncate text-xs font-semibold text-gray-900">{inv.client_name}</p>
+                                  <p className="mt-0.5 font-mono text-[11px] text-gray-500">{maskSensitiveCpfCnpj(inv.client_cpf_cnpj)}</p>
+                                </div>
+                                <div className="border-b border-gray-100 px-4 py-3 md:border-b-0 md:border-r">
+                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Servico</p>
+                                  <p className="mt-1 text-xs font-semibold text-gray-900">{SERVICE_LABELS[inv.service_type]}</p>
+                                  <p className="mt-0.5 text-[11px] text-gray-500">
+                                    {inv.reference_month ? MONTH_NAMES[inv.reference_month - 1] : "Sem mes"} / {inv.reference_year}
+                                  </p>
+                                </div>
+                                <div className="border-b border-gray-100 px-4 py-3 md:border-b-0 md:border-r">
+                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Valor</p>
+                                  <p className="mt-1 text-xs font-semibold text-gray-900">{formatCurrency(Number(inv.amount))}</p>
+                                  <p className={cn("mt-0.5 text-[11px]", overdue ? "text-orange-600" : "text-gray-500")}>
+                                    Vencimento {inv.due_date ? formatDate(inv.due_date) : "nao informado"}
+                                  </p>
+                                </div>
+                                <div className="px-4 py-3">
+                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Gateway</p>
+                                  <p className="mt-1 text-xs font-semibold text-gray-900">{inv.gateway_provider || "Aguardando emissao"}</p>
+                                  <p className="mt-0.5 text-[11px] text-gray-500">
+                                    {inv.emit_attempts} tentativa(s){inv.last_emit_at ? ` · ${formatDate(inv.last_emit_at)}` : ""}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="grid gap-4 p-4 lg:grid-cols-[0.9fr_1.1fr]">
+                                <div>
+                                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Historico</p>
+                                  <div className="space-y-3">
+                                    {buildInvoiceTimeline(inv).map((event, index) => (
+                                      <div key={`${event.label}-${index}`} className="flex gap-3">
+                                        <div className={cn(
+                                          "mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full",
+                                          event.tone === "green" && "bg-green-500",
+                                          event.tone === "red" && "bg-red-500",
+                                          event.tone === "amber" && "bg-amber-500",
+                                          event.tone === "purple" && "bg-purple-500",
+                                          event.tone === "blue" && "bg-blue-500",
+                                          event.tone === "gray" && "bg-gray-400",
+                                        )} />
+                                        <div className="min-w-0">
+                                          <p className="text-xs font-semibold text-gray-900">{event.label}</p>
+                                          <p className="text-[11px] text-gray-500">{event.detail}</p>
+                                          <p className="text-[11px] text-gray-400">{event.date ? formatDate(event.date) : "Data nao registrada"}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  <details open className="rounded-lg border border-gray-200 bg-gray-50/70">
+                                    <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">Descricao da NFS-e</summary>
+                                    <div className="border-t border-gray-200 px-3 py-2">
+                                      <p className="text-xs leading-relaxed text-gray-600">{inv.description_body}</p>
+                                    </div>
+                                  </details>
+
+                                  <details className="rounded-lg border border-gray-200 bg-white">
+                                    <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">Dados importados do DW</summary>
+                                    <div className="grid gap-3 border-t border-gray-100 px-3 py-3 text-xs sm:grid-cols-2">
+                                      <div>
+                                        <p className="text-gray-400">Codigo do imovel</p>
+                                        <p className="font-mono text-gray-700">{inv.property_code || "-"}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-gray-400">Titulo DW</p>
+                                        <p className="font-mono text-gray-700">{inv.title_number || "-"}</p>
+                                      </div>
+                                      <div className="sm:col-span-2">
+                                        <p className="text-gray-400">Endereco do imovel</p>
+                                        <p className="font-medium text-gray-700">{inv.property_address || "-"}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-gray-400">Agencia</p>
+                                        <p className="font-medium text-gray-700">{inv.dw_agency_name || "-"}</p>
+                                      </div>
+                                      {inv.notes && (
+                                        <div className="sm:col-span-2">
+                                          <p className="text-gray-400">Observacoes</p>
+                                          <p className="text-gray-700">{inv.notes}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+
+                                  <details className="rounded-lg border border-gray-200 bg-white">
+                                    <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">Dados tecnicos do gateway</summary>
+                                    <div className="grid gap-3 border-t border-gray-100 px-3 py-3 text-xs sm:grid-cols-2">
+                                      <div>
+                                        <p className="text-gray-400">Provider</p>
+                                        <p className="font-mono text-gray-700">{inv.gateway_provider || "-"}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-gray-400">Status gateway</p>
+                                        <p className="font-mono text-gray-700">{inv.gateway_status || "-"}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-gray-400">Tentativas</p>
+                                        <p className="font-medium text-gray-700">{inv.emit_attempts}</p>
+                                      </div>
+                                      <div>
+                                        <p className="text-gray-400">Ultima tentativa</p>
+                                        <p className="font-medium text-gray-700">{inv.last_emit_at ? formatDate(inv.last_emit_at) : "-"}</p>
+                                      </div>
+                                      {inv.gateway_id && (
+                                        <div className="sm:col-span-2">
+                                          <p className="text-gray-400">ID no gateway</p>
+                                          <p className="break-all font-mono text-gray-700">{inv.gateway_id}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </details>
+                                </div>
+                              </div>
+                            </div>
+                            <details className="rounded-lg border border-gray-200 bg-white mb-4">
+                              <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-gray-600">Ver auditoria e dados completos</summary>
+                              <div className="border-t border-gray-100 p-4">
                             <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-4 mb-4">
                               <div className="space-y-3">
                                 <div className="bg-white border border-gray-200 rounded-lg p-4">
@@ -1659,6 +1846,9 @@ export default function NotasFiscaisPage() {
                             )}
 
                             {/* Comprovante oficial — destaque quando nota foi emitida */}
+                              </div>
+                            </details>
+
                             {inv.status === "EMITIDA" && (inv.gateway_pdf_url || inv.gateway_xml_url || inv.nfse_number) && (
                               <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4 mb-3">
                                 <div className="flex items-start gap-3">
