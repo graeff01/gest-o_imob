@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { parseDWExcel, DWParsedRow } from "@/lib/utils/dw-parser";
 import { auditEvent } from "@/server/audit";
 import { AuthError, requireElevatedRole } from "@/server/authz";
+import { appConfig } from "@/server/env";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -238,17 +239,32 @@ export async function DELETE(request: NextRequest) {
   }
 
   const dryRun = request.nextUrl.searchParams.get("dryRun") !== "false";
-  const where = {
-    imported_from_dw: true,
-    status: "PENDENTE" as const,
-  };
+  const scope = request.nextUrl.searchParams.get("scope") ?? "pending";
+  const deleteAllDw = scope === "all";
+
+  if (deleteAllDw && !appConfig.isHomolog) {
+    return NextResponse.json(
+      { error: "Limpeza total de notas DW e permitida somente em homologacao." },
+      { status: 403 }
+    );
+  }
+
+  const where = deleteAllDw
+    ? { imported_from_dw: true }
+    : {
+        imported_from_dw: true,
+        status: "PENDENTE" as const,
+      };
 
   if (dryRun) {
     const count = await prisma.invoice.count({ where });
     return NextResponse.json({
       dryRun: true,
       removable: count,
-      message: "Simulacao concluida. Use ?dryRun=false para remover as notas DW pendentes.",
+      scope: deleteAllDw ? "all" : "pending",
+      message: deleteAllDw
+        ? "Simulacao concluida. Use ?scope=all&dryRun=false para remover todas as notas DW."
+        : "Simulacao concluida. Use ?dryRun=false para remover as notas DW pendentes.",
     });
   }
 
@@ -258,15 +274,18 @@ export async function DELETE(request: NextRequest) {
     action: "invoice.import.cleaned",
     actorId: userId,
     entityType: "invoice",
-    summary: "Notas DW pendentes removidas.",
+    summary: deleteAllDw ? "Todas as notas DW removidas em ambiente nao produtivo." : "Notas DW pendentes removidas.",
     metadata: {
       deleted: result.count,
-      scope: "imported_from_dw=true,status=PENDENTE",
+      scope: deleteAllDw ? "imported_from_dw=true" : "imported_from_dw=true,status=PENDENTE",
     },
   });
 
   return NextResponse.json({
     deleted: result.count,
-    message: `${result.count} nota(s) DW pendente(s) removida(s).`,
+    scope: deleteAllDw ? "all" : "pending",
+    message: deleteAllDw
+      ? `${result.count} nota(s) DW removida(s).`
+      : `${result.count} nota(s) DW pendente(s) removida(s).`,
   });
 }

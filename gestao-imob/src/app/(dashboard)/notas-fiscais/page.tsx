@@ -389,6 +389,8 @@ export default function NotasFiscaisPage() {
   const [dwCleanupLoading, setDwCleanupLoading] = useState(false);
   const [dwCleanupMessage, setDwCleanupMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const runtimeEnv = (process.env.NEXT_PUBLIC_APP_ENV ?? "").toLowerCase();
+  const canClearAllDw = ["homolog", "homologacao", "hml"].includes(runtimeEnv);
 
   // ── Carregar dados ──
   const fetchInvoices = useCallback(async () => {
@@ -765,6 +767,39 @@ export default function NotasFiscaisPage() {
       await fetchInvoices();
     } catch (err) {
       setDwCleanupMessage(err instanceof Error ? err.message : "Falha ao limpar importacoes DW pendentes.");
+    } finally {
+      setDwCleanupLoading(false);
+    }
+  };
+
+  const handleClearAllDw = async () => {
+    setDwCleanupLoading(true);
+    setDwCleanupMessage(null);
+    try {
+      const previewResponse = await fetch("/api/invoices/import-dw?scope=all", { method: "DELETE" });
+      const preview = await previewResponse.json().catch(() => ({}));
+      if (!previewResponse.ok) throw new Error(preview.error ?? "Falha ao consultar importacoes DW.");
+
+      const removable = Number(preview.removable ?? 0);
+      if (removable === 0) {
+        setDwCleanupMessage("Nao ha notas DW para remover neste ambiente.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Ambiente de teste: remover TODAS as ${removable} nota(s) importada(s) do DW? Isso permite importar o mesmo arquivo novamente.`
+      );
+      if (!confirmed) return;
+
+      const cleanupResponse = await fetch("/api/invoices/import-dw?scope=all&dryRun=false", { method: "DELETE" });
+      const cleanup = await cleanupResponse.json().catch(() => ({}));
+      if (!cleanupResponse.ok) throw new Error(cleanup.error ?? "Falha ao limpar notas DW.");
+
+      setDwCleanupMessage(cleanup.message ?? `${cleanup.deleted ?? 0} nota(s) removida(s).`);
+      setSelectedIds(new Set());
+      await fetchInvoices();
+    } catch (err) {
+      setDwCleanupMessage(err instanceof Error ? err.message : "Falha ao limpar notas DW.");
     } finally {
       setDwCleanupLoading(false);
     }
@@ -1150,6 +1185,17 @@ export default function NotasFiscaisPage() {
                   {dwCleanupLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                   Limpar DW pendente
                 </button>
+                {canClearAllDw && (
+                  <button
+                    onClick={handleClearAllDw}
+                    disabled={dwCleanupLoading}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    title="Disponivel apenas fora de production"
+                  >
+                    {dwCleanupLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+                    Limpar DW teste
+                  </button>
+                )}
                 <button
                   onClick={() => setReportModal(true)}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50"
