@@ -87,6 +87,7 @@ function getGatewayConfig() {
     cityCode:      process.env.NFSE_CITY_CODE ?? "4304606",      // IBGE Canoas
     serviceCode:   process.env.NFSE_SERVICE_CODE ?? "10.05.01",  // Código tributação Canoas
     serviceCodeComplement: process.env.NFSE_SERVICE_CODE_COMPLEMENT ?? "10.05.01.002",
+    federalServiceCode: process.env.NFSE_FEDERAL_SERVICE_CODE ?? "1005",
     defaultAliquota: parseFloat(process.env.NFSE_DEFAULT_ALIQUOTA ?? "2.0"),
   };
 }
@@ -229,6 +230,7 @@ async function emitViaNfeio(
 
   const body = {
     cityServiceCode:  config.serviceCode,
+    federalServiceCode: config.federalServiceCode,
     issRate:          aliquota / 100,
     servicesAmount:   payload.service.amount,
     description:      payload.service.description,
