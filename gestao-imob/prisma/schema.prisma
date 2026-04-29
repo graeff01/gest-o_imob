@@ -693,6 +693,8 @@ model Invoice {
   emit_attempts     Int                @default(0)      // Quantas vezes tentou emitir
   last_emit_error   String?            @db.Text         // Último erro retornado pelo gateway
   last_emit_at      DateTime?                           // Última tentativa de emissão
+  retry_after       DateTime?                           // Bloqueio: nao tentar reemitir antes deste momento
+  cancel_reason     String?            @db.Text         // Motivo informado ao cancelar na prefeitura
 
   notes             String?            @db.Text
   created_by        String
@@ -709,6 +711,27 @@ model Invoice {
   @@index([reference_year, reference_month])
   @@index([client_cpf_cnpj])
   @@map("invoices")
+}
+
+// --------------- LOGS DE WEBHOOK ---------------
+
+model WebhookLog {
+  id              String    @id @default(cuid())
+  provider        String                              // "nfeio" | "nfseio"
+  event_type      String?                             // ex: "service_invoice.issued"
+  invoice_id      String?                             // ID da nota associada (se identificada)
+  gateway_id      String?                             // ID no gateway recebido no payload
+  payload         String    @db.Text                  // JSON bruto recebido
+  signature_valid Boolean   @default(true)            // true se HMAC validou ou nao havia secret
+  processed       Boolean   @default(false)           // true se afetou alguma nota
+  status_code     Int       @default(200)             // resposta retornada ao gateway
+  error_message   String?   @db.Text                  // erro interno ao processar (se houver)
+  ip_address      String?
+  received_at     DateTime  @default(now())
+
+  @@index([provider, received_at])
+  @@index([invoice_id])
+  @@map("webhook_logs")
 }
 
 // --------------- CAMPANHAS ---------------

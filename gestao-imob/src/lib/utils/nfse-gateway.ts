@@ -372,6 +372,57 @@ export async function syncNfseStatus(gatewayId: string): Promise<NfseSyncResult>
   }
 }
 
+// ─── Cancelamento na prefeitura ───────────────────────────────────────────────
+
+export interface NfseCancelResult {
+  success: boolean;
+  gatewayStatus?: string;
+  error?: string;
+}
+
+export async function cancelNfseAtPrefeitura(gatewayId: string, reason: string): Promise<NfseCancelResult> {
+  const config = getGatewayConfig();
+
+  if (config.isStub) {
+    return { success: true, gatewayStatus: "stub_cancelled" };
+  }
+
+  if (!config.apiKey || !config.companyId) {
+    return { success: false, error: "Credenciais não configuradas." };
+  }
+
+  try {
+    let url: string;
+    if (config.provider === "nfeio") {
+      const base = "https://api.nfe.io/v1";
+      url = `${base}/companies/${config.companyId}/serviceinvoices/${gatewayId}`;
+    } else {
+      const base = config.isHomolog ? "https://api.sandbox.nfse.io/v1" : "https://api.nfse.io/v1";
+      url = `${base}/companies/${config.companyId}/serviceinvoices/${gatewayId}`;
+    }
+
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "Authorization":   config.apiKey,
+        "X-NFEIO-APIKEY":  config.apiKey,
+        "Content-Type":    "application/json",
+      },
+      body: JSON.stringify({ reason }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok && res.status !== 202 && res.status !== 204) {
+      const text = await res.text();
+      return { success: false, error: `Gateway retornou ${res.status}: ${text.slice(0, 300)}` };
+    }
+
+    return { success: true, gatewayStatus: "cancellation_requested" };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ─── Função pública ───────────────────────────────────────────────────────────
 
 export async function emitNfse(payload: NfseEmitPayload): Promise<NfseEmitResult> {

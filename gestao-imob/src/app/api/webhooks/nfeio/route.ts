@@ -43,44 +43,77 @@ function verifyHmac(rawBody: string, headerSig: string | null, secret: string): 
 }
 
 export async function POST(req: NextRequest) {
-  // 1) Lê o corpo bruto (necessário para HMAC)
   const rawBody = await req.text();
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
 
-  // 2) Validação inicial do NFE.io: corpo vazio → 200 imediato
-  if (!rawBody || rawBody.trim().length === 0) {
-    return new NextResponse(JSON.stringify({ ok: true }), {
-      status: 200,
+  // Helper para logar e responder ao mesmo tempo
+  async function logAndRespond(ctx: {
+    eventType?: string | null;
+    invoiceId?: string | null;
+    gatewayId?: string | null;
+    signatureValid?: boolean;
+    processed?: boolean;
+    error?: string | null;
+    statusCode?: number;
+    responseBody?: Record<string, unknown>;
+  }) {
+    try {
+      await prisma.webhookLog.create({
+        data: {
+          provider:        "nfeio",
+          event_type:      ctx.eventType ?? null,
+          invoice_id:      ctx.invoiceId ?? null,
+          gateway_id:      ctx.gatewayId ?? null,
+          payload:         rawBody.slice(0, 50_000), // limita pra nao estourar
+          signature_valid: ctx.signatureValid ?? true,
+          processed:       ctx.processed ?? false,
+          status_code:     ctx.statusCode ?? 200,
+          error_message:   ctx.error ?? null,
+          ip_address:      ip,
+        },
+      });
+    } catch (err) {
+      console.error("[nfeio-webhook] falha ao gravar log:", err);
+    }
+    return new NextResponse(JSON.stringify(ctx.responseBody ?? { ok: true }), {
+      status: ctx.statusCode ?? 200,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  // 3) Verificação opcional de HMAC
+  // 1) Validação inicial do NFE.io: corpo vazio → 200 imediato
+  if (!rawBody || rawBody.trim().length === 0) {
+    return logAndRespond({ eventType: "validation.ping", processed: false });
+  }
+
+  // 2) Verificação opcional de HMAC
   const secret = process.env.NFEIO_WEBHOOK_SECRET;
+  let signatureValid = true;
   if (secret) {
     const sig =
       req.headers.get("x-hub-signature") ??
       req.headers.get("x-nfeio-signature") ??
       req.headers.get("x-nfe-signature") ??
       req.headers.get("x-signature");
-    if (!verifyHmac(rawBody, sig, secret)) {
-      // Mesmo com assinatura inválida devolvemos 200 para não bloquear validação;
-      // log para auditoria.
-      console.warn("[nfeio-webhook] assinatura HMAC invalida — ignorando payload");
-      return new NextResponse(JSON.stringify({ ok: true, ignored: "bad-signature" }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
+    signatureValid = verifyHmac(rawBody, sig, secret);
+    if (!signatureValid) {
+      return logAndRespond({
+        signatureValid: false,
+        error: "assinatura HMAC invalida",
+        responseBody: { ok: true, ignored: "bad-signature" },
       });
     }
   }
 
-  // 4) Parse do JSON (sem quebrar a resposta se vier malformado)
+  // 3) Parse do JSON
   let parsed: unknown = null;
   try {
     parsed = JSON.parse(rawBody);
   } catch {
-    return new NextResponse(JSON.stringify({ ok: true, ignored: "invalid-json" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+    return logAndRespond({
+      signatureValid,
+      error: "JSON invalido",
+      responseBody: { ok: true, ignored: "invalid-json" },
     });
   }
 
@@ -91,24 +124,26 @@ export async function POST(req: NextRequest) {
   };
 
   const eventName = body.event ?? body.type ?? "";
-  // O objeto da nota pode vir em data direto ou em data.object (variantes)
   const obj =
     (body.data?.object as Record<string, unknown> | undefined) ??
     (body.data as Record<string, unknown> | undefined) ??
     {};
 
+  const gatewayId  = (obj.id ?? obj.Id ?? "") as string;
+  const externalId = (obj.externalId ?? obj.external_id ?? obj.reference ?? "") as string;
+
   const newStatus = STATUS_MAP[eventName];
   if (!newStatus) {
-    // Evento que não gerenciamos — aceita sem erro
-    return new NextResponse(JSON.stringify({ ok: true, ignored: eventName || "unknown-event" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+    return logAndRespond({
+      eventType: eventName,
+      gatewayId,
+      signatureValid,
+      processed: false,
+      responseBody: { ok: true, ignored: eventName || "unknown-event" },
     });
   }
 
-  // 5) Localiza a nota por gateway_id ou por externalId (X-Request-Id que enviamos)
-  const gatewayId  = (obj.id ?? obj.Id ?? "") as string;
-  const externalId = (obj.externalId ?? obj.external_id ?? obj.reference ?? "") as string;
+  // 4) Localiza a nota
   const nfseNumber = obj.number ? Number(obj.number) : null;
   const pdfUrl     = (obj.pdfUrl ?? obj.pdf_url ?? null) as string | null;
   const xmlUrl     = (obj.xmlUrl ?? obj.xml_url ?? null) as string | null;
@@ -123,9 +158,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (!invoice) {
-    return new NextResponse(JSON.stringify({ ok: true, note: "invoice nao encontrada" }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
+    return logAndRespond({
+      eventType: eventName,
+      gatewayId,
+      signatureValid,
+      processed: false,
+      error: "invoice nao encontrada",
+      responseBody: { ok: true, note: "invoice nao encontrada" },
     });
   }
 
@@ -140,17 +179,34 @@ export async function POST(req: NextRequest) {
   if (newStatus === "EMITIDA") {
     if (!invoice.issued_at) updateData.issued_at = new Date();
     updateData.last_emit_error = null;
+    updateData.retry_after = null;
   } else if (newStatus === "CANCELADA") {
     if (!invoice.cancelled_at) updateData.cancelled_at = new Date();
     updateData.last_emit_error = message ?? eventName;
   } else if (newStatus === "ERRO") {
     updateData.last_emit_error = message ?? eventName;
+    // Permite retry automatico em 5min
+    updateData.retry_after = new Date(Date.now() + 5 * 60 * 1000);
   }
 
-  await prisma.invoice.update({ where: { id: invoice.id }, data: updateData });
+  try {
+    await prisma.invoice.update({ where: { id: invoice.id }, data: updateData });
+  } catch (err) {
+    return logAndRespond({
+      eventType: eventName,
+      invoiceId: invoice.id,
+      gatewayId,
+      signatureValid,
+      processed: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
-  return new NextResponse(JSON.stringify({ ok: true }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
+  return logAndRespond({
+    eventType: eventName,
+    invoiceId: invoice.id,
+    gatewayId,
+    signatureValid,
+    processed: true,
   });
 }

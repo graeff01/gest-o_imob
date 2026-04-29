@@ -417,6 +417,20 @@ export default function NotasFiscaisPage() {
     return () => clearTimeout(timer);
   }, [fetchInvoices]);
 
+  // ── Auto-refresh (polling 30s) ──
+  // Roda apenas quando ha notas em PROCESSANDO ou EMITIDA-sem-PDF aguardando webhook.
+  // Evita gerar trafego desnecessario quando o usuario nao tem nada pra acompanhar.
+  const hasPendingSync = invoices.some(
+    (i) => i.status === "PROCESSANDO" || (i.status === "EMITIDA" && !i.gateway_pdf_url)
+  );
+  useEffect(() => {
+    if (!hasPendingSync) return;
+    const interval = setInterval(() => {
+      fetchInvoices();
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [hasPendingSync, fetchInvoices]);
+
   // ── Computed ──
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -479,32 +493,64 @@ export default function NotasFiscaisPage() {
   };
 
   // ── Cancelamento com motivo ──
+  // Se a nota tem gateway_id, cancela na prefeitura via API NFE.io.
+  // Senao, apenas marca como cancelada no sistema (nota nunca chegou na prefeitura).
   const handleCancelConfirm = async () => {
     if (!cancelModal) return;
-    if (!cancelReason.trim()) {
-      alert("Informe um motivo para cancelar a nota.");
+    if (!cancelReason.trim() || cancelReason.trim().length < 5) {
+      alert("Informe um motivo para cancelar a nota (mínimo 5 caracteres).");
       return;
     }
     setCancelLoading(true);
     try {
-      const res = await fetch(`/api/invoices/${cancelModal.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: "CANCELADA",
-          cancelled_at: new Date().toISOString(),
-          notes: cancelReason || null,
-        }),
-      });
+      const usePrefeitura = !!cancelModal.gateway_id && cancelModal.status !== "PENDENTE";
+
+      const res = usePrefeitura
+        ? await fetch(`/api/invoices/${cancelModal.id}/cancel-prefeitura`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ reason: cancelReason }),
+          })
+        : await fetch(`/api/invoices/${cancelModal.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              status: "CANCELADA",
+              cancelled_at: new Date().toISOString(),
+              notes: cancelReason,
+            }),
+          });
+
       const result = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(result.error ?? "Erro ao cancelar.");
       setCancelModal(null);
       setCancelReason("");
       await fetchInvoices();
+
+      if (usePrefeitura) {
+        alert(result.message ?? "Cancelamento solicitado à prefeitura. O status será atualizado quando confirmado.");
+      }
     } catch (err) {
       alert(err instanceof Error ? err.message : "Erro ao cancelar.");
     } finally {
       setCancelLoading(false);
+    }
+  };
+
+  // ── Retry em lote (errors recuperaveis) ──
+  const [retryingFailed, setRetryingFailed] = useState(false);
+  const handleRetryFailed = async () => {
+    setRetryingFailed(true);
+    try {
+      const res = await fetch(`/api/invoices/retry-failed`, { method: "POST" });
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(result.error ?? "Erro ao tentar reenvio.");
+      await fetchInvoices();
+      alert(`Reenvio concluído: ${result.succeeded ?? 0} sucesso(s), ${result.failed ?? 0} falha(s) de ${result.eligible ?? 0} elegível(is) (${result.total_candidates ?? 0} em erro).`);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Erro no reenvio.");
+    } finally {
+      setRetryingFailed(false);
     }
   };
 
@@ -987,10 +1033,22 @@ export default function NotasFiscaisPage() {
           <button
             onClick={fetchInvoices}
             className="p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors"
-            title="Atualizar"
+            title={hasPendingSync ? "Atualizar (auto-refresh ativo a cada 30s)" : "Atualizar"}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={cn("h-4 w-4", hasPendingSync && "animate-pulse text-blue-500")} />
           </button>
+          {totalErro > 0 && (
+            <button
+              onClick={handleRetryFailed}
+              disabled={retryingFailed}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-amber-200 bg-amber-50 text-amber-700 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
+              title="Tenta reenviar notas com erros recuperaveis (timeout, 502, etc.)"
+            >
+              {retryingFailed
+                ? <><Loader2 className="h-3 w-3 animate-spin" /> Tentando...</>
+                : <><AlertTriangle className="h-3 w-3" /> Reenviar erros ({totalErro})</>}
+            </button>
+          )}
           <button
             onClick={() => setReportModal(true)}
             className="flex items-center gap-2 px-3 py-2 border border-indigo-300 text-indigo-700 bg-indigo-50 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
