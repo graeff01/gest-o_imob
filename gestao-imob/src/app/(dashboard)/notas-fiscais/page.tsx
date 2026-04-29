@@ -239,6 +239,36 @@ function buildInvoiceTimeline(inv: Invoice) {
   return events;
 }
 
+function buildPostEmissionSteps(inv: Invoice) {
+  return [
+    {
+      label: "Emitida na prefeitura",
+      ok: ["EMITIDA", "ENVIADA", "PAGA"].includes(inv.status) && !!inv.issued_at,
+      detail: inv.issued_at ? formatDate(inv.issued_at) : "Aguardando retorno do gateway",
+    },
+    {
+      label: "PDF disponivel",
+      ok: !!inv.gateway_pdf_url,
+      detail: inv.gateway_pdf_url ? "Comprovante pronto para baixar" : "Aguardando documento",
+    },
+    {
+      label: "XML disponivel",
+      ok: !!inv.gateway_xml_url,
+      detail: inv.gateway_xml_url ? "Arquivo fiscal pronto" : "Aguardando documento",
+    },
+    {
+      label: "Enviada ao cliente",
+      ok: ["ENVIADA", "PAGA"].includes(inv.status) && !!inv.sent_at,
+      detail: inv.sent_at ? formatDate(inv.sent_at) : "Envio ainda nao registrado",
+    },
+    {
+      label: "Paga/conciliada",
+      ok: inv.status === "PAGA" && !!inv.paid_at,
+      detail: inv.paid_at ? formatDate(inv.paid_at) : "Pagamento ainda nao confirmado",
+    },
+  ];
+}
+
 function isValidCpfCnpj(value: string) {
   const clean = value.replace(/\D/g, "");
   if (clean.length === 11) return validateCPF(clean);
@@ -314,8 +344,9 @@ function operationalStatus(inv: Invoice, checks?: ReadinessCheck[]) {
 }
 
 function findPotentialDuplicates(target: Invoice, all: Invoice[]) {
+  const blockingStatuses: InvoiceStatus[] = ["PROCESSANDO", "EMITIDA", "ENVIADA", "PAGA"];
   return all.filter((inv) => {
-    if (inv.id === target.id || inv.status === "CANCELADA") return false;
+    if (inv.id === target.id || !blockingStatuses.includes(inv.status)) return false;
     const sameTitle = target.title_number && inv.title_number && target.title_number === inv.title_number;
     const sameCore =
       inv.client_cpf_cnpj.replace(/\D/g, "") === target.client_cpf_cnpj.replace(/\D/g, "") &&
@@ -353,6 +384,7 @@ export default function NotasFiscaisPage() {
   const [emitError, setEmitError]     = useState<string | null>(null);
   const [emitCep, setEmitCep]         = useState("");
   const [emitAliquota, setEmitAliquota] = useState("2");
+  const [emitDuplicateConfirmed, setEmitDuplicateConfirmed] = useState(false);
   const [cepLoading, setCepLoading]   = useState(false);
   const [cepResults, setCepResults]   = useState<{ cep_formatted: string; logradouro: string; bairro: string }[]>([]);
   const [showFixedFields, setShowFixedFields] = useState(false);
@@ -512,6 +544,37 @@ export default function NotasFiscaisPage() {
   };
 
   // ── Sincronizar status com gateway ──
+  const prepareClientSend = async (inv: Invoice) => {
+    if (!inv.gateway_pdf_url) {
+      alert("PDF da NFS-e ainda nao esta disponivel. Aguarde a sincronizacao ou clique em Sincronizar NFE.io.");
+      return;
+    }
+
+    window.open(inv.gateway_pdf_url, "_blank", "noopener,noreferrer");
+
+    const message = [
+      `Ola, ${inv.client_name}.`,
+      `Segue a NFS-e ${inv.nfse_number ? `numero ${inv.nfse_number}` : invoiceCode(inv)} referente a ${SERVICE_LABELS[inv.service_type]} de ${inv.reference_month ? `${MONTH_NAMES[inv.reference_month - 1]}/${inv.reference_year}` : inv.reference_year}.`,
+      `Valor: ${formatCurrency(Number(inv.amount))}.`,
+      "O PDF foi aberto para anexar manualmente nesta conversa.",
+    ].join("\n");
+    const digits = (inv.client_contact ?? "").replace(/\D/g, "");
+    const phone = digits.length >= 10 ? (digits.startsWith("55") ? digits : `55${digits}`) : "";
+
+    if (phone) {
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+    } else if (navigator.clipboard) {
+      await navigator.clipboard.writeText(message).catch(() => undefined);
+      alert("PDF aberto e mensagem copiada. Sem telefone de WhatsApp cadastrado para este cliente.");
+    } else {
+      alert("PDF aberto. Sem telefone de WhatsApp cadastrado para este cliente.");
+    }
+
+    if (confirm("Depois de enviar manualmente ao cliente, deseja marcar esta nota como enviada?")) {
+      await updateStatus(inv.id, "ENVIADA");
+    }
+  };
+
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const syncInvoice = async (id: string) => {
     setSyncingId(id);
@@ -694,6 +757,11 @@ export default function NotasFiscaisPage() {
       setEmitError(`Revise antes de emitir: ${blockingIssues.map((check) => check.detail).join(" ")}`);
       return;
     }
+    const duplicates = findPotentialDuplicates(emitModal, invoices);
+    if (duplicates.length > 0 && !emitDuplicateConfirmed) {
+      setEmitError("Possivel duplicidade encontrada. Marque a confirmacao de duplicidade para autorizar esta emissao.");
+      return;
+    }
     setEmitting(true);
     setEmitError(null);
     try {
@@ -703,6 +771,7 @@ export default function NotasFiscaisPage() {
         body: JSON.stringify({
           cep:      emitCep      || undefined,
           aliquota: emitAliquota ? Number(emitAliquota) : undefined,
+          confirmDuplicate: emitDuplicateConfirmed,
         }),
       });
       const data = await res.json();
@@ -1085,6 +1154,7 @@ export default function NotasFiscaisPage() {
   const emitChecks = emitModal ? validateInvoiceForEmission(emitModal, emitCep, emitAliquota) : [];
   const emitReady = emitChecks.length > 0 && emitChecks.every((check) => check.ok);
   const emitDuplicates = emitModal ? findPotentialDuplicates(emitModal, invoices) : [];
+  const emitCanSubmit = emitReady && (emitDuplicates.length === 0 || emitDuplicateConfirmed);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -1510,7 +1580,7 @@ export default function NotasFiscaisPage() {
                             {/* Emitir */}
                             {(inv.status === "PENDENTE" || inv.status === "ERRO") && (
                               <button
-                                onClick={() => { setEmitModal(inv); setEmitError(null); setEmitCep(""); setEmitAliquota("2"); setCepResults([]); }}
+                                onClick={() => { setEmitModal(inv); setEmitError(null); setEmitCep(""); setEmitAliquota("2"); setEmitDuplicateConfirmed(false); setCepResults([]); }}
                                 className="p-1.5 border border-blue-200 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
                                 title="Emitir NFS-e"
                               >
@@ -1520,9 +1590,9 @@ export default function NotasFiscaisPage() {
                             {/* Marcar enviada */}
                             {inv.status === "EMITIDA" && (
                               <button
-                                onClick={() => updateStatus(inv.id, "ENVIADA")}
+                                onClick={() => prepareClientSend(inv)}
                                 className="p-1.5 border border-purple-200 rounded-lg text-purple-600 hover:bg-purple-50 transition-colors"
-                                title="Marcar como enviada ao cliente"
+                                title="Preparar envio ao cliente"
                               >
                                 <Send className="h-3.5 w-3.5" />
                               </button>
@@ -1621,6 +1691,28 @@ export default function NotasFiscaisPage() {
                                   </button>
                                 )}
                               </div>
+
+                              {["EMITIDA", "ENVIADA", "PAGA"].includes(inv.status) && (
+                                <div className="grid gap-2 border-b border-gray-100 px-4 py-3 sm:grid-cols-2 lg:grid-cols-5">
+                                  {buildPostEmissionSteps(inv).map((step) => (
+                                    <div
+                                      key={step.label}
+                                      className={cn(
+                                        "rounded-lg border px-3 py-2",
+                                        step.ok ? "border-green-200 bg-green-50" : "border-gray-200 bg-gray-50"
+                                      )}
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        {step.ok
+                                          ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                                          : <Clock className="h-3.5 w-3.5 text-gray-400" />}
+                                        <p className={cn("text-xs font-semibold", step.ok ? "text-green-900" : "text-gray-600")}>{step.label}</p>
+                                      </div>
+                                      <p className={cn("mt-1 text-[11px]", step.ok ? "text-green-700" : "text-gray-500")}>{step.detail}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
 
                               {inv.status === "ERRO" && (
                                 <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
@@ -1941,6 +2033,15 @@ export default function NotasFiscaisPage() {
                                           <FileText className="h-3.5 w-3.5" />XML Fiscal
                                         </a>
                                       )}
+                                      {inv.status === "EMITIDA" && (
+                                        <button
+                                          type="button"
+                                          onClick={() => prepareClientSend(inv)}
+                                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
+                                        >
+                                          <Send className="h-3.5 w-3.5" />Preparar envio
+                                        </button>
+                                      )}
                                     </div>
                                   </div>
                                 </div>
@@ -2082,6 +2183,17 @@ export default function NotasFiscaisPage() {
                           </p>
                         ))}
                       </div>
+                      <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-amber-200 bg-white/70 p-2">
+                        <input
+                          type="checkbox"
+                          checked={emitDuplicateConfirmed}
+                          onChange={(event) => setEmitDuplicateConfirmed(event.target.checked)}
+                          className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                        />
+                        <span>
+                          Confirmo que revisei a duplicidade e autorizo seguir com esta emissao.
+                        </span>
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -2229,9 +2341,12 @@ export default function NotasFiscaisPage() {
               {!emitReady && (
                 <p className="mr-auto text-xs font-medium text-red-600">Resolva as pendencias do checklist para emitir.</p>
               )}
+              {emitReady && emitDuplicates.length > 0 && !emitDuplicateConfirmed && (
+                <p className="mr-auto text-xs font-medium text-amber-700">Confirme a revisao da duplicidade para emitir.</p>
+              )}
               <button onClick={() => setEmitModal(null)} disabled={emitting} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">Cancelar</button>
               <button
-                onClick={handleEmit} disabled={emitting || !emitReady}
+                onClick={handleEmit} disabled={emitting || !emitCanSubmit}
                 className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {emitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Emitindo...</> : <><FileText className="h-4 w-4" /> Confirmar Emissão</>}

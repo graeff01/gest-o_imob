@@ -62,6 +62,14 @@ export function assertRuntimeSafety() {
     errors.push("GATEWAY_STUB_MODE=true nao pode ser usado em production.");
   }
 
+  if (appConfig.isProduction && process.env.NFSE_HOMOLOGACAO === "true") {
+    errors.push("NFSE_HOMOLOGACAO=true nao pode ser usado em production.");
+  }
+
+  if (appConfig.isHomolog && !appConfig.gatewayStubMode && process.env.NFSE_HOMOLOGACAO !== "true") {
+    errors.push("Ambiente homolog exige NFSE_HOMOLOGACAO=true quando gateway real esta ativo.");
+  }
+
   if (!appConfig.isLocal && appConfig.allowMockFallbacks) {
     errors.push("ALLOW_MOCK_FALLBACKS=true nao pode ser usado fora do ambiente local.");
   }

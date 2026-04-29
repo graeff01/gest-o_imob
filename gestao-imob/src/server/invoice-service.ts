@@ -31,6 +31,8 @@ function internalDocumentUrl(invoiceId: string, type: "pdf" | "xml") {
   return `/api/invoices/${invoiceId}/download?type=${type}`;
 }
 
+const duplicateBlockingStatuses: InvoiceStatus[] = ["PROCESSANDO", "EMITIDA", "ENVIADA", "PAGA"];
+
 export class InvoiceServiceError extends Error {
   constructor(message: string, public status = 400) {
     super(message);
@@ -90,6 +92,53 @@ async function nextYearSequence(referenceYear: number) {
     select: { year_sequence: true },
   });
   return (lastInvoice?.year_sequence ?? 0) + 1;
+}
+
+async function findBlockingDuplicate(invoice: {
+  id: string;
+  title_number: string | null;
+  client_cpf_cnpj: string;
+  reference_month: number | null;
+  reference_year: number;
+  amount: unknown;
+}) {
+  const cleanDocument = invoice.client_cpf_cnpj.replace(/\D/g, "");
+  const duplicateOr: Record<string, unknown>[] = [];
+
+  if (invoice.title_number) {
+    duplicateOr.push({
+      title_number: invoice.title_number,
+      client_cpf_cnpj: cleanDocument,
+      reference_year: invoice.reference_year,
+    });
+  }
+
+  duplicateOr.push({
+    client_cpf_cnpj: cleanDocument,
+    reference_month: invoice.reference_month,
+    reference_year: invoice.reference_year,
+    amount: invoice.amount,
+  });
+
+  return prisma.invoice.findFirst({
+    where: {
+      id: { not: invoice.id },
+      status: { in: duplicateBlockingStatuses },
+      OR: duplicateOr,
+    },
+    orderBy: { updated_at: "desc" },
+    select: {
+      id: true,
+      nfse_number: true,
+      year_sequence: true,
+      reference_year: true,
+      reference_month: true,
+      client_name: true,
+      amount: true,
+      status: true,
+      title_number: true,
+    },
+  });
 }
 
 export function buildInvoiceSummary(
@@ -212,7 +261,7 @@ export async function updateInvoice(
 
 export async function emitInvoice(
   id: string,
-  options: { cep?: string; aliquota?: number }
+  options: { cep?: string; aliquota?: number; confirmDuplicate?: boolean }
 ) {
   const invoice = await prisma.invoice.findUnique({ where: { id } });
   if (!invoice) {
@@ -224,6 +273,15 @@ export async function emitInvoice(
   }
 
   assertReadyToEmit(invoice, options);
+
+  const duplicate = await findBlockingDuplicate(invoice);
+  if (duplicate && !options.confirmDuplicate) {
+    throw new InvoiceServiceError(
+      `Possivel duplicidade bloqueada: ja existe uma nota ${duplicate.status.toLowerCase()} para o mesmo titulo DW ou mesmo cliente, competencia e valor.`,
+      409
+    );
+  }
+
   assertTransition(invoice.status as InvoiceStatus, "PROCESSANDO");
 
   const processing = await prisma.invoice.update({

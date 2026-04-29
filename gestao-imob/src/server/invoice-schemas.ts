@@ -90,6 +90,7 @@ export const emitInvoiceSchema = z.object({
       message: "CEP deve ter 8 digitos.",
     }),
   aliquota: z.coerce.number().min(0).max(100).optional(),
+  confirmDuplicate: z.boolean().optional(),
 });
 
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
