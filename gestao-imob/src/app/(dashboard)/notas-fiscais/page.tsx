@@ -5,7 +5,8 @@ import {
   FileText, Search, Send, CheckCircle2, Clock, Ban,
   DollarSign, Upload, AlertCircle, X, RefreshCw,
   Download, ChevronDown, ChevronUp, Loader2, AlertTriangle, Info,
-  Plus, Square, CheckSquare, FileSpreadsheet, Zap,
+  Plus, Square, CheckSquare, FileSpreadsheet, Zap, MoreHorizontal,
+  ChevronRight, Receipt,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { cn, formatCurrency, formatDate, maskSensitiveCpfCnpj, validateCNPJ, validateCPF } from "@/lib/utils";
@@ -376,7 +377,7 @@ export default function NotasFiscaisPage() {
   const [activeTab, setActiveTab]       = useState<"todas" | "pendentes" | "erro" | "vencidas">("todas");
 
   // ── Expandir linha ──
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [drawerInvoiceId, setDrawerInvoiceId] = useState<string | null>(null);
 
   // ── Modal de emissão ──
   const [emitModal, setEmitModal]     = useState<Invoice | null>(null);
@@ -1455,652 +1456,168 @@ export default function NotasFiscaisPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-50/60 border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 w-10">
+                  <th className="px-4 py-2.5 w-10">
                     <button onClick={toggleSelectAll} className="text-gray-400 hover:text-gray-600">
                       {allSelected
                         ? <CheckSquare className="h-4 w-4 text-blue-600" />
                         : <Square className="h-4 w-4" />}
                     </button>
                   </th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600 whitespace-nowrap">#</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Cliente</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Serviço</th>
-                  <th className="text-left px-4 py-3 font-medium text-gray-600">Competência</th>
-                  <th className="text-right px-4 py-3 font-medium text-gray-600">Valor</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">Status</th>
-                  <th className="text-center px-4 py-3 font-medium text-gray-600">Ações</th>
-                  <th className="w-8"></th>
+                  <th className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Tomador</th>
+                  <th className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500 hidden md:table-cell">Serviço</th>
+                  <th className="text-right px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Valor</th>
+                  <th className="text-left px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Status</th>
+                  <th className="px-4 py-2.5 w-32"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-4 py-16 text-center text-gray-400">
+                    <td colSpan={6} className="px-4 py-16 text-center text-gray-400">
                       <FileText className="h-10 w-10 text-gray-200 mx-auto mb-2" />
                       Nenhuma nota fiscal encontrada.
                     </td>
                   </tr>
                 ) : filtered.map((inv) => {
-                  const st        = STATUS_CONFIG[inv.status];
+                  const st         = STATUS_CONFIG[inv.status];
                   const StatusIcon = st.icon;
-                  const isExpanded = expandedId === inv.id;
-                  const overdue   = isOverdue(inv);
+                  const isOpen     = drawerInvoiceId === inv.id;
+                  const overdue    = isOverdue(inv);
                   const isSelected = selectedIds.has(inv.id);
-                  const rowChecks = validateInvoiceForEmission(inv, "00000000", "9");
-                  const rowOperationalStatus = operationalStatus(inv, rowChecks);
 
                   return (
-                    <>
-                      <tr key={inv.id} className={cn(
-                        "group hover:bg-gray-50 transition-colors",
-                        overdue    && "bg-orange-50/40",
-                        inv.status === "ERRO"  && "bg-red-50/30",
-                        isSelected && "bg-blue-50/40",
-                      )}>
-                        {/* Checkbox */}
-                        <td className="px-4 py-3">
-                          {["PENDENTE","ERRO"].includes(inv.status) ? (
-                            <button onClick={() => toggleSelect(inv.id)} className="text-gray-400 hover:text-blue-600">
-                              {isSelected
-                                ? <CheckSquare className="h-4 w-4 text-blue-600" />
-                                : <Square className="h-4 w-4" />}
-                            </button>
-                          ) : (
-                            <span className="block w-4" />
-                          )}
-                        </td>
-
-                        {/* # */}
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <div className="flex flex-col gap-0.5">
-                            {inv.nfse_number ? (
-                              <span className="text-xs font-mono text-green-700 bg-green-50 px-1.5 py-0.5 rounded">NFS-e {inv.nfse_number}</span>
-                            ) : inv.year_sequence ? (
-                              <span className="text-xs font-mono text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">
-                                NF-{inv.reference_year}-{String(inv.year_sequence).padStart(3, "0")}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-gray-400">—</span>
-                            )}
-                            {inv.imported_from_dw
-                              ? <span className="text-[10px] text-gray-400">DW</span>
-                              : <span className="text-[10px] text-purple-400">Manual</span>}
-                          </div>
-                        </td>
-
-                        {/* Cliente */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-1.5">
-                            {overdue && (
-                              <AlertTriangle className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" aria-label="Vencida" />
-                            )}
-                            <div>
-                              <p className="font-medium text-gray-900 truncate max-w-[180px]">{inv.client_name}</p>
-                              <p className="text-xs text-gray-400">{maskSensitiveCpfCnpj(inv.client_cpf_cnpj)}</p>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Serviço */}
-                        <td className="px-4 py-3">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
-                            {SERVICE_LABELS[inv.service_type]}
-                          </span>
-                        </td>
-
-                        {/* Competência */}
-                        <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
-                          {inv.reference_month
-                            ? `${MONTH_NAMES[inv.reference_month - 1]}/${inv.reference_year}`
-                            : inv.reference_year}
-                        </td>
-
-                        {/* Valor */}
-                        <td className="px-4 py-3 text-right font-semibold text-gray-900 whitespace-nowrap">
-                          {formatCurrency(Number(inv.amount))}
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-4 py-3 text-center">
-                          <span className={cn(
-                            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border",
-                            st.color
-                          )}>
-                            <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
-                            {st.label}
-                          </span>
-                          <p className="mt-1 text-[10px] text-gray-400">{rowOperationalStatus}</p>
-                        </td>
-
-                        {/* Ações */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-center gap-1">
-                            {/* Emitir */}
-                            {(inv.status === "PENDENTE" || inv.status === "ERRO") && (
-                              <button
-                                onClick={() => { setEmitModal(inv); setEmitError(null); setEmitCep(""); setEmitAliquota("2"); setEmitDuplicateConfirmed(false); setCepResults([]); }}
-                                className="p-1.5 border border-blue-200 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
-                                title="Emitir NFS-e"
-                              >
-                                <FileText className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            {/* Marcar enviada */}
-                            {inv.status === "EMITIDA" && (
-                              <button
-                                onClick={() => prepareClientSend(inv)}
-                                className="p-1.5 border border-purple-200 rounded-lg text-purple-600 hover:bg-purple-50 transition-colors"
-                                title="Preparar envio ao cliente"
-                              >
-                                <Send className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            {/* Marcar paga */}
-                            {(inv.status === "EMITIDA" || inv.status === "ENVIADA") && (
-                              <button
-                                onClick={() => updateStatus(inv.id, "PAGA")}
-                                className="p-1.5 border border-green-200 rounded-lg text-green-600 hover:bg-green-50 transition-colors"
-                                title="Marcar como paga"
-                              >
-                                <DollarSign className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                            {/* Sincronizar com gateway */}
-                            {inv.gateway_id && ["PROCESSANDO","ERRO","EMITIDA"].includes(inv.status) && (
-                              <button
-                                onClick={() => syncInvoice(inv.id)}
-                                disabled={syncingId === inv.id}
-                                className="p-1.5 border border-blue-200 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                                title="Sincronizar status com NFE.io"
-                              >
-                                {syncingId === inv.id
-                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  : <RefreshCw className="h-3.5 w-3.5" />}
-                              </button>
-                            )}
-                            {/* Download PDF */}
-                            {inv.gateway_pdf_url && (
-                              <a
-                                href={inv.gateway_pdf_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1.5 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors"
-                                title="Baixar DANFE (PDF)"
-                              >
-                                <Download className="h-3.5 w-3.5" />
-                              </a>
-                            )}
-                            {/* Cancelar — abre modal */}
-                            {!["CANCELADA", "PAGA", "PROCESSANDO"].includes(inv.status) && (
-                              <button
-                                onClick={() => { setCancelModal(inv); setCancelReason(""); }}
-                                className="p-1.5 border border-gray-200 rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"
-                                title="Cancelar nota"
-                              >
-                                <Ban className="h-3.5 w-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* Expandir */}
-                        <td className="px-2 py-3">
-                          <button
-                            onClick={() => setExpandedId(isExpanded ? null : inv.id)}
-                            className="text-gray-400 hover:text-gray-600 p-1"
-                          >
-                            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                          </button>
-                        </td>
-                      </tr>
-
-                      {/* Linha expandida */}
-                      {isExpanded && (
-                        <tr key={`${inv.id}-detail`} className="bg-gray-50/80">
-                          <td colSpan={9} className="px-6 py-4 border-t border-gray-100">
-                            <div className="rounded-xl border border-gray-200 bg-white overflow-hidden mb-4">
-                              <div className="px-4 py-3 border-b border-gray-100 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <h3 className="text-sm font-semibold text-gray-900">{invoiceCode(inv)}</h3>
-                                    <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border", st.color)}>
-                                      <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
-                                      {st.label}
-                                    </span>
-                                    {overdue && (
-                                      <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700">
-                                        <Clock className="h-3 w-3" />
-                                        Vencida
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="mt-1 text-xs text-gray-500">{operationMessage(inv)}</p>
-                                </div>
-
-                                {inv.gateway_id && ["PROCESSANDO", "ERRO", "EMITIDA"].includes(inv.status) && (
-                                  <button
-                                    onClick={() => syncInvoice(inv.id)}
-                                    disabled={syncingId === inv.id}
-                                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                                  >
-                                    {syncingId === inv.id
-                                      ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Sincronizando</>
-                                      : <><RefreshCw className="h-3.5 w-3.5" /> Sincronizar NFE.io</>}
-                                  </button>
-                                )}
-                              </div>
-
-                              {["EMITIDA", "ENVIADA", "PAGA"].includes(inv.status) && (
-                                <div className="grid gap-2 border-b border-gray-100 px-4 py-3 sm:grid-cols-2 lg:grid-cols-5">
-                                  {buildPostEmissionSteps(inv).map((step) => (
-                                    <div
-                                      key={step.label}
-                                      className={cn(
-                                        "rounded-lg border px-3 py-2",
-                                        step.ok ? "border-green-200 bg-green-50" : "border-gray-200 bg-gray-50"
-                                      )}
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        {step.ok
-                                          ? <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                                          : <Clock className="h-3.5 w-3.5 text-gray-400" />}
-                                        <p className={cn("text-xs font-semibold", step.ok ? "text-green-900" : "text-gray-600")}>{step.label}</p>
-                                      </div>
-                                      <p className={cn("mt-1 text-[11px]", step.ok ? "text-green-700" : "text-gray-500")}>{step.detail}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              {inv.status === "ERRO" && (
-                                <div className="mx-4 mt-4 rounded-lg border border-red-200 bg-red-50 p-3">
-                                  {(() => {
-                                    const explained = explainEmitError(inv.last_emit_error);
-                                    return (
-                                      <div className="flex gap-3">
-                                        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
-                                        <div className="min-w-0">
-                                          <p className="text-sm font-semibold text-red-900">{explained.title}</p>
-                                          <p className="mt-0.5 text-xs text-red-700">{explained.action}</p>
-                                          {inv.last_emit_error && (
-                                            <details className="mt-2">
-                                              <summary className="cursor-pointer text-[11px] font-medium text-red-700">Ver detalhe tecnico</summary>
-                                              <p className="mt-1 break-words rounded bg-white/70 p-2 font-mono text-[11px] text-red-700">{inv.last_emit_error}</p>
-                                            </details>
-                                          )}
-                                        </div>
-                                      </div>
-                                    );
-                                  })()}
-                                </div>
-                              )}
-
-                              <div className="grid gap-0 border-b border-gray-100 md:grid-cols-4">
-                                <div className="border-b border-gray-100 px-4 py-3 md:border-b-0 md:border-r">
-                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Cliente</p>
-                                  <p className="mt-1 truncate text-xs font-semibold text-gray-900">{inv.client_name}</p>
-                                  <p className="mt-0.5 font-mono text-[11px] text-gray-500">{maskSensitiveCpfCnpj(inv.client_cpf_cnpj)}</p>
-                                </div>
-                                <div className="border-b border-gray-100 px-4 py-3 md:border-b-0 md:border-r">
-                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Servico</p>
-                                  <p className="mt-1 text-xs font-semibold text-gray-900">{SERVICE_LABELS[inv.service_type]}</p>
-                                  <p className="mt-0.5 text-[11px] text-gray-500">
-                                    {inv.reference_month ? MONTH_NAMES[inv.reference_month - 1] : "Sem mes"} / {inv.reference_year}
-                                  </p>
-                                </div>
-                                <div className="border-b border-gray-100 px-4 py-3 md:border-b-0 md:border-r">
-                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Valor</p>
-                                  <p className="mt-1 text-xs font-semibold text-gray-900">{formatCurrency(Number(inv.amount))}</p>
-                                  <p className={cn("mt-0.5 text-[11px]", overdue ? "text-orange-600" : "text-gray-500")}>
-                                    Vencimento {inv.due_date ? formatDate(inv.due_date) : "nao informado"}
-                                  </p>
-                                </div>
-                                <div className="px-4 py-3">
-                                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Gateway</p>
-                                  <p className="mt-1 text-xs font-semibold text-gray-900">{inv.gateway_provider || "Aguardando emissao"}</p>
-                                  <p className="mt-0.5 text-[11px] text-gray-500">
-                                    {inv.emit_attempts} tentativa(s){inv.last_emit_at ? ` · ${formatDate(inv.last_emit_at)}` : ""}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="grid gap-4 p-4 lg:grid-cols-[0.9fr_1.1fr]">
-                                <div>
-                                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Historico</p>
-                                  <div className="space-y-3">
-                                    {buildInvoiceTimeline(inv).map((event, index) => (
-                                      <div key={`${event.label}-${index}`} className="flex gap-3">
-                                        <div className={cn(
-                                          "mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full",
-                                          event.tone === "green" && "bg-green-500",
-                                          event.tone === "red" && "bg-red-500",
-                                          event.tone === "amber" && "bg-amber-500",
-                                          event.tone === "purple" && "bg-purple-500",
-                                          event.tone === "blue" && "bg-blue-500",
-                                          event.tone === "gray" && "bg-gray-400",
-                                        )} />
-                                        <div className="min-w-0">
-                                          <p className="text-xs font-semibold text-gray-900">{event.label}</p>
-                                          <p className="text-[11px] text-gray-500">{event.detail}</p>
-                                          <p className="text-[11px] text-gray-400">{event.date ? formatDate(event.date) : "Data nao registrada"}</p>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <details open className="rounded-lg border border-gray-200 bg-gray-50/70">
-                                    <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">Descricao da NFS-e</summary>
-                                    <div className="border-t border-gray-200 px-3 py-2">
-                                      <p className="text-xs leading-relaxed text-gray-600">{inv.description_body}</p>
-                                    </div>
-                                  </details>
-
-                                  <details className="rounded-lg border border-gray-200 bg-white">
-                                    <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">Dados importados do DW</summary>
-                                    <div className="grid gap-3 border-t border-gray-100 px-3 py-3 text-xs sm:grid-cols-2">
-                                      <div>
-                                        <p className="text-gray-400">Codigo do imovel</p>
-                                        <p className="font-mono text-gray-700">{inv.property_code || "-"}</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-gray-400">Titulo DW</p>
-                                        <p className="font-mono text-gray-700">{inv.title_number || "-"}</p>
-                                      </div>
-                                      <div className="sm:col-span-2">
-                                        <p className="text-gray-400">Endereco do imovel</p>
-                                        <p className="font-medium text-gray-700">{inv.property_address || "-"}</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-gray-400">Agencia</p>
-                                        <p className="font-medium text-gray-700">{inv.dw_agency_name || "-"}</p>
-                                      </div>
-                                      {inv.notes && (
-                                        <div className="sm:col-span-2">
-                                          <p className="text-gray-400">Observacoes</p>
-                                          <p className="text-gray-700">{inv.notes}</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </details>
-
-                                  <details className="rounded-lg border border-gray-200 bg-white">
-                                    <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700">Dados tecnicos do gateway</summary>
-                                    <div className="grid gap-3 border-t border-gray-100 px-3 py-3 text-xs sm:grid-cols-2">
-                                      <div>
-                                        <p className="text-gray-400">Provider</p>
-                                        <p className="font-mono text-gray-700">{inv.gateway_provider || "-"}</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-gray-400">Status gateway</p>
-                                        <p className="font-mono text-gray-700">{inv.gateway_status || "-"}</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-gray-400">Tentativas</p>
-                                        <p className="font-medium text-gray-700">{inv.emit_attempts}</p>
-                                      </div>
-                                      <div>
-                                        <p className="text-gray-400">Ultima tentativa</p>
-                                        <p className="font-medium text-gray-700">{inv.last_emit_at ? formatDate(inv.last_emit_at) : "-"}</p>
-                                      </div>
-                                      {inv.gateway_id && (
-                                        <div className="sm:col-span-2">
-                                          <p className="text-gray-400">ID no gateway</p>
-                                          <p className="break-all font-mono text-gray-700">{inv.gateway_id}</p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </details>
-                                </div>
-                              </div>
-                            </div>
-                            <details className="rounded-lg border border-gray-200 bg-white mb-4">
-                              <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-gray-600">Ver auditoria e dados completos</summary>
-                              <div className="border-t border-gray-100 p-4">
-                            <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-4 mb-4">
-                              <div className="space-y-3">
-                                <div className="bg-white border border-gray-200 rounded-lg p-4">
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Situacao da nota</p>
-                                      <h3 className="text-sm font-semibold text-gray-900 mt-1">{invoiceCode(inv)}</h3>
-                                      <p className="text-xs text-gray-500 mt-1">{operationMessage(inv)}</p>
-                                    </div>
-                                    <span className={cn("inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border", st.color)}>
-                                      <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
-                                      {st.label}
-                                    </span>
-                                  </div>
-
-                                  {inv.status === "ERRO" && (
-                                    <div className="mt-3 bg-red-50 border border-red-200 rounded-lg p-3">
-                                      {(() => {
-                                        const explained = explainEmitError(inv.last_emit_error);
-                                        return (
-                                          <>
-                                            <p className="text-sm font-semibold text-red-800">{explained.title}</p>
-                                            <p className="text-xs text-red-700 mt-1">{explained.action}</p>
-                                            {inv.last_emit_error && (
-                                              <details className="mt-2">
-                                                <summary className="text-[11px] text-red-600 cursor-pointer">Ver detalhe tecnico</summary>
-                                                <p className="mt-1 text-[11px] text-red-700 font-mono break-words">{inv.last_emit_error}</p>
-                                              </details>
-                                            )}
-                                          </>
-                                        );
-                                      })()}
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="bg-white border border-gray-200 rounded-lg p-4">
-                                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-3">Gateway e emissao</p>
-                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-                                    <div>
-                                      <p className="text-gray-400 mb-0.5">Provider</p>
-                                      <p className="font-mono text-gray-700">{inv.gateway_provider || "aguardando"}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-gray-400 mb-0.5">Status gateway</p>
-                                      <p className="font-mono text-gray-700">{inv.gateway_status || "-"}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-gray-400 mb-0.5">Tentativas</p>
-                                      <p className="font-medium text-gray-700">{inv.emit_attempts}</p>
-                                    </div>
-                                    <div>
-                                      <p className="text-gray-400 mb-0.5">Ultima tentativa</p>
-                                      <p className="font-medium text-gray-700">{inv.last_emit_at ? formatDate(inv.last_emit_at) : "-"}</p>
-                                    </div>
-                                  </div>
-                                  {inv.gateway_id && (
-                                    <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-2 text-xs">
-                                      <p className="text-gray-400 mb-1">ID no gateway</p>
-                                      <p className="font-mono text-gray-700 break-all">{inv.gateway_id}</p>
-                                    </div>
-                                  )}
-                                  {inv.gateway_id && ["PROCESSANDO","ERRO","EMITIDA"].includes(inv.status) && (
-                                    <button
-                                      onClick={() => syncInvoice(inv.id)}
-                                      disabled={syncingId === inv.id}
-                                      className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-blue-200 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-50"
-                                    >
-                                      {syncingId === inv.id
-                                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Sincronizando...</>
-                                        : <><RefreshCw className="h-3 w-3" /> Sincronizar com NFE.io</>}
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="bg-white border border-gray-200 rounded-lg p-4">
-                                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-4">Historico visual</p>
-                                <div className="space-y-4">
-                                  {buildInvoiceTimeline(inv).map((event, index) => (
-                                    <div key={`${event.label}-${index}`} className="relative flex gap-3">
-                                      {index < buildInvoiceTimeline(inv).length - 1 && (
-                                        <div className="absolute left-[7px] top-4 h-full w-px bg-gray-200" />
-                                      )}
-                                      <div className={cn(
-                                        "relative z-10 mt-1 h-3.5 w-3.5 rounded-full border-2 bg-white",
-                                        event.tone === "green" && "border-green-500",
-                                        event.tone === "red" && "border-red-500",
-                                        event.tone === "amber" && "border-amber-500",
-                                        event.tone === "purple" && "border-purple-500",
-                                        event.tone === "blue" && "border-blue-500",
-                                        event.tone === "gray" && "border-gray-400",
-                                      )} />
-                                      <div className="min-w-0">
-                                        <p className="text-xs font-semibold text-gray-900">{event.label}</p>
-                                        <p className="text-[11px] text-gray-400">{event.date ? formatDate(event.date) : "Data nao registrada"}</p>
-                                        <p className="text-xs text-gray-600 mt-0.5">{event.detail}</p>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-xs mb-3">
-                              <div>
-                                <p className="text-gray-400 mb-0.5">Código do Imóvel</p>
-                                <p className="font-mono text-gray-700">{inv.property_code || "—"}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-400 mb-0.5">Endereço do Imóvel</p>
-                                <p className="font-medium text-gray-700">{inv.property_address || "—"}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-400 mb-0.5">Título DW</p>
-                                <p className="font-mono text-gray-700">{inv.title_number || "—"}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-400 mb-0.5">Vencimento DW</p>
-                                <p className={cn("font-medium", overdue ? "text-orange-600" : "text-gray-700")}>
-                                  {inv.due_date ? formatDate(inv.due_date) : "—"}
-                                  {overdue && " ⚠ Vencida"}
-                                </p>
-                              </div>
-                              <div>
-                                <p className="text-gray-400 mb-0.5">Agência</p>
-                                <p className="font-medium text-gray-700">{inv.dw_agency_name || "—"}</p>
-                              </div>
-                            </div>
-
-                            <div className="text-xs mb-2">
-                              <p className="text-gray-400 mb-0.5">Descrição da NFS-e</p>
-                              <p className="text-gray-600 leading-relaxed">{inv.description_body}</p>
-                            </div>
-
-                            {inv.notes && (
-                              <div className="text-xs bg-gray-100 rounded-lg p-2 mb-2">
-                                <p className="text-gray-500 font-medium mb-0.5">Observações:</p>
-                                <p className="text-gray-700">{inv.notes}</p>
-                              </div>
-                            )}
-
-                            {/* Comprovante oficial — destaque quando nota foi emitida */}
-                              </div>
-                            </details>
-
-                            {inv.status === "EMITIDA" && (inv.gateway_pdf_url || inv.gateway_xml_url || inv.nfse_number) && (
-                              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-xl p-4 mb-3">
-                                <div className="flex items-start gap-3">
-                                  <div className="flex-shrink-0 p-2 bg-green-600 rounded-lg">
-                                    <CheckCircle2 className="h-5 w-5 text-white" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-green-900">NFS-e emitida pela Prefeitura</p>
-                                    <p className="text-xs text-green-700 mt-0.5">
-                                      {inv.nfse_number ? `Número oficial: ${inv.nfse_number}` : "Documento fiscal oficial disponível"}
-                                      {inv.issued_at && ` · Emitida em ${formatDate(inv.issued_at)}`}
-                                    </p>
-                                    <div className="flex flex-wrap gap-2 mt-3">
-                                      {inv.gateway_pdf_url && (
-                                        <a href={inv.gateway_pdf_url} target="_blank" rel="noopener noreferrer"
-                                          download
-                                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm">
-                                          <Download className="h-3.5 w-3.5" />Baixar DANFE (PDF)
-                                        </a>
-                                      )}
-                                      {inv.gateway_xml_url && (
-                                        <a href={inv.gateway_xml_url} target="_blank" rel="noopener noreferrer"
-                                          download
-                                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-white border border-green-300 text-green-700 rounded-lg hover:bg-green-50 transition-colors">
-                                          <FileText className="h-3.5 w-3.5" />XML Fiscal
-                                        </a>
-                                      )}
-                                      {inv.status === "EMITIDA" && (
-                                        <button
-                                          type="button"
-                                          onClick={() => prepareClientSend(inv)}
-                                          className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors shadow-sm"
-                                        >
-                                          <Send className="h-3.5 w-3.5" />Preparar envio
-                                        </button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Aguardando processamento da prefeitura */}
-                            {inv.status === "EMITIDA" && !inv.gateway_pdf_url && !inv.nfse_number && (
-                              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 flex items-center gap-2">
-                                <Clock className="h-4 w-4 text-amber-600 flex-shrink-0" />
-                                <p className="text-xs text-amber-800">
-                                  Nota enviada ao gateway. Aguardando processamento da Prefeitura para liberar o comprovante oficial.
-                                  {inv.gateway_id && (
-                                    <button onClick={() => syncInvoice(inv.id)} disabled={syncingId === inv.id}
-                                      className="ml-2 underline font-medium hover:text-amber-900 disabled:opacity-50">
-                                      {syncingId === inv.id ? "Verificando..." : "Verificar agora"}
-                                    </button>
-                                  )}
-                                </p>
-                              </div>
-                            )}
-
-                            {/* Erro de emissão — destaque */}
-                            {inv.status === "ERRO" && (
-                              <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 mb-3">
-                                <div className="flex items-start gap-3">
-                                  <div className="flex-shrink-0 p-2 bg-red-600 rounded-lg">
-                                    <AlertTriangle className="h-5 w-5 text-white" />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-red-900">Falha na emissão da NFS-e</p>
-                                    {inv.last_emit_error && (
-                                      <p className="text-xs text-red-700 font-mono mt-1 bg-white/60 rounded p-2 break-words">{inv.last_emit_error}</p>
-                                    )}
-                                    {inv.emit_attempts > 0 && (
-                                      <p className="text-[11px] text-red-600 mt-1">{inv.emit_attempts} tentativa(s) realizadas</p>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-
-                            {inv.last_emit_error && inv.status !== "ERRO" && (
-                              <div className="text-xs bg-red-50 border border-red-100 rounded-lg p-2 mb-2">
-                                <p className="text-red-500 font-medium mb-0.5">Última mensagem do gateway:</p>
-                                <p className="text-red-600 font-mono">{inv.last_emit_error}</p>
-                              </div>
-                            )}
-
-                            <div className="mt-2 flex gap-4 text-xs">
-                              {inv.issued_at    && <p className="text-gray-400">Emitida: <span className="text-gray-700">{formatDate(inv.issued_at)}</span></p>}
-                              {inv.sent_at      && <p className="text-gray-400">Enviada: <span className="text-gray-700">{formatDate(inv.sent_at)}</span></p>}
-                              {inv.paid_at      && <p className="text-gray-400">Paga: <span className="text-green-700 font-medium">{formatDate(inv.paid_at)}</span></p>}
-                              {inv.cancelled_at && <p className="text-gray-400">Cancelada: <span className="text-gray-700">{formatDate(inv.cancelled_at)}</span></p>}
-                            </div>
-                          </td>
-                        </tr>
+                    <tr
+                      key={inv.id}
+                      onClick={() => setDrawerInvoiceId(inv.id)}
+                      className={cn(
+                        "group cursor-pointer transition-colors hover:bg-gray-50",
+                        isOpen && "bg-blue-50/40",
+                        overdue && !isOpen && "bg-orange-50/30",
+                        inv.status === "ERRO" && !isOpen && "bg-red-50/20",
                       )}
-                    </>
+                    >
+                      {/* Checkbox */}
+                      <td className="px-4 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
+                        {["PENDENTE", "ERRO"].includes(inv.status) ? (
+                          <button onClick={() => toggleSelect(inv.id)} className="text-gray-300 hover:text-blue-600">
+                            {isSelected
+                              ? <CheckSquare className="h-4 w-4 text-blue-600" />
+                              : <Square className="h-4 w-4" />}
+                          </button>
+                        ) : (
+                          <span className="block w-4" />
+                        )}
+                      </td>
+
+                      {/* Tomador (cliente + identificador + data) */}
+                      <td className="px-4 py-4 align-middle">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={cn(
+                            "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-xs font-semibold",
+                            inv.status === "EMITIDA" && "bg-green-100 text-green-700",
+                            inv.status === "ERRO" && "bg-red-100 text-red-700",
+                            inv.status === "PROCESSANDO" && "bg-blue-100 text-blue-700",
+                            inv.status === "PAGA" && "bg-emerald-100 text-emerald-700",
+                            inv.status === "CANCELADA" && "bg-gray-100 text-gray-500",
+                            (inv.status === "PENDENTE" || inv.status === "ENVIADA") && "bg-gray-100 text-gray-600",
+                          )}>
+                            {inv.client_name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate font-medium text-gray-900">{inv.client_name}</p>
+                              {overdue && (
+                                <AlertTriangle className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" aria-label="Vencida" />
+                              )}
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500">
+                              <span className="font-mono">{maskSensitiveCpfCnpj(inv.client_cpf_cnpj)}</span>
+                              <span className="text-gray-300">.</span>
+                              <span>
+                                {inv.reference_month
+                                  ? `${MONTH_NAMES[inv.reference_month - 1]}/${inv.reference_year}`
+                                  : inv.reference_year}
+                              </span>
+                              {inv.nfse_number && (
+                                <>
+                                  <span className="text-gray-300">.</span>
+                                  <span className="font-mono text-green-700">NFS-e {inv.nfse_number}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Servico (oculto em mobile) */}
+                      <td className="hidden px-4 py-4 align-middle md:table-cell">
+                        <span className="inline-flex rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
+                          {SERVICE_LABELS[inv.service_type]}
+                        </span>
+                      </td>
+
+                      {/* Valor */}
+                      <td className="whitespace-nowrap px-4 py-4 text-right align-middle font-semibold text-gray-900">
+                        {formatCurrency(Number(inv.amount))}
+                      </td>
+
+                      {/* Status */}
+                      <td className="px-4 py-4 align-middle">
+                        <span className={cn(
+                          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium border",
+                          st.color
+                        )}>
+                          <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
+                          {st.label}
+                        </span>
+                      </td>
+
+                      {/* Acoes (max 2 inline + chevron) */}
+                      <td className="px-4 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Acao primaria contextual */}
+                          {(inv.status === "PENDENTE" || inv.status === "ERRO") && (
+                            <button
+                              onClick={() => { setEmitModal(inv); setEmitError(null); setEmitCep(""); setEmitAliquota("2"); setEmitDuplicateConfirmed(false); setCepResults([]); }}
+                              className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                              title="Emitir NFS-e"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                              Emitir
+                            </button>
+                          )}
+                          {inv.status === "EMITIDA" && inv.gateway_pdf_url && (
+                            <a
+                              href={inv.gateway_pdf_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 rounded-md border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+                              title="Baixar DANFE"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              PDF
+                            </a>
+                          )}
+                          {(inv.status === "EMITIDA" || inv.status === "ENVIADA") && (
+                            <button
+                              onClick={() => updateStatus(inv.id, "PAGA")}
+                              className="rounded-md border border-gray-200 p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-200"
+                              title="Marcar como paga"
+                            >
+                              <DollarSign className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+
+                          <ChevronRight className={cn(
+                            "h-4 w-4 text-gray-300 transition-transform group-hover:text-gray-500",
+                            isOpen && "rotate-90 text-blue-500"
+                          )} />
+                        </div>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>
@@ -2747,6 +2264,270 @@ export default function NotasFiscaisPage() {
           </div>
         </div>
       )}
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          DRAWER LATERAL — DETALHES DA NOTA
+      ═══════════════════════════════════════════════════════════════════ */}
+      {drawerInvoiceId && (() => {
+        const inv = invoices.find((i) => i.id === drawerInvoiceId);
+        if (!inv) return null;
+        const st = STATUS_CONFIG[inv.status];
+        const StatusIcon = st.icon;
+        const overdue = isOverdue(inv);
+
+        return (
+          <>
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px]"
+              onClick={() => setDrawerInvoiceId(null)}
+            />
+            {/* Drawer */}
+            <aside className="fixed right-0 top-0 z-50 h-full w-full max-w-[520px] bg-white shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+              {/* Header */}
+              <header className="flex-shrink-0 border-b border-gray-100 px-6 py-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-xs text-gray-500">
+                      <span>{invoiceCode(inv)}</span>
+                      {inv.imported_from_dw && <span className="text-gray-300">.</span>}
+                      {inv.imported_from_dw && <span>Importada do DW</span>}
+                    </div>
+                    <h2 className="mt-1 text-lg font-semibold text-gray-900 truncate">{inv.client_name}</h2>
+                    <p className="mt-0.5 text-sm text-gray-500 font-mono">{maskSensitiveCpfCnpj(inv.client_cpf_cnpj)}</p>
+                  </div>
+                  <button
+                    onClick={() => setDrawerInvoiceId(null)}
+                    className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                    title="Fechar"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between">
+                  <span className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium border",
+                    st.color
+                  )}>
+                    <StatusIcon className={cn("h-3 w-3", inv.status === "PROCESSANDO" && "animate-spin")} />
+                    {st.label}
+                  </span>
+                  <p className="text-2xl font-bold text-gray-900">{formatCurrency(Number(inv.amount))}</p>
+                </div>
+              </header>
+
+              {/* Body scrollavel */}
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                {/* COMPROVANTE OFICIAL — destaque quando emitida */}
+                {inv.status === "EMITIDA" && (inv.gateway_pdf_url || inv.nfse_number) && (
+                  <section className="rounded-xl border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 rounded-lg bg-green-600 p-2">
+                        <CheckCircle2 className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-green-900">NFS-e emitida pela Prefeitura</p>
+                        <p className="mt-0.5 text-xs text-green-700">
+                          {inv.nfse_number ? `Numero oficial ${inv.nfse_number}` : "Documento fiscal disponivel"}
+                          {inv.issued_at && ` . ${formatDate(inv.issued_at)}`}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {inv.gateway_pdf_url && (
+                            <a href={inv.gateway_pdf_url} target="_blank" rel="noopener noreferrer" download
+                              className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 shadow-sm">
+                              <Download className="h-3.5 w-3.5" />Baixar DANFE (PDF)
+                            </a>
+                          )}
+                          {inv.gateway_xml_url && (
+                            <a href={inv.gateway_xml_url} target="_blank" rel="noopener noreferrer" download
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-green-300 bg-white px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-50">
+                              <Receipt className="h-3.5 w-3.5" />XML Fiscal
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* AGUARDANDO PREFEITURA */}
+                {inv.status === "EMITIDA" && !inv.gateway_pdf_url && !inv.nfse_number && (
+                  <section className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex items-start gap-3">
+                      <Clock className="h-5 w-5 flex-shrink-0 text-amber-600 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-amber-900">Aguardando processamento da Prefeitura</p>
+                        <p className="mt-0.5 text-xs text-amber-700">A nota foi enviada ao gateway. O comprovante oficial sera liberado quando a Prefeitura processar.</p>
+                        {inv.gateway_id && (
+                          <button onClick={() => syncInvoice(inv.id)} disabled={syncingId === inv.id}
+                            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-amber-800 underline hover:text-amber-900 disabled:opacity-50">
+                            {syncingId === inv.id ? "Verificando..." : "Verificar agora"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* ERRO */}
+                {inv.status === "ERRO" && (
+                  <section className="rounded-xl border-2 border-red-200 bg-red-50 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 rounded-lg bg-red-600 p-2">
+                        <AlertTriangle className="h-5 w-5 text-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-red-900">Falha na emissao da NFS-e</p>
+                        {inv.last_emit_error && (
+                          <p className="mt-1 break-words rounded bg-white/60 p-2 text-xs font-mono text-red-700">{inv.last_emit_error}</p>
+                        )}
+                        {inv.emit_attempts > 0 && (
+                          <p className="mt-1 text-[11px] text-red-600">{inv.emit_attempts} tentativa(s) realizadas</p>
+                        )}
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* RESUMO */}
+                <section className="space-y-3">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Detalhes</h3>
+                  <dl className="space-y-2.5 text-sm">
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-gray-500">Servico</dt>
+                      <dd className="font-medium text-gray-900">{SERVICE_LABELS[inv.service_type]}</dd>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-gray-500">Competencia</dt>
+                      <dd className="font-medium text-gray-900">
+                        {inv.reference_month
+                          ? `${MONTH_NAMES[inv.reference_month - 1]}/${inv.reference_year}`
+                          : inv.reference_year}
+                      </dd>
+                    </div>
+                    {inv.due_date && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-500">Vencimento</dt>
+                        <dd className={cn("font-medium", overdue ? "text-orange-600" : "text-gray-900")}>
+                          {formatDate(inv.due_date)}{overdue && " . Vencida"}
+                        </dd>
+                      </div>
+                    )}
+                    {inv.property_address && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-500 flex-shrink-0">Imovel</dt>
+                        <dd className="font-medium text-gray-900 text-right max-w-[60%]">{inv.property_address}</dd>
+                      </div>
+                    )}
+                    {inv.property_code && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-500">Codigo do imovel</dt>
+                        <dd className="font-mono text-xs text-gray-700">{inv.property_code}</dd>
+                      </div>
+                    )}
+                    {inv.title_number && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-gray-500">Titulo DW</dt>
+                        <dd className="font-mono text-xs text-gray-700">{inv.title_number}</dd>
+                      </div>
+                    )}
+                  </dl>
+                </section>
+
+                {/* DESCRICAO */}
+                <section>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Descricao da NFS-e</h3>
+                  <p className="text-sm text-gray-700 leading-relaxed">{inv.description_body}</p>
+                </section>
+
+                {/* OBSERVACOES */}
+                {inv.notes && (
+                  <section>
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Observacoes</h3>
+                    <p className="text-sm text-gray-700 whitespace-pre-line">{inv.notes}</p>
+                  </section>
+                )}
+
+                {/* DETALHES TECNICOS — collapse */}
+                {inv.gateway_id && (
+                  <details className="group rounded-lg border border-gray-200 bg-gray-50">
+                    <summary className="cursor-pointer list-none px-4 py-3 flex items-center justify-between text-xs font-medium text-gray-600 hover:text-gray-900">
+                      <span className="inline-flex items-center gap-2">
+                        <Info className="h-3.5 w-3.5" />
+                        Detalhes tecnicos do gateway
+                      </span>
+                      <ChevronDown className="h-4 w-4 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <div className="px-4 pb-4 space-y-2 text-xs">
+                      <div className="flex justify-between"><span className="text-gray-500">Provider</span><span className="font-mono text-gray-700">{inv.gateway_provider ?? "-"}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-500">Status</span><span className="font-mono text-gray-700">{inv.gateway_status ?? "-"}</span></div>
+                      <div className="flex justify-between"><span className="text-gray-500">Tentativas</span><span className="text-gray-700">{inv.emit_attempts}</span></div>
+                      {inv.last_emit_at && <div className="flex justify-between"><span className="text-gray-500">Ultima tentativa</span><span className="text-gray-700">{formatDate(inv.last_emit_at)}</span></div>}
+                      <div className="pt-2 border-t border-gray-200">
+                        <p className="text-gray-500 mb-1">Gateway ID</p>
+                        <p className="break-all font-mono text-[11px] text-gray-700 bg-white rounded p-2 border border-gray-200">{inv.gateway_id}</p>
+                      </div>
+                    </div>
+                  </details>
+                )}
+              </div>
+
+              {/* Footer com acoes */}
+              <footer className="flex-shrink-0 border-t border-gray-100 px-6 py-4 bg-gray-50/50">
+                <div className="flex flex-wrap gap-2">
+                  {(inv.status === "PENDENTE" || inv.status === "ERRO") && (
+                    <button
+                      onClick={() => { setEmitModal(inv); setEmitError(null); setEmitCep(""); setEmitAliquota("2"); setEmitDuplicateConfirmed(false); setCepResults([]); setDrawerInvoiceId(null); }}
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Emitir NFS-e
+                    </button>
+                  )}
+                  {inv.status === "EMITIDA" && (
+                    <button
+                      onClick={() => { prepareClientSend(inv); setDrawerInvoiceId(null); }}
+                      className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700"
+                    >
+                      <Send className="h-4 w-4" />
+                      Enviar ao cliente
+                    </button>
+                  )}
+                  {(inv.status === "EMITIDA" || inv.status === "ENVIADA") && (
+                    <button
+                      onClick={() => { updateStatus(inv.id, "PAGA"); setDrawerInvoiceId(null); }}
+                      className="inline-flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-2.5 text-sm font-medium text-green-700 hover:bg-green-100"
+                    >
+                      <DollarSign className="h-4 w-4" />
+                      Marcar paga
+                    </button>
+                  )}
+                  {inv.gateway_id && ["PROCESSANDO", "ERRO", "EMITIDA"].includes(inv.status) && (
+                    <button
+                      onClick={() => syncInvoice(inv.id)}
+                      disabled={syncingId === inv.id}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      title="Sincronizar com NFE.io"
+                    >
+                      {syncingId === inv.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    </button>
+                  )}
+                  {!["CANCELADA", "PAGA", "PROCESSANDO"].includes(inv.status) && (
+                    <button
+                      onClick={() => { setCancelModal(inv); setCancelReason(""); setDrawerInvoiceId(null); }}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                      title="Cancelar"
+                    >
+                      <Ban className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </footer>
+            </aside>
+          </>
+        );
+      })()}
     </div>
   );
 }

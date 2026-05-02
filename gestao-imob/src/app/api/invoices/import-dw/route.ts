@@ -45,12 +45,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Erro de autenticacao." }, { status: 500 });
   }
 
+  // Verifica tamanho ANTES de parsear formData (que tem limite proprio do Next).
+  // Se nao checar aqui, request.formData() falha com erro generico em arquivos grandes.
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (contentLength > MAX_FILE_SIZE) {
+    return NextResponse.json(
+      { error: `Arquivo muito grande (${(contentLength / 1024 / 1024).toFixed(1)}MB). Limite: 10MB.` },
+      { status: 413 }
+    );
+  }
+
   // ── 2. File ──
   let formData: FormData;
   try {
     formData = await request.formData();
-  } catch {
-    return NextResponse.json({ error: "Requisição inválida." }, { status: 400 });
+  } catch (err) {
+    // Body parsing falhou — quase sempre é tamanho excedido.
+    const msg = err instanceof Error ? err.message.toLowerCase() : "";
+    if (msg.includes("body") && (msg.includes("size") || msg.includes("limit") || msg.includes("large"))) {
+      return NextResponse.json(
+        { error: "Arquivo excede o limite de 10MB. Reduza o tamanho e tente novamente." },
+        { status: 413 }
+      );
+    }
+    return NextResponse.json(
+      { error: "Não foi possível ler o arquivo. Verifique se ele não está corrompido e se o tamanho é menor que 10MB." },
+      { status: 400 }
+    );
   }
 
   const file = formData.get("file") as File | null;
