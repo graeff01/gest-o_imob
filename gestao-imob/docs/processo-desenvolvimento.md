@@ -20,6 +20,9 @@ Nunca desenvolver diretamente na `main`.
 7. Mergear apenas quando estiver estavel.
 8. Atualizar a `main` local depois do merge.
 
+Para mudancas de NFS-e, a validacao funcional deve passar primeiro em HML.
+PRD nao deve ser usado para descobrir erro de fluxo fiscal.
+
 ## Criterio de pronto para merge
 
 - `npm run verify:ci` passa.
@@ -41,6 +44,12 @@ Antes de uma release para homologacao ou producao:
 - validar importacao DW;
 - validar fluxo NFS-e no modo adequado;
 - conferir `/saude`.
+
+Documentos relacionados:
+
+- `docs/ambientes-e-governanca.md`
+- `docs/hml-nfse-validacao.md`
+- `docs/runbooks/nfse-hml.md`
 
 ## Rollback
 

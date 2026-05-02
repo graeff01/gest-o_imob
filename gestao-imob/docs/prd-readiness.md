@@ -67,3 +67,8 @@ Em `production`, o sistema bloqueia `GATEWAY_STUB_MODE=true`.
 - rotina de rollback definida
 - CI ativo em toda PR para `main`
 - processo de desenvolvimento documentado em `docs/processo-desenvolvimento.md`
+
+Antes de qualquer deploy real em PRD, o fluxo de NFS-e deve estar aprovado conforme:
+
+- `docs/hml-nfse-validacao.md`
+- `docs/runbooks/nfse-hml.md`
