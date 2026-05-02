@@ -99,11 +99,11 @@ const STORAGE = {
 };
 
 const SEED_EMPLOYEES: Employee[] = [
-  { id: "fe-001", nome: "Lucas Rodrigues", cpf: "123.456.789-01", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "lucas.rodrigues@jardimimob.com.br", ativo: true },
-  { id: "fe-002", nome: "Thiago Lima", cpf: "234.567.890-12", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "thiago.lima@jardimimob.com.br", ativo: true },
-  { id: "fe-003", nome: "Fernanda Souza", cpf: "345.678.901-23", cargo: "CAPTADOR", tipoContrato: "PJ", salarioFixo: 0, valeRefeicao: 0, valeTransporte: 0, pix: "fernanda.souza@jardimimob.com.br", ativo: true },
-  { id: "fe-004", nome: "Ana Paula Müller", cpf: "456.789.012-34", cargo: "ADMIN", tipoContrato: "CLT", salarioFixo: 2800, valeRefeicao: 550, valeTransporte: 220, pix: "ana.muller@jardimimob.com.br", ativo: true },
-  { id: "fe-005", nome: "Roberto Costa", cpf: "567.890.123-45", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "roberto.costa@jardimimob.com.br", ativo: true },
+  { id: "fe-001", nome: "Colaborador Exemplo 1", cpf: "000.000.000-00", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "colaborador1@example.com", ativo: true },
+  { id: "fe-002", nome: "Colaborador Exemplo 2", cpf: "000.000.000-00", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "colaborador2@example.com", ativo: true },
+  { id: "fe-003", nome: "Colaborador Exemplo 3", cpf: "000.000.000-00", cargo: "CAPTADOR", tipoContrato: "PJ", salarioFixo: 0, valeRefeicao: 0, valeTransporte: 0, pix: "colaborador3@example.com", ativo: true },
+  { id: "fe-004", nome: "Colaborador Exemplo 4", cpf: "000.000.000-00", cargo: "ADMIN", tipoContrato: "CLT", salarioFixo: 2800, valeRefeicao: 550, valeTransporte: 220, pix: "colaborador4@example.com", ativo: true },
+  { id: "fe-005", nome: "Colaborador Exemplo 5", cpf: "000.000.000-00", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "colaborador5@example.com", ativo: true },
 ];
 
 function loadJSON<T>(key: string, fallback: T): T {

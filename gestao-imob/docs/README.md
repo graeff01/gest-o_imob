@@ -18,6 +18,7 @@ O objetivo e permitir que outra pessoa entre no projeto e entenda rapidamente:
 4. [Runbook NFS-e em HML](./runbooks/nfse-hml.md)
 5. [PRD readiness](./prd-readiness.md)
 6. [Backlog pos-PRD](./backlog-pos-prd.md)
+7. [Publicacao segura do repositorio](./publicacao-repositorio.md)
 
 ## Documentos principais
 
@@ -28,6 +29,7 @@ O objetivo e permitir que outra pessoa entre no projeto e entenda rapidamente:
 | `hml-nfse-validacao.md` | Criterios para dizer que HML esta pronto. |
 | `runbooks/nfse-hml.md` | Passo a passo para operar e diagnosticar NFS-e em HML. |
 | `prd-readiness.md` | Requisitos minimos antes de PRD real. |
+| `publicacao-repositorio.md` | Regras para tornar o repositorio publico sem expor dados sensiveis. |
 | `sprints/` | Historico das sprints tecnicas. |
 | `decisoes/` | Decisoes arquiteturais e operacionais relevantes. |
 

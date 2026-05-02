@@ -1,12 +1,12 @@
 /**
  * dw-parser.ts
  * ------------
- * Parser para o arquivo Excel exportado do DW (CRM da franquia Auxiliadora Predial).
+ * Parser para arquivo Excel/CSV exportado do DW operacional.
  *
  * Estrutura da planilha (colunas identificadas na amostra real):
  *   A  - DATA VENCIMENTO
  *   B  - NOME AGENCIA
- *   C  - HISTORICO          (ex: "INTERMEDIAÇÃO FRANQUIA - FRANQUIA MOINHOS DE VENTO - 3/3")
+ *   C  - HISTORICO          (ex: "INTERMEDIACAO FRANQUIA - FRANQUIA EXEMPLO - 3/3")
  *   D  - IMOVEL             (código numérico do imóvel)
  *   E  - ENDEREÇO IMOVEL
  *   F  - PROPRIETARIO       (nome do proprietário/tomador)
@@ -46,7 +46,7 @@ export interface DWParsedRow {
   /** Ano de competência extraído da data de vencimento */
   reference_year: number;
 
-  /** Nome da agência (ex: "FRANQUIA MOINHOS DE VENTO") */
+  /** Nome da agencia (ex: "FRANQUIA EXEMPLO") */
   agency_name: string;
 
   /** Histórico completo do lançamento */

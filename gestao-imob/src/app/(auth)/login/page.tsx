@@ -52,9 +52,9 @@ export default function LoginPage() {
             <Building2 className="h-6 w-6" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold leading-tight">Jardim do Lago</h1>
+            <h1 className="text-lg font-semibold leading-tight">Gestao Imob</h1>
             <div className="mt-1 flex items-center gap-2">
-              <p className="text-xs text-slate-400">Auxiliadora Predial</p>
+              <p className="text-xs text-slate-400">Gestao financeira imobiliaria</p>
               {isNonProduction && (
                 <span className="rounded border border-amber-300/30 bg-amber-300/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-200">
                   {environmentLabel}

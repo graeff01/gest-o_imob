@@ -1,21 +1,21 @@
 "use client";
 
 /**
- * CORE STORE — Fase A
+ * CORE STORE â€” Fase A
  *
- * Camada única de tipos + persistência para as entidades estruturais:
+ * Camada Ãºnica de tipos + persistÃªncia para as entidades estruturais:
  *  - Fornecedor
- *  - Proprietário
- *  - Parâmetros do sistema (versionados)
- *  - Log de auditoria (imutável)
- *  - Fila de exceções (caixa de entrada unificada)
+ *  - ProprietÃ¡rio
+ *  - ParÃ¢metros do sistema (versionados)
+ *  - Log de auditoria (imutÃ¡vel)
+ *  - Fila de exceÃ§Ãµes (caixa de entrada unificada)
  *
- * Toda persistência é via localStorage com chaves versionadas.
+ * Toda persistÃªncia Ã© via localStorage com chaves versionadas.
  * Quando o banco for conectado, basta trocar a camada `read`/`write`
- * por chamadas Prisma — os tipos e a API pública permanecem.
+ * por chamadas Prisma â€” os tipos e a API pÃºblica permanecem.
  */
 
-// ─── Tipos ────────────────────────────────────────
+// â”€â”€â”€ Tipos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export interface Fornecedor {
   id: string;
@@ -23,7 +23,7 @@ export interface Fornecedor {
   cpfCnpj: string;
   categoriaPadrao?: string;
   subcategoriaPadrao?: string;
-  /** Confiança acumulada — quantas vezes a classificação bateu */
+  /** ConfianÃ§a acumulada â€” quantas vezes a classificaÃ§Ã£o bateu */
   confiancaClassificacao: number;
   /** Total movimentado historicamente */
   totalMovimentado: number;
@@ -43,7 +43,7 @@ export interface Proprietario {
   banco?: string;
   agencia?: string;
   conta?: string;
-  /** IDs dos imóveis do proprietário */
+  /** IDs dos imÃ³veis do proprietÃ¡rio */
   imoveisIds: string[];
   observacoes?: string;
   criadoEm: string;
@@ -51,19 +51,19 @@ export interface Proprietario {
 }
 
 /**
- * Parâmetros do sistema — tudo que antes era hardcoded no código.
- * Cada mudança vira uma nova versão preservando histórico.
+ * ParÃ¢metros do sistema â€” tudo que antes era hardcoded no cÃ³digo.
+ * Cada mudanÃ§a vira uma nova versÃ£o preservando histÃ³rico.
  */
 export interface ParametrosSistema {
   versao: number;
   vigenteDesde: string;
   // Financeiro
-  taxaAdministracao: number; // % padrão (ex: 10)
+  taxaAdministracao: number; // % padrÃ£o (ex: 10)
   taxaAdministracaoReal: number; // % que vira receita real (ex: 3.5)
-  percentualRepasseMatriz: number; // % repassado à matriz (ex: 70)
-  percentualReceitaAgencia: number; // % que fica na agência (ex: 30)
-  // Comissões
-  consultorTier1Max: number; // até N locações = tier 1
+  percentualRepasseMatriz: number; // % repassado Ã  matriz (ex: 70)
+  percentualReceitaAgencia: number; // % que fica na agÃªncia (ex: 30)
+  // ComissÃµes
+  consultorTier1Max: number; // atÃ© N locaÃ§Ãµes = tier 1
   consultorTier1Percent: number;
   consultorTier2Max: number;
   consultorTier2Percent: number;
@@ -77,19 +77,19 @@ export interface ParametrosSistema {
   vendaPercent: number;
   campanhaSucessoValor: number;
   campanhaCaptacaoValor: number;
-  // Régua de cobrança (dias após vencimento)
+  // RÃ©gua de cobranÃ§a (dias apÃ³s vencimento)
   reguaAviso1: number;
   reguaAviso2: number;
   reguaAviso3: number;
   reguaJuridico: number;
   // Fiscais
-  prazoEmissaoNF: number; // dia do mês limite
+  prazoEmissaoNF: number; // dia do mÃªs limite
   indiceReajustePadrao: "IGPM" | "IPCA";
   // IA
   scoreConfiancaAutoAprovacao: number; // >= este valor, aprova sozinho
-  /** Autor da alteração */
+  /** Autor da alteraÃ§Ã£o */
   alteradoPor?: string;
-  /** Motivo da alteração */
+  /** Motivo da alteraÃ§Ã£o */
   motivo?: string;
 }
 
@@ -122,8 +122,8 @@ export const PARAMETROS_DEFAULT: Omit<ParametrosSistema, "versao" | "vigenteDesd
 };
 
 /**
- * Log de auditoria — imutável, append-only.
- * Toda ação relevante (humana ou IA) deve gerar um registro.
+ * Log de auditoria â€” imutÃ¡vel, append-only.
+ * Toda aÃ§Ã£o relevante (humana ou IA) deve gerar um registro.
  */
 export type AuditAction =
   | "CREATE"
@@ -141,23 +141,23 @@ export type AuditAction =
 export interface AuditEntry {
   id: string;
   timestamp: string;
-  actor: string; // "Sistema IA" | nome do usuário
+  actor: string; // "Sistema IA" | nome do usuÃ¡rio
   actorType: "HUMAN" | "AI" | "SYSTEM";
   action: AuditAction;
   entityType: string; // "Fornecedor" | "Contrato" | "Parametros" | ...
   entityId?: string;
   entityLabel?: string;
-  /** Descrição curta da mudança */
+  /** DescriÃ§Ã£o curta da mudanÃ§a */
   summary: string;
-  /** Score de confiança da IA (quando aplicável) */
+  /** Score de confianÃ§a da IA (quando aplicÃ¡vel) */
   confidence?: number;
   /** Dados antes/depois (diff) */
   diff?: { before?: unknown; after?: unknown };
 }
 
 /**
- * Fila de exceções — tudo que exige atenção humana.
- * Alimentada por IA e por validações cruzadas.
+ * Fila de exceÃ§Ãµes â€” tudo que exige atenÃ§Ã£o humana.
+ * Alimentada por IA e por validaÃ§Ãµes cruzadas.
  */
 export type ExceptionSeverity = "INFO" | "WARN" | "CRITICAL";
 export type ExceptionStatus = "OPEN" | "REVIEWING" | "RESOLVED" | "DISMISSED";
@@ -176,7 +176,7 @@ export interface ExceptionItem {
   status: ExceptionStatus;
   title: string;
   description: string;
-  /** Módulo de origem: "financeiro" | "contratos" | "nf" | ... */
+  /** MÃ³dulo de origem: "financeiro" | "contratos" | "nf" | ... */
   source: string;
   entityType?: string;
   entityId?: string;
@@ -187,7 +187,7 @@ export interface ExceptionItem {
   resolvedBy?: string;
 }
 
-// ─── Chaves de storage ────────────────────────────
+// â”€â”€â”€ Chaves de storage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const K = {
   fornecedores: "core-fornecedores-v1",
@@ -201,23 +201,15 @@ const K = {
 const SEED_VERSION = 1;
 
 const SEED_FORNECEDORES: Fornecedor[] = [
-  { id: "forn-001", nome: "Auxiliadora Predial Franquias Ltda", cpfCnpj: "00000000000191", categoriaPadrao: "Royalties Franquia", subcategoriaPadrao: "Royalties mensais", confiancaClassificacao: 98, totalMovimentado: 56400, quantidadeLancamentos: 12, observacoes: "Pagamento mensal até dia 5", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "forn-002", nome: "Claro Empresas", cpfCnpj: "40432544000147", categoriaPadrao: "Contas de Consumo", subcategoriaPadrao: "Telefone/Internet", confiancaClassificacao: 95, totalMovimentado: 5880, quantidadeLancamentos: 12, observacoes: "Plano fibra escritório", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "forn-003", nome: "CEEE Equatorial", cpfCnpj: "08467115000100", categoriaPadrao: "Contas de Consumo", subcategoriaPadrao: "Luz/Energia", confiancaClassificacao: 97, totalMovimentado: 10164, quantidadeLancamentos: 12, observacoes: "", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "forn-004", nome: "Agência Digital RS", cpfCnpj: "34567890000111", categoriaPadrao: "Marketing", subcategoriaPadrao: "Marketing digital", confiancaClassificacao: 85, totalMovimentado: 28800, quantidadeLancamentos: 12, observacoes: "Gestão Instagram + ZAP Imóveis", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "forn-005", nome: "PipeImob Tecnologia", cpfCnpj: "23456789000122", categoriaPadrao: "Software/Sistemas", subcategoriaPadrao: "CRM imobiliário", confiancaClassificacao: 99, totalMovimentado: 5880, quantidadeLancamentos: 12, observacoes: "Licença mensal do CRM", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "forn-006", nome: "João Encanador ME", cpfCnpj: "12345678000133", categoriaPadrao: "Manutenção", subcategoriaPadrao: "Hidráulica", confiancaClassificacao: 70, totalMovimentado: 2340, quantidadeLancamentos: 6, observacoes: "Prestador de serviço hidráulico", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "forn-007", nome: "Prefeitura Municipal de Canoas", cpfCnpj: "92963560000160", categoriaPadrao: "Impostos e Tributos", subcategoriaPadrao: "ISSQN", confiancaClassificacao: 99, totalMovimentado: 28080, quantidadeLancamentos: 12, observacoes: "ISSQN mensal", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "forn-008", nome: "Pintura Pro Ltda", cpfCnpj: "45678901000144", categoriaPadrao: "Manutenção", subcategoriaPadrao: "Pintura", confiancaClassificacao: 60, totalMovimentado: 9000, quantidadeLancamentos: 2, observacoes: "", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-001", nome: "Fornecedor Exemplo 1", cpfCnpj: "00000000000000", categoriaPadrao: "Royalties", subcategoriaPadrao: "Royalties mensais", confiancaClassificacao: 98, totalMovimentado: 56400, quantidadeLancamentos: 12, observacoes: "Dados demonstrativos ficticios", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-002", nome: "Fornecedor Exemplo 2", cpfCnpj: "00000000000000", categoriaPadrao: "Contas de Consumo", subcategoriaPadrao: "Telefone/Internet", confiancaClassificacao: 95, totalMovimentado: 5880, quantidadeLancamentos: 12, observacoes: "Dados demonstrativos ficticios", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "forn-003", nome: "Fornecedor Exemplo 3", cpfCnpj: "00000000000000", categoriaPadrao: "Marketing", subcategoriaPadrao: "Marketing digital", confiancaClassificacao: 85, totalMovimentado: 28800, quantidadeLancamentos: 12, observacoes: "Dados demonstrativos ficticios", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
 ];
 
 const SEED_PROPRIETARIOS: Proprietario[] = [
-  { id: "prop-own-001", nome: "Maria Aparecida Lima", cpfCnpj: "98765432100", telefone: "(51) 99234-5678", email: "maria.lima@gmail.com", pix: "maria.lima@gmail.com", banco: "Itaú", agencia: "1234", conta: "56789-0", imoveisIds: ["prop-001"], observacoes: "Proprietária do Ap 301 Av. Independência", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "prop-own-002", nome: "Carlos Eduardo Souza", cpfCnpj: "11122233344", telefone: "(51) 98123-4567", email: "carlos.souza@outlook.com", pix: "98765-4321", banco: "Bradesco", agencia: "2345", conta: "67890-1", imoveisIds: ["prop-002", "prop-007"], observacoes: "", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "prop-own-003", nome: "Roberto Almeida Costa", cpfCnpj: "44433322211", telefone: "(51) 99345-6789", email: "roberto.costa@gmail.com", pix: "roberto.costa@gmail.com", banco: "Banco do Brasil", agencia: "3456", conta: "78901-2", imoveisIds: ["prop-003", "prop-008"], observacoes: "", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "prop-own-004", nome: "Lucia Hoffmann", cpfCnpj: "21221212212", telefone: "(51) 98456-7890", email: "lucia.hoffmann@terra.com.br", pix: "21221212212", banco: "Caixa Econômica", agencia: "4567", conta: "89012-3", imoveisIds: ["prop-004", "prop-010"], observacoes: "Prefere contato por e-mail", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "prop-own-005", nome: "Francisco Antônio Moreira", cpfCnpj: "55544433322", telefone: "(51) 99567-8901", email: undefined, pix: "55544433322", banco: "Santander", agencia: "5678", conta: "90123-4", imoveisIds: ["prop-005", "prop-011"], observacoes: "Sem e-mail — contato somente por WhatsApp", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
-  { id: "prop-own-006", nome: "Imobiliária Planalto Ltda", cpfCnpj: "89012345000167", telefone: "(51) 3232-1234", email: "contato@planalto.imob.br", pix: "contato@planalto.imob.br", banco: "Itaú", agencia: "6789", conta: "01234-5", imoveisIds: ["prop-006", "prop-012"], observacoes: "PJ — emite NF para repasse", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "prop-own-001", nome: "Proprietario Exemplo 1", cpfCnpj: "00000000000", telefone: "(00) 90000-0001", email: "owner1@example.com", pix: "owner1@example.com", banco: "Banco Exemplo", agencia: "0000", conta: "00000-0", imoveisIds: ["prop-001"], observacoes: "Dados demonstrativos ficticios", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "prop-own-002", nome: "Proprietario Exemplo 2", cpfCnpj: "00000000000", telefone: "(00) 90000-0002", email: "owner2@example.com", pix: "owner2@example.com", banco: "Banco Exemplo", agencia: "0000", conta: "00000-0", imoveisIds: ["prop-002"], observacoes: "Dados demonstrativos ficticios", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
+  { id: "prop-own-003", nome: "Empresa Proprietaria Exemplo", cpfCnpj: "00000000000000", telefone: "(00) 3000-0000", email: "owner-company@example.com", pix: "owner-company@example.com", banco: "Banco Exemplo", agencia: "0000", conta: "00000-0", imoveisIds: ["prop-003"], observacoes: "Dados demonstrativos ficticios", criadoEm: "2025-01-01T00:00:00.000Z", atualizadoEm: "2025-01-01T00:00:00.000Z" },
 ];
 
 function ensureSeeded() {
@@ -231,7 +223,7 @@ function ensureSeeded() {
   localStorage.setItem(K.seedVersion, String(SEED_VERSION));
 }
 
-// ─── Helpers internos ─────────────────────────────
+// â”€â”€â”€ Helpers internos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function read<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -258,12 +250,12 @@ const uuid = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-// ─── Audit ────────────────────────────────────────
+// â”€â”€â”€ Audit â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function logAudit(entry: Omit<AuditEntry, "id" | "timestamp">) {
   const log = read<AuditEntry[]>(K.audit, []);
   const full: AuditEntry = { id: uuid(), timestamp: now(), ...entry };
-  // Append-only, limita a 10k entradas para não estourar storage
+  // Append-only, limita a 10k entradas para nÃ£o estourar storage
   const next = [full, ...log].slice(0, 10000);
   write(K.audit, next);
   return full;
@@ -273,7 +265,7 @@ export function getAuditLog(): AuditEntry[] {
   return read<AuditEntry[]>(K.audit, []);
 }
 
-// ─── Exceptions ───────────────────────────────────
+// â”€â”€â”€ Exceptions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function raiseException(
   item: Omit<ExceptionItem, "id" | "createdAt" | "status">
@@ -299,7 +291,7 @@ export function updateException(id: string, patch: Partial<ExceptionItem>) {
   write(K.exceptions, next);
 }
 
-// ─── Fornecedores ─────────────────────────────────
+// â”€â”€â”€ Fornecedores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function getFornecedores(): Fornecedor[] {
   ensureSeeded();
@@ -363,7 +355,7 @@ export function deleteFornecedor(id: string) {
   }
 }
 
-// ─── Proprietários ────────────────────────────────
+// â”€â”€â”€ ProprietÃ¡rios â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function getProprietarios(): Proprietario[] {
   ensureSeeded();
@@ -387,10 +379,10 @@ export function saveProprietario(
       actor: "Gestor",
       actorType: "HUMAN",
       action: "UPDATE",
-      entityType: "Proprietário",
+      entityType: "ProprietÃ¡rio",
       entityId: p.id,
       entityLabel: p.nome,
-      summary: `Proprietário ${p.nome} atualizado`,
+      summary: `ProprietÃ¡rio ${p.nome} atualizado`,
     });
     return updated;
   }
@@ -405,10 +397,10 @@ export function saveProprietario(
     actor: "Gestor",
     actorType: "HUMAN",
     action: "CREATE",
-    entityType: "Proprietário",
+    entityType: "ProprietÃ¡rio",
     entityId: novo.id,
     entityLabel: novo.nome,
-    summary: `Proprietário ${novo.nome} cadastrado`,
+    summary: `ProprietÃ¡rio ${novo.nome} cadastrado`,
   });
   return novo;
 }
@@ -422,15 +414,15 @@ export function deleteProprietario(id: string) {
       actor: "Gestor",
       actorType: "HUMAN",
       action: "DELETE",
-      entityType: "Proprietário",
+      entityType: "ProprietÃ¡rio",
       entityId: id,
       entityLabel: p.nome,
-      summary: `Proprietário ${p.nome} removido`,
+      summary: `ProprietÃ¡rio ${p.nome} removido`,
     });
   }
 }
 
-// ─── Parâmetros (versionado) ──────────────────────
+// â”€â”€â”€ ParÃ¢metros (versionado) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function getParametrosHistorico(): ParametrosSistema[] {
   const list = read<ParametrosSistema[]>(K.parametros, []);
@@ -470,10 +462,10 @@ export function saveParametros(
     actor: autor,
     actorType: "HUMAN",
     action: "CONFIG_CHANGE",
-    entityType: "Parâmetros",
+    entityType: "ParÃ¢metros",
     entityId: String(nova.versao),
-    entityLabel: `Versão ${nova.versao}`,
-    summary: `Parâmetros atualizados: ${motivo}`,
+    entityLabel: `VersÃ£o ${nova.versao}`,
+    summary: `ParÃ¢metros atualizados: ${motivo}`,
     diff: { before: hist[hist.length - 1], after: nova },
   });
   return nova;

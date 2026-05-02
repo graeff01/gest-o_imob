@@ -1030,7 +1030,7 @@ export default function NotasFiscaisPage() {
   <div class="header">
     <div class="tag">Relatório Fiscal</div>
     <h1>Notas Fiscais de Serviço<br>${monthName} / ${yr}</h1>
-    <p>Imobiliária Jardim do Lago — Auxiliadora Predial</p>
+    <p>Gestao Imob — Operacao fiscal</p>
     <div class="header-meta">
       <div class="meta-item"><label>Competência</label><span>${monthName}/${yr}</span></div>
       <div class="meta-item"><label>Total de notas</label><span>${mi.length}</span></div>
@@ -2630,7 +2630,7 @@ export default function NotasFiscaisPage() {
             <div className="flex items-center justify-between p-6 border-b border-gray-100 flex-shrink-0">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Importar Notas do DW</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Selecione o arquivo Excel (.xlsx) ou CSV exportado do DW da Auxiliadora Predial.</p>
+                <p className="text-xs text-gray-500 mt-0.5">Selecione o arquivo Excel (.xlsx) ou CSV exportado do DW operacional.</p>
               </div>
               <button onClick={() => setImportModal(false)} className="text-gray-400 hover:text-gray-600 p-1"><X className="h-5 w-5" /></button>
             </div>

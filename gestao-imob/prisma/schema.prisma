@@ -1,6 +1,5 @@
 // =============================================================================
-// SCHEMA DO BANCO DE DADOS - Sistema de Gestao Financeira
-// Imobiliaria Moinhos de Vento (Auxiliadora Predial)
+// SCHEMA DO BANCO DE DADOS - Sistema de Gestao Financeira Imobiliaria
 // =============================================================================
 
 generator client {

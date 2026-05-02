@@ -4,11 +4,9 @@ Este runbook orienta operacao e diagnostico do fluxo de NFS-e no ambiente de hom
 
 ## URL
 
-Ambiente HML:
+A URL de HML deve ser consultada no Railway ou no gestor do projeto.
 
-```text
-https://gest-oimob-homologacao.up.railway.app
-```
+Nao registrar dominios operacionais reais em documentacao publica.
 
 ## Pre-condicoes
 

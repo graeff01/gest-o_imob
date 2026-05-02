@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Gestao Financeira - Jardim do Lago",
-  description: "Sistema de gestao financeira e administrativa - Auxiliadora Predial",
+  description: "Sistema de gestao financeira, operacional e fiscal para imobiliarias",
 };
 
 export default function RootLayout({

@@ -22,7 +22,7 @@ async function main() {
   const loginOk = await bcrypt.compare("admin2026", hash);
   checks.push(["senha local admin2026", loginOk, loginOk ? "ok" : "falhou"]);
 
-  const samplePath = path.join(process.env.USERPROFILE || "", "Downloads", "exemplo_dw_moinhos (1).xlsx");
+  const samplePath = path.join(process.env.USERPROFILE || "", "Downloads", "exemplo_dw.xlsx");
   if (fs.existsSync(samplePath)) {
     const wb = XLSX.readFile(samplePath);
     const ws = wb.Sheets[wb.SheetNames[0]];

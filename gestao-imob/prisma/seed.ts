@@ -13,13 +13,20 @@ async function main() {
   // =====================================================
   // 1. USUARIO ADMIN PADRAO
   // =====================================================
-  const adminPassword = await hash("admin123", 12);
+  const adminEmail = process.env.SEED_ADMIN_EMAIL;
+  const adminPasswordPlain = process.env.SEED_ADMIN_PASSWORD;
+
+  if (!adminEmail || !adminPasswordPlain) {
+    throw new Error("Defina SEED_ADMIN_EMAIL e SEED_ADMIN_PASSWORD para executar o seed.");
+  }
+
+  const adminPassword = await hash(adminPasswordPlain, 12);
   await prisma.user.upsert({
-    where: { email: "admin@moinhos.com" },
+    where: { email: adminEmail },
     update: {},
     create: {
       name: "Administrador",
-      email: "admin@moinhos.com",
+      email: adminEmail,
       password_hash: adminPassword,
       role: "ADMIN",
       is_active: true,
