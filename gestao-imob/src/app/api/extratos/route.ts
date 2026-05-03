@@ -34,6 +34,20 @@ type LearnedRule = {
 
 const REVIEW_CONFIDENCE_THRESHOLD = 80;
 
+type AnalyzedTransaction = {
+  tx: ParsedTransaction;
+  normalizedKey: string;
+  suggestion: TransactionCategorySuggestion;
+  learnedRuleId?: string;
+  learnedCategoryId?: string | null;
+  needsReview: boolean;
+  expenseCategory: DbCategory | null;
+  duplicate: boolean;
+  existingTransactionId?: string;
+  existingFinancialId?: string;
+  existingFinancialType?: "EXPENSE" | "REVENUE";
+};
+
 export async function GET() {
   try {
     await requireAuth();
@@ -77,7 +91,31 @@ export async function GET() {
       })
       .sort((a, b) => b.monthKey.localeCompare(a.monthKey));
 
-    return NextResponse.json({ months });
+    const batchRows = transactions
+      .filter((tx) => tx.import_batch_id)
+      .reduce<Map<string, typeof transactions>>((acc, tx) => {
+        acc.set(tx.import_batch_id as string, [...(acc.get(tx.import_batch_id as string) ?? []), tx]);
+        return acc;
+      }, new Map());
+
+    const batches = Array.from(batchRows.entries())
+      .map(([batchId, txs]) => {
+        const first = txs[0];
+        return {
+          id: batchId,
+          importedAt: first?.created_at?.toISOString() ?? new Date().toISOString(),
+          bankName: first?.bank_account?.bank_name ?? "Conta bancaria",
+          months: Array.from(new Set(txs.map((tx) => toMonthKey(tx.date)))).sort().reverse(),
+          transactionCount: txs.length,
+          totalReceitas: txs.filter((tx) => tx.is_credit).reduce((sum, tx) => sum + Number(tx.amount), 0),
+          totalDespesas: txs.filter((tx) => !tx.is_credit).reduce((sum, tx) => sum + Number(tx.amount), 0),
+          pendingReview: txs.filter((tx) => tx.needs_review).length,
+          sourceFile: extractNoteValue(first?.notes, "Arquivo"),
+        };
+      })
+      .sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+
+    return NextResponse.json({ months, batches });
   } catch (error) {
     console.error("[extratos] list error:", error);
     return NextResponse.json({ error: "Erro ao listar extratos." }, { status: 500 });
@@ -101,6 +139,7 @@ export async function POST(request: NextRequest) {
 
   const file = formData.get("file") as File | null;
   const requestedBankAccountId = formData.get("bank_account_id") as string | null;
+  const confirmed = request.nextUrl.searchParams.get("confirm") === "true";
   if (!file) {
     return NextResponse.json({ error: "Nenhum arquivo enviado." }, { status: 400 });
   }
@@ -126,21 +165,40 @@ export async function POST(request: NextRequest) {
     }
 
     const categories = await ensureImportCategories();
-    const learnedRules = await prisma.bankClassificationRule.findMany({
-      where: { is_active: true },
-      orderBy: [{ use_count: "desc" }, { updated_at: "desc" }],
-      select: {
-        id: true,
-        normalized_pattern: true,
-        kind: true,
-        category_id: true,
-        category_label: true,
-        revenue_category: true,
-        department: true,
-        payment_method: true,
-        confidence: true,
-      },
-    });
+    const learnedRules = await getLearnedRules();
+    const analyzed = await analyzeTransactions(parseResult.transactions, bankAccount.id, categories, learnedRules);
+    const months = new Set(analyzed.map((item) => toMonthKey(new Date(`${item.tx.date}T00:00:00`))));
+
+    if (!confirmed) {
+      const rows = analyzed.map((item, index) => ({
+        index,
+        date: item.tx.date,
+        description: item.tx.description,
+        amount: item.tx.amount,
+        isCredit: item.tx.isCredit,
+        operationType: item.tx.operationType,
+        category: item.suggestion.category,
+        confidence: item.suggestion.confidence,
+        needsReview: item.needsReview,
+        duplicate: item.duplicate,
+        matchedRule: item.learnedRuleId ? `learned:${item.learnedRuleId}` : item.suggestion.matchedRule,
+        existingFinancialType: item.existingFinancialType,
+      }));
+
+      return NextResponse.json({
+        preview: true,
+        bankName: parseResult.bankName,
+        accountInfo: parseResult.accountInfo,
+        transactionCount: rows.length,
+        duplicates: rows.filter((row) => row.duplicate).length,
+        pendingReview: rows.filter((row) => row.needsReview).length,
+        totalReceitas: rows.filter((row) => row.isCredit).reduce((sum, row) => sum + row.amount, 0),
+        totalDespesas: rows.filter((row) => !row.isCredit).reduce((sum, row) => sum + row.amount, 0),
+        months: Array.from(months).sort().reverse(),
+        rows,
+        parseErrors: parseResult.errors,
+      });
+    }
 
     const batchId = `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let imported = 0;
@@ -148,40 +206,11 @@ export async function POST(request: NextRequest) {
     let generatedExpenses = 0;
     let generatedRevenues = 0;
     const importErrors: string[] = [];
-    const months = new Set<string>();
 
-    for (const tx of parseResult.transactions) {
-      const baseSuggestion = suggestTransactionClassification(tx.description, tx.isCredit);
-      const { suggestion, learnedRuleId, learnedCategoryId } = applyLearnedRules(tx, baseSuggestion, learnedRules);
-      const needsReview = shouldReview(suggestion);
-      const expenseCategory = tx.isCredit
-        ? null
-        : findExpenseCategory(
-            categories,
-            needsReview
-              ? { ...suggestion, expenseCategoryNames: ["A Classificar", ...suggestion.expenseCategoryNames, "Outros"] }
-              : suggestion,
-            learnedCategoryId
-          );
-      const normalizedKey = buildExternalId(tx);
-
+    for (const item of analyzed) {
+      const { tx, normalizedKey, suggestion, learnedRuleId, needsReview, expenseCategory } = item;
       try {
-        const existingTx = await prisma.bankTransaction.findFirst({
-          where: {
-            bank_account_id: bankAccount.id,
-            OR: [
-              { normalized_key: normalizedKey },
-              {
-                date: new Date(`${tx.date}T00:00:00`),
-                doc_number: tx.docNumber ?? normalizedKey.slice(0, 64),
-                amount: tx.amount,
-              },
-            ],
-          },
-          select: { id: true },
-        });
-
-        if (existingTx) {
+        if (item.duplicate) {
           skipped++;
           continue;
         }
@@ -206,7 +235,7 @@ export async function POST(request: NextRequest) {
             needs_review: needsReview,
             import_batch_id: batchId,
             is_reconciled: false,
-            notes: buildTransactionNotes(suggestion),
+            notes: buildTransactionNotes(suggestion, file.name, item.existingFinancialType),
           },
         });
 
@@ -222,7 +251,8 @@ export async function POST(request: NextRequest) {
           tx,
           suggestion,
           expenseCategory,
-          authContext.dbUserId
+          authContext.dbUserId,
+          item.existingFinancialId
         );
 
         if (linkedId) {
@@ -239,7 +269,6 @@ export async function POST(request: NextRequest) {
           else generatedExpenses++;
         }
 
-        months.add(toMonthKey(new Date(`${tx.date}T00:00:00`)));
         imported++;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -294,11 +323,24 @@ export async function DELETE(request: NextRequest) {
   }
 
   const dryRun = request.nextUrl.searchParams.get("dryRun") !== "false";
+  const monthKey = request.nextUrl.searchParams.get("monthKey");
+  const batchId = request.nextUrl.searchParams.get("batchId");
 
   try {
     await ensureBankImportSchema();
 
+    const range = monthKey ? monthRange(monthKey) : null;
+    if (monthKey && !range) {
+      return NextResponse.json({ error: "Mes invalido." }, { status: 400 });
+    }
+
+    const where = {
+      ...(batchId ? { import_batch_id: batchId } : {}),
+      ...(range ? { date: { gte: range.start, lt: range.end } } : {}),
+    };
+
     const transactions = await prisma.bankTransaction.findMany({
+      where,
       select: {
         id: true,
         reconciled_with_id: true,
@@ -330,7 +372,7 @@ export async function DELETE(request: NextRequest) {
       const deletedRevenues = revenueIds.length
         ? await tx.revenue.deleteMany({ where: { id: { in: revenueIds } } })
         : { count: 0 };
-      const deletedTransactions = await tx.bankTransaction.deleteMany({});
+      const deletedTransactions = await tx.bankTransaction.deleteMany({ where });
 
       return {
         transactions: deletedTransactions.count,
@@ -357,6 +399,84 @@ export async function DELETE(request: NextRequest) {
     console.error("[extratos] cleanup error:", error);
     return NextResponse.json({ error: "Erro ao limpar extratos importados." }, { status: 500 });
   }
+}
+
+async function getLearnedRules(): Promise<LearnedRule[]> {
+  return prisma.bankClassificationRule.findMany({
+    where: { is_active: true },
+    orderBy: [{ use_count: "desc" }, { updated_at: "desc" }],
+    select: {
+      id: true,
+      normalized_pattern: true,
+      kind: true,
+      category_id: true,
+      category_label: true,
+      revenue_category: true,
+      department: true,
+      payment_method: true,
+      confidence: true,
+    },
+  });
+}
+
+async function analyzeTransactions(
+  transactions: ParsedTransaction[],
+  bankAccountId: string,
+  categories: DbCategory[],
+  learnedRules: LearnedRule[]
+): Promise<AnalyzedTransaction[]> {
+  const analyzed: AnalyzedTransaction[] = [];
+
+  for (const tx of transactions) {
+    const baseSuggestion = suggestTransactionClassification(tx.description, tx.isCredit);
+    const { suggestion, learnedRuleId, learnedCategoryId } = applyLearnedRules(tx, baseSuggestion, learnedRules);
+    const needsReview = shouldReview(suggestion);
+    const expenseCategory = tx.isCredit
+      ? null
+      : findExpenseCategory(
+          categories,
+          needsReview
+            ? { ...suggestion, expenseCategoryNames: ["A Classificar", ...suggestion.expenseCategoryNames, "Outros"] }
+            : suggestion,
+          learnedCategoryId
+        );
+    const normalizedKey = buildExternalId(tx);
+    const existingTx = await findExistingBankTransaction(bankAccountId, tx, normalizedKey);
+    const existingFinancial = await findExistingFinancialEntry(tx, suggestion, expenseCategory);
+
+    analyzed.push({
+      tx,
+      normalizedKey,
+      suggestion,
+      learnedRuleId,
+      learnedCategoryId,
+      needsReview,
+      expenseCategory,
+      duplicate: Boolean(existingTx),
+      existingTransactionId: existingTx?.id,
+      existingFinancialId: existingFinancial?.id,
+      existingFinancialType: existingFinancial?.type,
+    });
+  }
+
+  return analyzed;
+}
+
+async function findExistingBankTransaction(bankAccountId: string, tx: ParsedTransaction, normalizedKey: string) {
+  return prisma.bankTransaction.findFirst({
+    where: {
+      bank_account_id: bankAccountId,
+      OR: [
+        { normalized_key: normalizedKey },
+        {
+          date: new Date(`${tx.date}T00:00:00`),
+          doc_number: tx.docNumber ?? normalizedKey.slice(0, 64),
+          amount: tx.amount,
+        },
+      ],
+    },
+    select: { id: true },
+  });
 }
 
 async function ensureImportCategories(): Promise<DbCategory[]> {
@@ -466,10 +586,13 @@ async function createFinancialEntryFromTransaction(
   tx: ParsedTransaction,
   suggestion: TransactionCategorySuggestion,
   expenseCategory: DbCategory | null,
-  userId: string
+  userId: string,
+  existingFinancialId?: string
 ): Promise<string | null> {
   const date = new Date(`${tx.date}T00:00:00`);
   const commonNotes = `Gerado automaticamente pelo importador de extrato. Transacao bancaria: ${bankTransactionId}. Regra: ${suggestion.matchedRule}. Confianca: ${suggestion.confidence}%.`;
+
+  if (existingFinancialId) return existingFinancialId;
 
   if (tx.isCredit) {
     const revenue = await prisma.revenue.create({
@@ -511,8 +634,63 @@ async function createFinancialEntryFromTransaction(
   return expense.id;
 }
 
-function buildTransactionNotes(suggestion: TransactionCategorySuggestion): string {
-  return `Categoria sugerida: ${suggestion.category}; Regra: ${suggestion.matchedRule}; Confianca: ${suggestion.confidence}%.`;
+async function findExistingFinancialEntry(
+  tx: ParsedTransaction,
+  suggestion: TransactionCategorySuggestion,
+  expenseCategory: DbCategory | null
+): Promise<{ id: string; type: "EXPENSE" | "REVENUE" } | null> {
+  const date = new Date(`${tx.date}T00:00:00`);
+  const descriptionToken = tx.description.trim().slice(0, 24);
+
+  if (tx.isCredit) {
+    const revenue = await prisma.revenue.findFirst({
+      where: {
+        date,
+        amount: tx.amount,
+        category: suggestion.revenueCategory,
+        OR: [
+          { description: { contains: descriptionToken, mode: "insensitive" } },
+          { notes: { contains: "Transacao bancaria", mode: "insensitive" } },
+        ],
+      },
+      select: { id: true },
+      orderBy: { created_at: "desc" },
+    });
+    return revenue ? { id: revenue.id, type: "REVENUE" } : null;
+  }
+
+  if (!expenseCategory) return null;
+
+  const expense = await prisma.expense.findFirst({
+    where: {
+      date,
+      amount: tx.amount,
+      category_id: expenseCategory.id,
+      OR: suggestion.supplier
+        ? [
+            { description: { contains: descriptionToken, mode: "insensitive" as const } },
+            { supplier: { contains: suggestion.supplier, mode: "insensitive" as const } },
+          ]
+        : [{ description: { contains: descriptionToken, mode: "insensitive" as const } }],
+    },
+    select: { id: true },
+    orderBy: { created_at: "desc" },
+  });
+  return expense ? { id: expense.id, type: "EXPENSE" } : null;
+}
+
+function buildTransactionNotes(
+  suggestion: TransactionCategorySuggestion,
+  fileName?: string,
+  existingFinancialType?: "EXPENSE" | "REVENUE"
+): string {
+  return [
+    fileName ? `Arquivo: ${fileName}.` : null,
+    `Categoria sugerida: ${suggestion.category}; Regra: ${suggestion.matchedRule}; Confianca: ${suggestion.confidence}%.`,
+    existingFinancialType ? `Conciliado com ${existingFinancialType === "EXPENSE" ? "despesa" : "receita"} existente.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function buildExternalId(tx: ParsedTransaction): string {
@@ -557,6 +735,26 @@ function extractCounterparty(description: string): string | undefined {
 
 function toMonthKey(date: Date): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthRange(monthKey: string): { start: Date; end: Date } | null {
+  const match = monthKey.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month < 1 || month > 12) return null;
+
+  return {
+    start: new Date(year, month - 1, 1),
+    end: new Date(year, month, 1),
+  };
+}
+
+function extractNoteValue(notes: string | null | undefined, label: string): string | undefined {
+  if (!notes) return undefined;
+  const match = notes.match(new RegExp(`${label}:\\s*([^.;\\n]+)`, "i"));
+  return match?.[1]?.trim();
 }
 
 function monthLabel(monthKey: string): string {

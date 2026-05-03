@@ -251,7 +251,7 @@ const SMART_RULES: RuleDefinition[] = [
   },
 ];
 
-export type BankSource = "caixa_csv" | "caixa_ofx" | "pipeimob";
+export type BankSource = "caixa_csv" | "caixa_ofx" | "pipeimob" | "generic_csv" | "generic_xml" | "generic_ofx";
 
 export function detectAndParse(content: string, fileName: string): ParseResult {
   const ext = fileName.toLowerCase().split(".").pop() || "";
@@ -292,7 +292,7 @@ export function parseCaixaCSV(content: string): ParseResult {
   return {
     success: transactions.length > 0,
     transactions,
-    bankName: "Caixa Economica Federal",
+    bankName: detectBankName(content, "Caixa Economica Federal"),
     accountInfo: "Conta Corrente",
     errors,
   };
@@ -306,7 +306,7 @@ export function parseGenericXML(content: string): ParseResult {
     return {
       success: transactions.length > 0,
       transactions,
-      bankName: "Extrato XML",
+      bankName: detectBankName(content, "Extrato XML"),
       accountInfo: "Arquivo XML",
       errors,
     };
@@ -364,7 +364,7 @@ export function parseGenericXML(content: string): ParseResult {
   return {
     success: transactions.length > 0,
     transactions,
-    bankName: "Extrato XML",
+    bankName: detectBankName(content, "Extrato XML"),
     accountInfo: "Arquivo XML",
     errors,
   };
@@ -430,11 +430,11 @@ function inferColumnIndexes(header: string[]) {
   }
 
   const find = (terms: string[]) => header.findIndex((cell) => terms.some((term) => cell.includes(normalizeBankText(term))));
-  const date = find(["DATA", "DT LANCAMENTO", "DATA MOVIMENTO", "DTPOSTED"]);
-  const description = find(["HISTORICO", "DESCRICAO", "LANCAMENTO", "MEMO", "NAME", "FAVORECIDO"]);
-  const amount = find(["VALOR", "AMOUNT", "TRNAMT"]);
-  const debit = find(["DEBITO", "SAIDA", "VALOR DEBITO"]);
-  const credit = find(["CREDITO", "ENTRADA", "VALOR CREDITO"]);
+  const date = find(["DATA", "DT LANCAMENTO", "DATA MOVIMENTO", "DTPOSTED", "DT MOVTO"]);
+  const description = find(["HISTORICO", "DESCRICAO", "LANCAMENTO", "MEMO", "NAME", "FAVORECIDO", "ESTABELECIMENTO", "DETALHE"]);
+  const amount = find(["VALOR", "AMOUNT", "TRNAMT", "VALOR R"]);
+  const debit = find(["DEBITO", "SAIDA", "VALOR DEBITO", "VALOR PAGO", "DEBIT"]);
+  const credit = find(["CREDITO", "ENTRADA", "VALOR CREDITO", "CREDIT"]);
   const balance = find(["SALDO", "BALANCE"]);
   const type = find(["TIPO", "NATUREZA", "SINAL", "D C"]);
 
@@ -608,7 +608,7 @@ export function parseCaixaOFX(content: string): ParseResult {
   return {
     success: transactions.length > 0,
     transactions,
-    bankName: "Caixa Economica Federal",
+    bankName: detectOfxBankName(content),
     accountInfo: acctId ? `Ag/Conta: ${acctId}` : undefined,
     errors,
   };
@@ -855,4 +855,28 @@ function extractLikelySupplier(description: string): string | undefined {
     .trim();
 
   return cleaned.length >= 3 ? cleaned.slice(0, 80) : undefined;
+}
+
+function detectBankName(content: string, fallback: string): string {
+  const normalized = normalizeBankText(content.slice(0, 4000));
+  if (normalized.includes("SICREDI")) return "Sicredi";
+  if (normalized.includes("BRADESCO")) return "Bradesco";
+  if (normalized.includes("SANTANDER")) return "Santander";
+  if (normalized.includes("ITAU")) return "Itau";
+  if (normalized.includes("BANCO DO BRASIL")) return "Banco do Brasil";
+  if (normalized.includes("CAIXA")) return "Caixa Economica Federal";
+  return fallback;
+}
+
+function detectOfxBankName(content: string): string {
+  const bankId = extractOFXField(content, "BANKID") ?? "";
+  const org = extractOFXField(content, "ORG") ?? "";
+  const normalized = normalizeBankText(`${org} ${bankId}` || content.slice(0, 4000));
+  if (normalized.includes("748") || normalized.includes("SICREDI")) return "Sicredi";
+  if (normalized.includes("237") || normalized.includes("BRADESCO")) return "Bradesco";
+  if (normalized.includes("033") || normalized.includes("SANTANDER")) return "Santander";
+  if (normalized.includes("341") || normalized.includes("ITAU")) return "Itau";
+  if (normalized.includes("001") || normalized.includes("BANCO DO BRASIL")) return "Banco do Brasil";
+  if (normalized.includes("104") || normalized.includes("CAIXA")) return "Caixa Economica Federal";
+  return org || "Extrato OFX";
 }

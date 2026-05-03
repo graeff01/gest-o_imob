@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit --pretty false",
     "lint:ci": "eslint src/server src/app/api/invoices src/app/api/system src/lib/auth.ts src/lib/utils.ts src/lib/utils/dw-parser.ts src/proxy.ts",
     "verify:ci": "npm run db:generate && npm run typecheck && npm run lint && npm run build",
+    "verify:bank": "tsx scripts/verify-bank-parsers.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",

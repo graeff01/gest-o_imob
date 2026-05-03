@@ -31,6 +31,18 @@ interface MonthSummary {
   saldo: number;
 }
 
+interface BatchSummary {
+  id: string;
+  importedAt: string;
+  bankName: string;
+  months: string[];
+  transactionCount: number;
+  totalReceitas: number;
+  totalDespesas: number;
+  pendingReview: number;
+  sourceFile?: string;
+}
+
 interface Transaction {
   id: string;
   date: string;
@@ -44,6 +56,9 @@ interface Transaction {
   needsReview?: boolean;
   confidence?: number;
   matchedRule?: string;
+  importBatchId?: string;
+  sourceFile?: string;
+  isReconciled?: boolean;
 }
 
 interface CategorySummaryItem {
@@ -69,10 +84,67 @@ interface MonthDetail {
   categories: string[];
 }
 
+interface PreviewRow {
+  index: number;
+  date: string;
+  description: string;
+  amount: number;
+  isCredit: boolean;
+  operationType: string;
+  category: string;
+  confidence: number;
+  needsReview: boolean;
+  duplicate: boolean;
+  matchedRule: string;
+  existingFinancialType?: "EXPENSE" | "REVENUE";
+}
+
+interface ImportPreview {
+  bankName: string;
+  accountInfo?: string;
+  transactionCount: number;
+  duplicates: number;
+  pendingReview: number;
+  totalReceitas: number;
+  totalDespesas: number;
+  months: string[];
+  rows: PreviewRow[];
+  parseErrors?: string[];
+}
+
+interface RuleItem {
+  id: string;
+  pattern: string;
+  kind: "receita" | "despesa";
+  category_id?: string | null;
+  category_label: string;
+  revenue_category?: string | null;
+  department: "VENDA" | "LOCACAO" | "ADMIN" | "AMBOS";
+  payment_method?: string | null;
+  confidence: number;
+  use_count: number;
+  is_active: boolean;
+}
+
+interface ReviewTransaction {
+  id: string;
+  monthKey: string;
+  batchId?: string | null;
+  date: string;
+  description: string;
+  amount: number;
+  isCredit: boolean;
+  category: string;
+  confidence: number;
+  matchedRule?: string | null;
+  bankName: string;
+}
+
 // ─── Componente principal ────────────────────────────────────────────────────
 
 export default function ExtratosPage() {
   const [months, setMonths] = useState<MonthSummary[]>([]);
+  const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
   const [monthDetail, setMonthDetail] = useState<MonthDetail | null>(null);
@@ -91,10 +163,19 @@ export default function ExtratosPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Edição de categoria ──
   const [editingTx, setEditingTx] = useState<string | null>(null);
+  const [reviewItems, setReviewItems] = useState<ReviewTransaction[]>([]);
+  const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [rules, setRules] = useState<RuleItem[]>([]);
+  const [rulePattern, setRulePattern] = useState("");
+  const [ruleKind, setRuleKind] = useState<"receita" | "despesa">("despesa");
+  const [ruleCategory, setRuleCategory] = useState("");
 
   // ── Fetch meses ──
   const fetchMonths = useCallback(async () => {
@@ -103,6 +184,7 @@ export default function ExtratosPage() {
       const res = await fetch("/api/extratos");
       const data = await res.json();
       setMonths(data.months ?? []);
+      setBatches(data.batches ?? []);
     } catch {
       // silently handle
     } finally {
@@ -111,6 +193,31 @@ export default function ExtratosPage() {
   }, []);
 
   useEffect(() => { fetchMonths(); }, [fetchMonths]);
+
+  const fetchReviewItems = useCallback(async () => {
+    try {
+      const res = await fetch("/api/extratos/revisao");
+      const data = await res.json();
+      setReviewItems(data.transactions ?? []);
+    } catch {
+      setReviewItems([]);
+    }
+  }, []);
+
+  const fetchRules = useCallback(async () => {
+    try {
+      const res = await fetch("/api/extratos/regras");
+      const data = await res.json();
+      setRules(data.rules ?? []);
+    } catch {
+      setRules([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReviewItems();
+    fetchRules();
+  }, [fetchReviewItems, fetchRules]);
 
   // ── Fetch detalhe de um mês ──
   const fetchMonthDetail = useCallback(async (monthKey: string) => {
@@ -141,6 +248,8 @@ export default function ExtratosPage() {
     setUploading(true);
     setUploadError(null);
     setUploadSuccess(null);
+    setImportPreview(null);
+    setSelectedFile(file);
 
     try {
       const formData = new FormData();
@@ -157,10 +266,36 @@ export default function ExtratosPage() {
         return;
       }
 
-      setUploadSuccess(data.message);
-      await fetchMonths();
+      setImportPreview(data);
+    } catch {
+      setUploadError("Erro de conexão.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
-      // Abre automaticamente o mês importado
+  const confirmImport = async () => {
+    if (!selectedFile) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", selectedFile);
+      const res = await fetch("/api/extratos?confirm=true", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) {
+        const details = [...(data.errors ?? []), ...(data.parseErrors ?? []), ...(data.importErrors ?? [])]
+          .slice(0, 3)
+          .join(" | ");
+        setUploadError(details ? `${data.error ?? "Erro ao importar."} ${details}` : data.error ?? "Erro ao importar.");
+        return;
+      }
+
+      setUploadSuccess(data.message);
+      setImportPreview(null);
+      await fetchMonths();
+      await fetchReviewItems();
+
       if (data.months?.[0]) {
         setExpandedMonth(data.months[0]);
         fetchMonthDetail(data.months[0]);
@@ -182,20 +317,81 @@ export default function ExtratosPage() {
       });
       setEditingTx(null);
       fetchMonthDetail(monthKey);
+      fetchReviewItems();
     } catch {
       // ignore
     }
   };
 
-  const handleClearAllStatements = async () => {
-    if (!confirm("Apagar todos os extratos importados e os lançamentos financeiros gerados por eles? Esta ação é apenas para HML.")) {
+  const bulkReview = async () => {
+    if (selectedReviewIds.length === 0 || !bulkCategory) return;
+    try {
+      const res = await fetch("/api/extratos/revisao", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txIds: selectedReviewIds, category: bulkCategory }),
+      });
+      if (!res.ok) throw new Error("Falha ao revisar.");
+      setSelectedReviewIds([]);
+      setBulkCategory("");
+      await fetchReviewItems();
+      await fetchMonths();
+      if (expandedMonth) fetchMonthDetail(expandedMonth);
+    } catch {
+      setCleanupMessage("Falha ao revisar categorias em massa.");
+    }
+  };
+
+  const saveRule = async () => {
+    if (!rulePattern.trim() || !ruleCategory.trim()) return;
+    try {
+      const res = await fetch("/api/extratos/regras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pattern: rulePattern,
+          kind: ruleKind,
+          categoryLabel: ruleCategory,
+          confidence: 100,
+          department: "AMBOS",
+        }),
+      });
+      if (!res.ok) throw new Error("Falha ao salvar regra.");
+      setRulePattern("");
+      setRuleCategory("");
+      await fetchRules();
+    } catch {
+      setCleanupMessage("Falha ao salvar regra de classificação.");
+    }
+  };
+
+  const toggleRule = async (rule: RuleItem) => {
+    try {
+      await fetch("/api/extratos/regras", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: rule.id, isActive: !rule.is_active }),
+      });
+      fetchRules();
+    } catch {
+      setCleanupMessage("Falha ao atualizar regra.");
+    }
+  };
+
+  const handleClearStatements = async (scope?: { monthKey?: string; batchId?: string }) => {
+    const label = scope?.monthKey ? `o mês ${scope.monthKey}` : scope?.batchId ? "este lote de importação" : "todos os extratos importados";
+    if (!confirm(`Apagar ${label} e os lançamentos financeiros gerados? Esta ação é apenas para HML.`)) {
       return;
     }
 
     setCleanupLoading(true);
     setCleanupMessage(null);
     try {
-      const previewResponse = await fetch("/api/extratos", { method: "DELETE" });
+      const params = new URLSearchParams();
+      if (scope?.monthKey) params.set("monthKey", scope.monthKey);
+      if (scope?.batchId) params.set("batchId", scope.batchId);
+      const suffix = params.toString() ? `?${params.toString()}` : "";
+      const previewResponse = await fetch(`/api/extratos${suffix}`, { method: "DELETE" });
       const preview = await previewResponse.json().catch(() => ({}));
       if (!previewResponse.ok) throw new Error(preview.error ?? "Falha ao simular limpeza dos extratos.");
 
@@ -204,7 +400,8 @@ export default function ExtratosPage() {
         return;
       }
 
-      const cleanupResponse = await fetch("/api/extratos?dryRun=false", { method: "DELETE" });
+      params.set("dryRun", "false");
+      const cleanupResponse = await fetch(`/api/extratos?${params.toString()}`, { method: "DELETE" });
       const cleanup = await cleanupResponse.json().catch(() => ({}));
       if (!cleanupResponse.ok) throw new Error(cleanup.error ?? "Falha ao limpar extratos.");
 
@@ -215,6 +412,7 @@ export default function ExtratosPage() {
       setFilterCategory("");
       setReviewOnly(false);
       await fetchMonths();
+      await fetchReviewItems();
     } catch (error) {
       setCleanupMessage(error instanceof Error ? error.message : "Falha ao limpar extratos.");
     } finally {
@@ -254,7 +452,7 @@ export default function ExtratosPage() {
           </button>
           {canClearAllStatements && (
             <button
-              onClick={handleClearAllStatements}
+              onClick={() => handleClearStatements()}
               disabled={cleanupLoading}
               className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
               title="Remove extratos e lançamentos gerados para testar reimportação em HML"
@@ -264,7 +462,7 @@ export default function ExtratosPage() {
             </button>
           )}
           <button
-            onClick={() => { setShowUpload(true); setUploadSuccess(null); setUploadError(null); }}
+            onClick={() => { setShowUpload(true); setUploadSuccess(null); setUploadError(null); setImportPreview(null); setSelectedFile(null); }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
           >
             <Upload className="h-4 w-4" />
@@ -312,6 +510,127 @@ export default function ExtratosPage() {
             <p className={cn("text-2xl font-bold", totalPendentes > 0 ? "text-amber-700" : "text-green-700")}>
               {totalPendentes}
             </p>
+          </div>
+        </div>
+      )}
+
+      {(reviewItems.length > 0 || rules.length > 0 || batches.length > 0) && (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-gray-900">Revisão de categorias</h2>
+                <p className="text-xs text-gray-500">{reviewItems.length} transação(ões) pendente(s)</p>
+              </div>
+              <button onClick={fetchReviewItems} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100">
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mb-3 flex gap-2">
+              <input
+                value={bulkCategory}
+                onChange={(event) => setBulkCategory(event.target.value)}
+                placeholder="Categoria para aprovacao em massa"
+                className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs"
+              />
+              <button
+                onClick={bulkReview}
+                disabled={selectedReviewIds.length === 0 || !bulkCategory}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:bg-gray-200"
+              >
+                Aplicar
+              </button>
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {reviewItems.slice(0, 30).map((tx) => (
+                <label key={tx.id} className="flex cursor-pointer gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2">
+                  <input
+                    type="checkbox"
+                    checked={selectedReviewIds.includes(tx.id)}
+                    onChange={(event) =>
+                      setSelectedReviewIds((current) =>
+                        event.target.checked ? [...current, tx.id] : current.filter((id) => id !== tx.id)
+                      )
+                    }
+                    className="mt-1"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-medium text-gray-900">{tx.description}</p>
+                    <p className="text-[11px] text-gray-500">
+                      {formatDate(tx.date)} · {tx.category} · {tx.confidence}%
+                    </p>
+                  </div>
+                  <span className={cn("text-xs font-semibold", tx.isCredit ? "text-green-700" : "text-red-600")}>
+                    {tx.isCredit ? "+" : "-"}{formatCurrency(tx.amount)}
+                  </span>
+                </label>
+              ))}
+              {reviewItems.length === 0 && <p className="py-6 text-center text-xs text-gray-400">Nenhuma pendência.</p>}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-gray-900">Regras configuráveis</h2>
+            <p className="mb-3 text-xs text-gray-500">Palavras do extrato que classificam automaticamente próximos lançamentos.</p>
+            <div className="mb-3 grid grid-cols-1 gap-2">
+              <input value={rulePattern} onChange={(event) => setRulePattern(event.target.value)} placeholder="Ex: PANVEL, ZAFFARI, IPTU" className="rounded-lg border border-gray-200 px-3 py-2 text-xs" />
+              <div className="flex gap-2">
+                <select value={ruleKind} onChange={(event) => setRuleKind(event.target.value as "receita" | "despesa")} className="rounded-lg border border-gray-200 px-2 py-2 text-xs">
+                  <option value="despesa">Despesa</option>
+                  <option value="receita">Entrada</option>
+                </select>
+                <input value={ruleCategory} onChange={(event) => setRuleCategory(event.target.value)} placeholder="Categoria" className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs" />
+                <button onClick={saveRule} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white">Salvar</button>
+              </div>
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {rules.slice(0, 40).map((rule) => (
+                <div key={rule.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold text-gray-900">{rule.pattern}</p>
+                    <p className="text-[11px] text-gray-500">{rule.category_label} · {rule.kind} · uso {rule.use_count}</p>
+                  </div>
+                  <button
+                    onClick={() => toggleRule(rule)}
+                    className={cn("rounded-full px-2 py-1 text-[10px] font-semibold", rule.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500")}
+                  >
+                    {rule.is_active ? "ativa" : "inativa"}
+                  </button>
+                </div>
+              ))}
+              {rules.length === 0 && <p className="py-6 text-center text-xs text-gray-400">Nenhuma regra cadastrada.</p>}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-4">
+            <h2 className="text-sm font-semibold text-gray-900">Lotes importados</h2>
+            <p className="mb-3 text-xs text-gray-500">Rastreabilidade por arquivo/lote e limpeza pontual em HML.</p>
+            <div className="max-h-80 space-y-2 overflow-y-auto">
+              {batches.slice(0, 30).map((batch) => (
+                <div key={batch.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-xs font-semibold text-gray-900">{batch.sourceFile ?? batch.id}</p>
+                      <p className="text-[11px] text-gray-500">
+                        {new Date(batch.importedAt).toLocaleString("pt-BR")} · {batch.transactionCount} transações
+                      </p>
+                      <p className="text-[11px] text-gray-500">Meses: {batch.months.join(", ")}</p>
+                    </div>
+                    {canClearAllStatements && (
+                      <button
+                        onClick={() => handleClearStatements({ batchId: batch.id })}
+                        disabled={cleanupLoading}
+                        className="rounded-lg border border-red-100 bg-white p-1.5 text-red-600 hover:bg-red-50"
+                        title="Apagar este lote"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {batches.length === 0 && <p className="py-6 text-center text-xs text-gray-400">Nenhum lote importado.</p>}
+            </div>
           </div>
         </div>
       )}
@@ -380,6 +699,18 @@ export default function ExtratosPage() {
                     </div>
                   ) : monthDetail ? (
                     <div className="p-6 space-y-6">
+                      {canClearAllStatements && (
+                        <div className="flex justify-end">
+                          <button
+                            onClick={() => handleClearStatements({ monthKey: month.monthKey })}
+                            disabled={cleanupLoading}
+                            className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+                          >
+                            {cleanupLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+                            Apagar este mês
+                          </button>
+                        </div>
+                      )}
                       {/* ── Resumo por categoria ── */}
                       <div>
                         <h4 className="text-sm font-semibold text-gray-700 mb-3">Resumo por Categoria</h4>
@@ -475,6 +806,9 @@ export default function ExtratosPage() {
                                   </td>
                                   <td className="px-4 py-2.5">
                                     <p className="text-gray-900 text-xs truncate max-w-[300px]">{tx.description}</p>
+                                    <p className="text-[10px] text-gray-400 truncate max-w-[300px]">
+                                      {tx.sourceFile ? `${tx.sourceFile} · ` : ""}{tx.importBatchId ? `lote ${tx.importBatchId}` : tx.matchedRule}
+                                    </p>
                                   </td>
                                   <td className="px-4 py-2.5">
                                     <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600">
@@ -553,7 +887,7 @@ export default function ExtratosPage() {
                   Arquivo OFX ou CSV da Caixa Econômica Federal
                 </p>
               </div>
-              <button onClick={() => setShowUpload(false)} className="text-gray-400 hover:text-gray-600 p-1">
+              <button onClick={() => { setShowUpload(false); setImportPreview(null); setSelectedFile(null); }} className="text-gray-400 hover:text-gray-600 p-1">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -569,6 +903,74 @@ export default function ExtratosPage() {
                       As transações foram categorizadas automaticamente e gravadas no financeiro. Feche este modal para ver.
                     </p>
                   </div>
+                </div>
+              ) : importPreview ? (
+                <div className="space-y-4">
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                    <p className="text-sm font-semibold text-blue-900">Prévia pronta para confirmar</p>
+                    <p className="mt-1 text-xs text-blue-700">
+                      {importPreview.bankName} · {importPreview.transactionCount} transação(ões) · {importPreview.months.join(", ")}
+                    </p>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-white p-2">
+                        <p className="text-gray-500">Entradas</p>
+                        <p className="font-bold text-green-700">{formatCurrency(importPreview.totalReceitas)}</p>
+                      </div>
+                      <div className="rounded-lg bg-white p-2">
+                        <p className="text-gray-500">Saídas</p>
+                        <p className="font-bold text-red-600">{formatCurrency(importPreview.totalDespesas)}</p>
+                      </div>
+                      <div className="rounded-lg bg-white p-2">
+                        <p className="text-gray-500">Duplicatas</p>
+                        <p className="font-bold text-gray-900">{importPreview.duplicates}</p>
+                      </div>
+                      <div className="rounded-lg bg-white p-2">
+                        <p className="text-gray-500">A revisar</p>
+                        <p className="font-bold text-amber-700">{importPreview.pendingReview}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-gray-50 text-gray-500">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Data</th>
+                          <th className="px-3 py-2 text-left">Descrição</th>
+                          <th className="px-3 py-2 text-left">Categoria</th>
+                          <th className="px-3 py-2 text-right">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {importPreview.rows.slice(0, 80).map((row) => (
+                          <tr key={row.index} className={row.duplicate ? "bg-gray-50 text-gray-400" : ""}>
+                            <td className="px-3 py-2 whitespace-nowrap">{formatDate(row.date)}</td>
+                            <td className="px-3 py-2">
+                              <p className="max-w-[180px] truncate">{row.description}</p>
+                              <p className="text-[10px] text-gray-400">
+                                {row.duplicate ? "duplicata" : row.existingFinancialType ? "conciliável" : row.matchedRule}
+                              </p>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={cn("rounded px-1.5 py-0.5", row.needsReview ? "bg-amber-100 text-amber-800" : "bg-blue-50 text-blue-700")}>
+                                {row.category} · {row.confidence}%
+                              </span>
+                            </td>
+                            <td className={cn("px-3 py-2 text-right font-semibold", row.isCredit ? "text-green-700" : "text-red-600")}>
+                              {row.isCredit ? "+" : "-"}{formatCurrency(row.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button
+                    onClick={confirmImport}
+                    disabled={uploading}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  >
+                    {uploading && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Confirmar e gravar no financeiro
+                  </button>
                 </div>
               ) : (
                 <>
@@ -613,7 +1015,7 @@ export default function ExtratosPage() {
             {/* Footer */}
             <div className="flex justify-end p-6 border-t border-gray-100">
               <button
-                onClick={() => { setShowUpload(false); setSearch(""); setFilterCategory(""); }}
+                onClick={() => { setShowUpload(false); setSearch(""); setFilterCategory(""); setImportPreview(null); setSelectedFile(null); }}
                 className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
               >
                 {uploadSuccess ? "Fechar e ver resultados" : "Fechar"}

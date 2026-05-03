@@ -62,6 +62,8 @@ export async function GET(
         needsReview: tx.needs_review,
         confidence: tx.classification_confidence || suggestion.confidence,
         matchedRule: tx.classification_rule ?? suggestion.matchedRule,
+        importBatchId: tx.import_batch_id ?? undefined,
+        sourceFile: extractNoteValue(tx.notes, "Arquivo"),
       };
     });
 
@@ -260,6 +262,12 @@ function findExpenseCategory(
 function appendManualCategoryNote(existing: string | null, category: string): string {
   const note = `Categoria alterada manualmente para: ${category}.`;
   return existing ? `${existing}\n${note}` : note;
+}
+
+function extractNoteValue(notes: string | null | undefined, label: string): string | undefined {
+  if (!notes) return undefined;
+  const match = notes.match(new RegExp(`${label}:\\s*([^.;\\n]+)`, "i"));
+  return match?.[1]?.trim();
 }
 
 function classifyManualSelection(
