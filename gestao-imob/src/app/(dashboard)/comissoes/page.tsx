@@ -17,6 +17,12 @@ interface CommissionRule {
   description: string | null;
 }
 
+interface CommissionOverview {
+  commissions: { total: number; count: number; rules: number };
+  contracts: { total: number; byStatus: Record<string, number>; intermediation: number };
+  financial: { revenues: number };
+}
+
 const ruleTypeLabels: Record<string, string> = {
   CONSULTOR_INTERMEDIACAO: "Intermediacao - Consultor",
   CAPTADOR_INTERMEDIACAO: "Intermediacao - Captador",
@@ -27,15 +33,22 @@ const ruleTypeLabels: Record<string, string> = {
 
 export default function ComissoesPage() {
   const [rules, setRules] = useState<CommissionRule[]>([]);
+  const [overview, setOverview] = useState<CommissionOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/commissions/rules", { cache: "no-store" })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error ?? "Falha ao carregar regras.");
-        setRules(data.rules ?? []);
+    Promise.all([
+      fetch("/api/commissions/rules", { cache: "no-store" }),
+      fetch("/api/financial-overview", { cache: "no-store" }),
+    ])
+      .then(async ([rulesResponse, overviewResponse]) => {
+        const rulesData = await rulesResponse.json();
+        const overviewData = await overviewResponse.json();
+        if (!rulesResponse.ok) throw new Error(rulesData.error ?? "Falha ao carregar regras.");
+        if (!overviewResponse.ok) throw new Error(overviewData.error ?? "Falha ao carregar consolidado.");
+        setRules(rulesData.rules ?? []);
+        setOverview(overviewData);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Falha ao carregar regras."))
       .finally(() => setLoading(false));
@@ -44,7 +57,7 @@ export default function ComissoesPage() {
   return (
     <PageShell
       title="Comissoes"
-      description="Regras e fechamentos sem dados demonstrativos. Historico real depende da folha consolidada."
+      description="Regras, contratos e fechamentos conectados ao consolidado real."
       icon={Percent}
       actions={
         <Link
@@ -58,8 +71,8 @@ export default function ComissoesPage() {
     >
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <Stat label="Regras reais cadastradas" value={loading ? "..." : rules.length} color="blue" />
-        <Stat label="Historico mock ativo" value="0" color="emerald" />
-        <Stat label="Fechamento mensal" value="Aguardando banco" color="amber" />
+        <Stat label="Fechamentos reais" value={loading ? "..." : overview?.commissions.count ?? 0} color="emerald" />
+        <Stat label="Total de comissoes" value={loading ? "..." : formatCurrency(overview?.commissions.total ?? 0)} color="amber" />
       </div>
 
       {error && (
@@ -111,15 +124,15 @@ export default function ComissoesPage() {
           <EmptyState
             icon={Database}
             title="Nenhuma regra real cadastrada"
-            description="A tela nao carrega mais regras mockadas. Cadastre regras reais quando a base definitiva estiver pronta."
+            description="Cadastre regras para que contratos e fechamentos reais possam calcular comissoes."
           />
         )}
       </div>
 
       <EmptyState
         icon={FileClock}
-        title="Historico de fechamento aguardando dados reais"
-        description="O historico mensal foi removido porque era demonstrativo. Ele volta quando a folha de corretores gravar fechamentos reais no banco."
+        title="Fechamento mensal sem registros no periodo"
+        description={`Contratos ativos: ${overview?.contracts.byStatus.ATIVO ?? 0}. Intermediacao cadastrada: ${formatCurrency(overview?.contracts.intermediation ?? 0)}.`}
       />
     </PageShell>
   );
