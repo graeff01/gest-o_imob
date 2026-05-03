@@ -84,6 +84,10 @@ async function main() {
     "Material de Limpeza",
     "Material de Escritorio",
     "Material de Informatica",
+    "Copa/Cozinha",
+    "Farmacia",
+    "Alimentacao/Copa",
+    "Ferragens e Utilidades",
   ];
 
   // Subcategorias - Manutencao
@@ -93,6 +97,7 @@ async function main() {
     "Manutencao Ar Condicionado",
     "Manutencao Eletrica",
     "Manutencao Hidraulica",
+    "Ferragens/Material de Construcao",
     "Outras Manutencoes",
   ];
 

@@ -477,7 +477,7 @@ export default function ExtratosPage() {
                   <div>
                     <p className="text-sm font-medium">{uploadSuccess}</p>
                     <p className="text-xs mt-1 text-green-600">
-                      As transações foram categorizadas automaticamente. Feche este modal para ver.
+                      As transações foram categorizadas automaticamente e gravadas no financeiro. Feche este modal para ver.
                     </p>
                   </div>
                 </div>
@@ -492,7 +492,7 @@ export default function ExtratosPage() {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".ofx,.qfx,.csv,.txt"
+                      accept=".ofx,.qfx,.csv,.txt,.xlsx,.xls"
                       className="hidden"
                       disabled={uploading}
                       onChange={(e) => {
@@ -508,7 +508,7 @@ export default function ExtratosPage() {
                     <p className="text-sm font-medium text-gray-700">
                       {uploading ? "Importando e categorizando..." : "Clique ou arraste o arquivo"}
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">OFX, CSV ou TXT · Caixa Econômica Federal</p>
+                    <p className="text-xs text-gray-400 mt-1">OFX, CSV, XLSX ou TXT · Caixa Econômica Federal</p>
                   </label>
 
                   {uploadError && (
