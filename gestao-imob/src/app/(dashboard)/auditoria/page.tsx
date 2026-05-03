@@ -1,107 +1,96 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  Shield,
-  Search,
-  User,
-  Cpu,
-  Filter,
-  Download,
-} from "lucide-react";
-import { PageShell, EmptyState, Stat } from "@/components/shared/page-shell";
+import { AlertCircle, Cpu, Download, Filter, Loader2, RefreshCw, Search, Shield, User } from "lucide-react";
+import { EmptyState, PageShell, Stat } from "@/components/shared/page-shell";
 import { cn } from "@/lib/utils";
-import {
-  AuditEntry,
-  AuditAction,
-  getAuditLog,
-} from "@/lib/stores/core-store";
 
-const ACTION_LABELS: Record<AuditAction, string> = {
-  CREATE: "Criação",
-  UPDATE: "Atualização",
-  DELETE: "Remoção",
-  APPROVE: "Aprovação",
-  REJECT: "Rejeição",
-  AUTO_CLASSIFY: "Classificação automática",
-  AUTO_APPROVE: "Aprovação automática",
-  LOGIN: "Login",
-  EXPORT: "Exportação",
-  CONFIG_CHANGE: "Alteração de config",
-  IMPORT: "Importação",
-};
-
-const ACTION_COLORS: Record<AuditAction, string> = {
-  CREATE: "bg-emerald-50 text-emerald-700",
-  UPDATE: "bg-blue-50 text-blue-700",
-  DELETE: "bg-red-50 text-red-700",
-  APPROVE: "bg-emerald-50 text-emerald-700",
-  REJECT: "bg-amber-50 text-amber-700",
-  AUTO_CLASSIFY: "bg-indigo-50 text-indigo-700",
-  AUTO_APPROVE: "bg-purple-50 text-purple-700",
-  LOGIN: "bg-gray-50 text-gray-600",
-  EXPORT: "bg-gray-50 text-gray-600",
-  CONFIG_CHANGE: "bg-amber-50 text-amber-700",
-  IMPORT: "bg-blue-50 text-blue-700",
-};
-
-function describeAuditImpact(entry: AuditEntry) {
-  if (entry.action === "DELETE") return "Registro removido. Revisar se a exclusao foi autorizada.";
-  if (entry.action === "CONFIG_CHANGE") return "Regra/configuracao alterada. Impacta calculos futuros.";
-  if (entry.action === "IMPORT") return "Dados importados. Conferir origem e duplicidades.";
-  if (entry.action === "AUTO_APPROVE") return "Aprovacao automatica. Conferir score de confianca.";
-  if (entry.action === "EXPORT") return "Dados exportados. Conferir finalidade e destino.";
-  return "Evento registrado para rastreabilidade.";
+interface AuditEvent {
+  id: string;
+  timestamp: string;
+  actor: string;
+  actorType: "HUMAN" | "AUTOMATION" | "SYSTEM";
+  action: string;
+  entityType: string;
+  entityLabel: string;
+  summary: string;
+  severity: "INFO" | "WARN" | "CRITICAL";
 }
 
+interface AuditOverview {
+  events: AuditEvent[];
+  summary: { total: number; automation: number; critical: number; warnings: number };
+}
+
+const actionLabels: Record<string, string> = {
+  NFS_CREATED: "Nota criada",
+  NFS_STATUS: "Status NFS-e",
+  EMISSION_ERROR: "Erro de emissao",
+  DOCUMENT_PROCESSING: "Documento",
+  DOCUMENT_ERROR: "Erro documento",
+  BANK_IMPORTED: "Extrato importado",
+  BANK_RECONCILED: "Conciliado",
+  BANK_REVIEW: "Revisao bancaria",
+  WEBHOOK_RECEIVED: "Webhook recebido",
+  WEBHOOK_PROCESSED: "Webhook processado",
+};
+
+const severityStyles = {
+  INFO: "bg-blue-50 text-blue-700",
+  WARN: "bg-amber-50 text-amber-700",
+  CRITICAL: "bg-red-50 text-red-700",
+};
+
 export default function AuditoriaPage() {
-  const [log, setLog] = useState<AuditEntry[]>([]);
+  const [overview, setOverview] = useState<AuditOverview | null>(null);
   const [query, setQuery] = useState("");
   const [actorFilter, setActorFilter] = useState<"ALL" | "HUMAN" | "AUTOMATION" | "SYSTEM">("ALL");
-  const [actionFilter, setActionFilter] = useState<AuditAction | "ALL">("ALL");
+  const [severityFilter, setSeverityFilter] = useState<"ALL" | "INFO" | "WARN" | "CRITICAL">("ALL");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  async function fetchAudit() {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/audit-overview", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Falha ao carregar auditoria.");
+      setOverview(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar auditoria real.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    setLog(getAuditLog());
+    fetchAudit();
   }, []);
 
   const filtered = useMemo(() => {
-    return log.filter((e) => {
-      if (actorFilter !== "ALL" && e.actorType !== actorFilter) return false;
-      if (actionFilter !== "ALL" && e.action !== actionFilter) return false;
-      if (query) {
-        const q = query.toLowerCase();
-        return (
-          e.summary.toLowerCase().includes(q) ||
-          e.entityType.toLowerCase().includes(q) ||
-          (e.entityLabel?.toLowerCase().includes(q) ?? false) ||
-          e.actor.toLowerCase().includes(q)
-        );
-      }
-      return true;
+    const events = overview?.events ?? [];
+    return events.filter((event) => {
+      if (actorFilter !== "ALL" && event.actorType !== actorFilter) return false;
+      if (severityFilter !== "ALL" && event.severity !== severityFilter) return false;
+      if (!query.trim()) return true;
+      const text = `${event.actor} ${event.action} ${event.entityType} ${event.entityLabel} ${event.summary}`.toLowerCase();
+      return text.includes(query.toLowerCase());
     });
-  }, [log, query, actorFilter, actionFilter]);
-
-  const totalAutomacao = log.filter((e) => e.actorType === "AUTOMATION" || e.actorType === "SYSTEM").length;
-  const totalHumano = log.filter((e) => e.actorType === "HUMAN").length;
-  const eventosCriticos = log.filter((e) =>
-    ["DELETE", "CONFIG_CHANGE", "EXPORT", "IMPORT"].includes(e.action)
-  ).length;
-  const recentesCriticos = filtered
-    .filter((e) => ["DELETE", "CONFIG_CHANGE", "EXPORT", "IMPORT"].includes(e.action))
-    .slice(0, 5);
+  }, [overview, query, actorFilter, severityFilter]);
 
   const exportCSV = () => {
-    const header = "Data,Ator,Tipo,Ação,Entidade,Item,Resumo,Confiança";
-    const rows = filtered.map((e) =>
+    const header = "Data,Ator,Tipo,Acao,Entidade,Item,Severidade,Resumo";
+    const rows = filtered.map((event) =>
       [
-        e.timestamp,
-        e.actor,
-        e.actorType,
-        e.action,
-        e.entityType,
-        e.entityLabel || "",
-        `"${e.summary.replace(/"/g, '""')}"`,
-        e.confidence ?? "",
+        event.timestamp,
+        event.actor,
+        event.actorType,
+        event.action,
+        event.entityType,
+        event.entityLabel,
+        event.severity,
+        `"${event.summary.replace(/"/g, '""')}"`,
       ].join(",")
     );
     const csv = "\uFEFF" + [header, ...rows].join("\n");
@@ -117,185 +106,113 @@ export default function AuditoriaPage() {
   return (
     <PageShell
       title="Log de Auditoria"
-      description="Trilha imutável de todas as ações do sistema — humanos e automações"
+      description="Trilha operacional real gerada por notas, documentos, extratos e webhooks."
       icon={Shield}
       actions={
-        <button
-          onClick={exportCSV}
-          className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-gray-600 bg-white border border-gray-200 rounded-lg hover:bg-gray-50"
-        >
-          <Download className="h-3.5 w-3.5" /> Exportar CSV
-        </button>
+        <>
+          <button onClick={fetchAudit} disabled={loading} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60">
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Atualizar
+          </button>
+          <button onClick={exportCSV} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50">
+            <Download className="h-3.5 w-3.5" />
+            Exportar CSV
+          </button>
+        </>
       }
     >
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="Total de eventos" value={log.length} />
-        <Stat label="Ações humanas" value={totalHumano} color="blue" />
-        <Stat label="Ações automáticas" value={totalAutomacao} color="emerald" />
-        <Stat
-          label="% automatizado"
-          value={log.length > 0 ? `${Math.round((totalAutomacao / log.length) * 100)}%` : "—"}
-          color="amber"
-        />
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <Stat label="Total de eventos" value={loading ? "..." : overview?.summary.total ?? 0} />
+        <Stat label="Automacoes" value={loading ? "..." : overview?.summary.automation ?? 0} color="emerald" />
+        <Stat label="Alertas" value={loading ? "..." : overview?.summary.warnings ?? 0} color="amber" />
+        <Stat label="Criticos" value={loading ? "..." : overview?.summary.critical ?? 0} color="rose" />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Leitura operacional</p>
-          <h2 className="mt-2 text-lg font-bold text-gray-900">{eventosCriticos} evento(s) sensivel(is)</h2>
-          <p className="mt-1 text-xs text-gray-500">
-            Eventos sensiveis incluem importacao, exportacao, remocao e mudanca de configuracao.
-          </p>
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <div>
+            <p className="font-semibold">Nao foi possivel carregar auditoria real.</p>
+            <p>{error}</p>
+          </div>
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Ultimos eventos sensiveis</p>
-          {recentesCriticos.length === 0 ? (
-            <p className="text-xs text-gray-400">Nenhum evento sensivel no filtro atual.</p>
-          ) : (
-            <div className="space-y-2">
-              {recentesCriticos.map((event) => (
-                <div key={event.id} className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold text-gray-900">{ACTION_LABELS[event.action]}</p>
-                    <p className="text-[11px] text-gray-400">{new Date(event.timestamp).toLocaleString("pt-BR")}</p>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-0.5">{event.summary}</p>
-                  <p className="text-[11px] text-amber-700 mt-1">{describeAuditImpact(event)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      )}
 
-      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+      <div className="space-y-3 rounded-xl border border-gray-200 bg-white p-4">
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-gray-400" />
           <span className="text-xs font-semibold text-gray-700">Filtros</span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar..."
-              className="w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm"
-            />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar..." className="w-full rounded-lg border border-gray-200 py-2 pl-10 pr-3 text-sm" />
           </div>
-          <select
-            value={actorFilter}
-            onChange={(e) => setActorFilter(e.target.value as typeof actorFilter)}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-          >
+          <select value={actorFilter} onChange={(event) => setActorFilter(event.target.value as typeof actorFilter)} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
             <option value="ALL">Todos os atores</option>
-            <option value="HUMAN">Apenas humanos</option>
-            <option value="AUTOMATION">Apenas automação</option>
-            <option value="SYSTEM">Apenas sistema</option>
+            <option value="HUMAN">Humanos</option>
+            <option value="AUTOMATION">Automacoes</option>
+            <option value="SYSTEM">Sistema</option>
           </select>
-          <select
-            value={actionFilter}
-            onChange={(e) => setActionFilter(e.target.value as AuditAction | "ALL")}
-            className="px-3 py-2 border border-gray-200 rounded-lg text-sm"
-          >
-            <option value="ALL">Todas as ações</option>
-            {Object.entries(ACTION_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>
-                {v}
-              </option>
-            ))}
+          <select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value as typeof severityFilter)} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            <option value="ALL">Todas severidades</option>
+            <option value="INFO">Info</option>
+            <option value="WARN">Alerta</option>
+            <option value="CRITICAL">Critico</option>
           </select>
         </div>
       </div>
 
-      {filtered.length === 0 ? (
-        <EmptyState
-          icon={Shield}
-          title="Nenhum evento registrado"
-          description="O log de auditoria registra automaticamente toda ação do sistema. Crie ou edite registros para começar a popular a trilha."
-        />
+      {loading ? (
+        <div className="flex items-center justify-center py-12 text-gray-500">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          Carregando auditoria...
+        </div>
+      ) : filtered.length === 0 ? (
+        <EmptyState icon={Shield} title="Nenhum evento registrado" description="Eventos reais passam a aparecer conforme notas, extratos, documentos e webhooks forem processados." />
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
+            <thead className="bg-gray-50 text-xs uppercase text-gray-500">
               <tr>
                 <th className="px-4 py-3 text-left">Data/Hora</th>
                 <th className="px-4 py-3 text-left">Ator</th>
-                <th className="px-4 py-3 text-left">Ação</th>
+                <th className="px-4 py-3 text-left">Acao</th>
                 <th className="px-4 py-3 text-left">Entidade</th>
                 <th className="px-4 py-3 text-left">Resumo</th>
-                <th className="px-4 py-3 text-center">Confiança</th>
+                <th className="px-4 py-3 text-center">Severidade</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filtered.slice(0, 200).map((e) => {
-                const ActorIcon =
-                  e.actorType === "AUTOMATION" || e.actorType === "SYSTEM" ? Cpu : User;
+              {filtered.slice(0, 200).map((event) => {
+                const ActorIcon = event.actorType === "HUMAN" ? User : Cpu;
                 return (
-                  <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-xs text-gray-600 font-mono whitespace-nowrap">
-                      {new Date(e.timestamp).toLocaleString("pt-BR")}
-                    </td>
+                  <tr key={event.id} className="hover:bg-gray-50">
+                    <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-600">{new Date(event.timestamp).toLocaleString("pt-BR")}</td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
-                        <ActorIcon
-                          className={cn(
-                            "h-3.5 w-3.5",
-                            e.actorType === "AUTOMATION"
-                              ? "text-indigo-600"
-                              : e.actorType === "SYSTEM"
-                              ? "text-gray-500"
-                              : "text-blue-600"
-                          )}
-                        />
-                        <span className="text-xs text-gray-700">{e.actor}</span>
+                        <ActorIcon className={cn("h-3.5 w-3.5", event.actorType === "SYSTEM" ? "text-gray-500" : "text-blue-600")} />
+                        <span className="text-xs text-gray-700">{event.actor}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={cn(
-                          "text-[10px] font-semibold px-2 py-0.5 rounded-full",
-                          ACTION_COLORS[e.action]
-                        )}
-                      >
-                        {ACTION_LABELS[e.action]}
-                      </span>
+                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-700">{actionLabels[event.action] ?? event.action}</span>
                     </td>
-                    <td className="px-4 py-3 text-xs">
-                      <p className="font-medium text-gray-900">{e.entityType}</p>
-                      {e.entityLabel && (
-                        <p className="text-gray-400 truncate max-w-[160px]">{e.entityLabel}</p>
-                      )}
+                    <td className="px-4 py-3">
+                      <p className="text-xs font-medium text-gray-800">{event.entityType}</p>
+                      <p className="max-w-[220px] truncate text-[11px] text-gray-500">{event.entityLabel}</p>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-700">{e.summary}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{event.summary}</td>
                     <td className="px-4 py-3 text-center">
-                      {e.confidence !== undefined ? (
-                        <span
-                          className={cn(
-                            "text-[11px] font-semibold",
-                            e.confidence >= 95
-                              ? "text-green-600"
-                              : e.confidence >= 80
-                              ? "text-blue-600"
-                              : "text-amber-600"
-                          )}
-                        >
-                          {e.confidence}%
-                        </span>
-                      ) : (
-                        <span className="text-[11px] text-gray-300">—</span>
-                      )}
+                      <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", severityStyles[event.severity])}>
+                        {event.severity}
+                      </span>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {filtered.length > 200 && (
-            <div className="p-3 text-center text-[11px] text-gray-400 border-t border-gray-100">
-              Mostrando 200 de {filtered.length} eventos. Use filtros para refinar.
-            </div>
-          )}
         </div>
       )}
     </PageShell>

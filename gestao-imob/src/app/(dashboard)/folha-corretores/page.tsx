@@ -1,762 +1,178 @@
 "use client";
 
-/**
- * FOLHA DE PAGAMENTO — ESQUELETO
- *
- * Estrutura preparada para receber:
- * 1. Regras reais de comissão (a definir com base na planilha do usuário)
- * 2. Importação estruturada de planilha de resultados mensais
- *
- * A função `calculatePayroll` está isolada — quando as regras forem definidas,
- * basta preencher o corpo dela sem alterar a UI.
- */
-
-import { useEffect, useState } from "react";
-import {
-  Wallet,
-  Plus,
-  User,
-  X,
-  Upload,
-  Settings2,
-  Users,
-  FileSpreadsheet,
-  Pencil,
-  Trash2,
-} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { AlertCircle, Calculator, Loader2, RefreshCw, Settings2, Wallet } from "lucide-react";
+import { PageShell, Stat } from "@/components/shared/page-shell";
 import { cn, formatCurrency } from "@/lib/utils";
 
-// ─── Tipos ─────────────────────────────────────────
-
-type Role = "CAPTADOR" | "CONSULTOR" | "ADMIN";
-type ContractType = "CLT" | "PJ";
-
-interface Employee {
-  id: string;
-  nome: string;
-  cpf: string;
-  cargo: Role;
-  tipoContrato: ContractType;
-  salarioFixo: number;
-  valeRefeicao: number;
-  valeTransporte: number;
-  pix: string;
-  /** Regra de comissão vinculada — placeholder. Será preenchido após definição. */
-  regraComissaoId?: string;
-  ativo: boolean;
-}
-
-/**
- * Regra de comissão genérica — estrutura aberta para acomodar
- * diferentes modelos (por tier, por unidade, percentual fixo, híbrido).
- * Os campos concretos serão definidos quando a planilha for compartilhada.
- */
-interface CommissionRule {
-  id: string;
-  nome: string;
-  cargo: Role;
-  /** Descrição livre da regra — "10% até 3 locações, 11% de 4-9, 13% a partir de 10" */
-  descricao: string;
-  /** JSON livre para parâmetros (tiers, percentuais, bônus) — preenchido depois */
-  parametros: Record<string, unknown>;
-}
-
-/**
- * Resultado mensal de um funcionário extraído da planilha.
- * Campos são genéricos de propósito; serão mapeados para colunas reais depois.
- */
-interface MonthlyResult {
-  id: string;
+interface PayrollRow {
   employeeId: string;
-  mes: string; // "2026-04"
-  /** Quantidade principal (locações fechadas, imóveis captados, vendas) */
-  quantidade: number;
-  /** Valor base sobre o qual a comissão incide */
-  valorBase: number;
-  /** Campos adicionais extraídos da planilha (chave → valor) */
-  extras: Record<string, number>;
-  origem: "MANUAL" | "IMPORTADO";
+  name: string;
+  email: string;
+  position: string;
+  department: string;
+  contractType: string;
+  baseSalary: number;
+  commission: number;
+  benefits: number;
+  deductions: number;
+  gross: number;
+  net: number;
+  status: string;
+  rentalCount: number;
+  captureCount: number;
+  openAdvances: number;
 }
 
-interface PayrollLine {
-  employee: Employee;
-  salarioFixo: number;
-  beneficios: number;
-  comissao: number;
-  descontos: number;
-  total: number;
-  origem: "MANUAL" | "IMPORTADO" | "PENDENTE";
+interface PayrollOverview {
+  reference: { month: number; year: number; label: string };
+  rows: PayrollRow[];
+  summary: { employees: number; payrolls: number; gross: number; net: number; commissions: number; advances: number };
 }
 
-// ─── Persistência local (placeholder até ter banco) ────
-
-const STORAGE = {
-  employees: "folha-employees-v1",
-  rules: "folha-rules-v1",
-  results: "folha-results-v1",
-  seedVersion: "folha-seed-v1",
+const statusStyles: Record<string, { label: string; color: string }> = {
+  RASCUNHO: { label: "Rascunho", color: "bg-gray-50 text-gray-600 border-gray-200" },
+  CALCULADO: { label: "Calculado", color: "bg-blue-50 text-blue-700 border-blue-200" },
+  APROVADO: { label: "Aprovado", color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  PAGO: { label: "Pago", color: "bg-green-50 text-green-700 border-green-200" },
 };
-
-const SEED_EMPLOYEES: Employee[] = [
-  { id: "fe-001", nome: "Lucas Rodrigues", cpf: "123.456.789-01", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "lucas.rodrigues@jardimimob.com.br", ativo: true },
-  { id: "fe-002", nome: "Thiago Lima", cpf: "234.567.890-12", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "thiago.lima@jardimimob.com.br", ativo: true },
-  { id: "fe-003", nome: "Fernanda Souza", cpf: "345.678.901-23", cargo: "CAPTADOR", tipoContrato: "PJ", salarioFixo: 0, valeRefeicao: 0, valeTransporte: 0, pix: "fernanda.souza@jardimimob.com.br", ativo: true },
-  { id: "fe-004", nome: "Ana Paula Müller", cpf: "456.789.012-34", cargo: "ADMIN", tipoContrato: "CLT", salarioFixo: 2800, valeRefeicao: 550, valeTransporte: 220, pix: "ana.muller@jardimimob.com.br", ativo: true },
-  { id: "fe-005", nome: "Roberto Costa", cpf: "567.890.123-45", cargo: "CONSULTOR", tipoContrato: "CLT", salarioFixo: 3200, valeRefeicao: 550, valeTransporte: 220, pix: "roberto.costa@jardimimob.com.br", ativo: true },
-];
-
-function loadJSON<T>(key: string, fallback: T): T {
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function ensureFolhaSeeded() {
-  if (typeof window === "undefined") return;
-  if (localStorage.getItem(STORAGE.seedVersion)) return;
-  const existing = loadJSON<Employee[]>(STORAGE.employees, []);
-  if (existing.length === 0) {
-    localStorage.setItem(STORAGE.employees, JSON.stringify(SEED_EMPLOYEES));
-  }
-  localStorage.setItem(STORAGE.seedVersion, "1");
-}
-
-function saveJSON(key: string, value: unknown) {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* ignore */
-  }
-}
-
-// ─── Motor de cálculo — ESQUELETO ─────────────────
-
-/**
- * TODO: preencher quando a planilha de comissões for compartilhada.
- *
- * Entradas:
- *  - employee: funcionário com salário fixo e regra vinculada
- *  - result:   resultado mensal (quantidade, valor base, extras)
- *  - rule:     regra de comissão aplicável
- *
- * Saída: PayrollLine com salário fixo + comissão calculada.
- */
-function calculatePayroll(
-  employee: Employee,
-  result: MonthlyResult | undefined,
-  rule: CommissionRule | undefined
-): PayrollLine {
-  const beneficios = employee.valeRefeicao + employee.valeTransporte;
-
-  // Placeholder: sem regra definida, comissão = 0.
-  // Quando as regras forem implementadas, a lógica real vai aqui.
-  const comissao = 0;
-  void result;
-  void rule;
-
-  const descontos = 0;
-  const total = employee.salarioFixo + beneficios + comissao - descontos;
-
-  return {
-    employee,
-    salarioFixo: employee.salarioFixo,
-    beneficios,
-    comissao,
-    descontos,
-    total,
-    origem: result ? result.origem : "PENDENTE",
-  };
-}
-
-// ─── Seed inicial (vazio) ──────────────────────────
-
-const EMPTY_EMPLOYEE: Omit<Employee, "id"> = {
-  nome: "",
-  cpf: "",
-  cargo: "CONSULTOR",
-  tipoContrato: "CLT",
-  salarioFixo: 0,
-  valeRefeicao: 0,
-  valeTransporte: 0,
-  pix: "",
-  ativo: true,
-};
-
-// ─── Página ────────────────────────────────────────
-
-type Tab = "funcionarios" | "regras" | "folha";
 
 export default function FolhaPage() {
-  const [tab, setTab] = useState<Tab>("funcionarios");
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [rules, setRules] = useState<CommissionRule[]>([]);
-  const [results, setResults] = useState<MonthlyResult[]>([]);
-  const [mounted, setMounted] = useState(false);
-
-  // Modal de edição
-  const [editing, setEditing] = useState<Employee | null>(null);
-  const [showImport, setShowImport] = useState(false);
-
   const now = new Date();
-  const [mesRef, setMesRef] = useState(
-    `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-  );
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const [overview, setOverview] = useState<PayrollOverview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-    ensureFolhaSeeded();
-    setEmployees(loadJSON(STORAGE.employees, []));
-    setRules(loadJSON(STORAGE.rules, []));
-    setResults(loadJSON(STORAGE.results, []));
-  }, []);
-
-  useEffect(() => {
-    if (mounted) saveJSON(STORAGE.employees, employees);
-  }, [employees, mounted]);
-  useEffect(() => {
-    if (mounted) saveJSON(STORAGE.rules, rules);
-  }, [rules, mounted]);
-  useEffect(() => {
-    if (mounted) saveJSON(STORAGE.results, results);
-  }, [results, mounted]);
-
-  // ─── Funcionários ────────────────────────────────
-
-  const openNew = () =>
-    setEditing({ id: "", ...EMPTY_EMPLOYEE });
-
-  const saveEmployee = (emp: Employee) => {
-    if (!emp.nome.trim()) return;
-    if (emp.id) {
-      setEmployees((prev) => prev.map((e) => (e.id === emp.id ? emp : e)));
-    } else {
-      setEmployees((prev) => [...prev, { ...emp, id: crypto.randomUUID() }]);
+  const fetchPayroll = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ month: String(month), year: String(year) });
+      const response = await fetch(`/api/payroll-overview?${params}`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Falha ao carregar folha.");
+      setOverview(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao carregar folha real.");
+    } finally {
+      setLoading(false);
     }
-    setEditing(null);
-  };
+  }, [month, year]);
 
-  const deleteEmployee = (id: string) => {
-    setEmployees((prev) => prev.filter((e) => e.id !== id));
-  };
-
-  // ─── Folha consolidada ───────────────────────────
-
-  const folhaLines: PayrollLine[] = employees
-    .filter((e) => e.ativo)
-    .map((e) => {
-      const result = results.find(
-        (r) => r.employeeId === e.id && r.mes === mesRef
-      );
-      const rule = rules.find((r) => r.id === e.regraComissaoId);
-      return calculatePayroll(e, result, rule);
-    });
-
-  const totalFolha = folhaLines.reduce((sum, l) => sum + l.total, 0);
-
-  // ─── Render ──────────────────────────────────────
+  useEffect(() => {
+    fetchPayroll();
+  }, [fetchPayroll]);
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Folha de Pagamento</h1>
-          <p className="text-sm text-gray-500">
-            Funcionários CLT/PJ com salário fixo + comissão variável
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowImport(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-md hover:shadow-blue-600/25 transition-all"
-          >
-            <FileSpreadsheet className="h-3.5 w-3.5" />
-            Importar planilha
+    <PageShell
+      title="Folha de Corretores"
+      description="Folha real conectada a funcionarios, comissoes, adiantamentos e pagamentos."
+      icon={Wallet}
+      actions={
+        <>
+          <select value={month} onChange={(event) => setMonth(Number(event.target.value))} className="rounded-lg border border-gray-200 px-3 py-2 text-sm">
+            {Array.from({ length: 12 }, (_, index) => index + 1).map((item) => (
+              <option key={item} value={item}>{String(item).padStart(2, "0")}</option>
+            ))}
+          </select>
+          <input value={year} onChange={(event) => setYear(Number(event.target.value))} className="w-24 rounded-lg border border-gray-200 px-3 py-2 text-sm" />
+          <button onClick={fetchPayroll} disabled={loading} className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Atualizar
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <Stat label="Funcionarios ativos" value={loading ? "..." : overview?.summary.employees ?? 0} color="blue" />
+        <Stat label="Folhas gravadas" value={loading ? "..." : overview?.summary.payrolls ?? 0} color="emerald" />
+        <Stat label="Comissoes" value={loading ? "..." : formatCurrency(overview?.summary.commissions ?? 0)} color="amber" />
+        <Stat label="Liquido previsto" value={loading ? "..." : formatCurrency(overview?.summary.net ?? 0)} color="blue" />
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-gray-200">
-        {[
-          { id: "funcionarios" as Tab, label: "Funcionários", icon: Users },
-          { id: "regras" as Tab, label: "Regras de Comissão", icon: Settings2 },
-          { id: "folha" as Tab, label: "Folha Mensal", icon: Wallet },
-        ].map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
-              tab === t.id
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
-            )}
-          >
-            <t.icon className="h-4 w-4" />
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ─── TAB: Funcionários ─────────────────── */}
-      {tab === "funcionarios" && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500">
-              {employees.length} funcionário(s) cadastrado(s)
-            </p>
-            <button
-              onClick={openNew}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-            >
-              <Plus className="h-3.5 w-3.5" /> Novo funcionário
-            </button>
-          </div>
-
-          {employees.length === 0 ? (
-            <div className="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center">
-              <User className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">
-                Nenhum funcionário cadastrado ainda.
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Comece adicionando captadores, consultores e equipe administrativa.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Nome</th>
-                    <th className="px-4 py-3 text-left">Cargo</th>
-                    <th className="px-4 py-3 text-left">Tipo</th>
-                    <th className="px-4 py-3 text-right">Salário Fixo</th>
-                    <th className="px-4 py-3 text-right">Benefícios</th>
-                    <th className="px-4 py-3 text-center">Regra</th>
-                    <th className="px-4 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {employees.map((e) => {
-                    const rule = rules.find((r) => r.id === e.regraComissaoId);
-                    return (
-                      <tr key={e.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-gray-900">{e.nome}</p>
-                          <p className="text-[11px] text-gray-400">{e.cpf}</p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-700">
-                            {e.cargo}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-600">
-                          {e.tipoContrato}
-                        </td>
-                        <td className="px-4 py-3 text-right font-medium text-gray-900">
-                          {formatCurrency(e.salarioFixo)}
-                        </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
-                          {formatCurrency(e.valeRefeicao + e.valeTransporte)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {rule ? (
-                            <span className="text-[11px] text-blue-600">
-                              {rule.nome}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-gray-400">
-                              não definida
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-1">
-                            <button
-                              onClick={() => setEditing(e)}
-                              className="p-1.5 hover:bg-blue-50 rounded text-gray-400 hover:text-blue-600"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => deleteEmployee(e.id)}
-                              className="p-1.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-600"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── TAB: Regras ─────────────────────── */}
-      {tab === "regras" && (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
-          <Settings2 className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-          <p className="text-sm font-medium text-gray-700">
-            Regras de comissão — aguardando definição
-          </p>
-          <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-            A estrutura está pronta para receber as regras reais (tiers, percentuais,
-            bônus por unidade). Compartilhe a planilha de comissões e esta tela será
-            preenchida com os modelos específicos para captador, consultor e demais
-            funções.
-          </p>
-          <div className="mt-4 inline-block text-left bg-gray-50 border border-gray-200 rounded-lg p-3 text-[11px] text-gray-500 font-mono">
-            CommissionRule {"{"}
-            <br />
-            &nbsp;&nbsp;id, nome, cargo, descricao,
-            <br />
-            &nbsp;&nbsp;parametros: {"{ ... a definir ... }"}
-            <br />
-            {"}"}
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+          <div>
+            <p className="font-semibold">Nao foi possivel carregar a folha real.</p>
+            <p>{error}</p>
           </div>
         </div>
       )}
 
-      {/* ─── TAB: Folha Mensal ───────────────── */}
-      {tab === "folha" && (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <label className="text-xs text-gray-500">Mês de referência</label>
-              <input
-                type="month"
-                value={mesRef}
-                onChange={(e) => setMesRef(e.target.value)}
-                className="ml-2 px-3 py-1.5 border border-gray-200 rounded-lg text-sm"
-              />
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-gray-500">Total da folha</p>
-              <p className="text-xl font-bold text-gray-900">
-                {formatCurrency(totalFolha)}
-              </p>
-            </div>
-          </div>
+      <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-800">
+        A folha calcula a leitura atual a partir dos funcionarios cadastrados, comissoes do mes, adiantamentos em aberto e folhas ja gravadas no banco.
+      </div>
 
-          {folhaLines.length === 0 ? (
-            <div className="bg-white border border-dashed border-gray-300 rounded-xl p-12 text-center">
-              <Wallet className="h-10 w-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-sm text-gray-500">
-                Cadastre funcionários para ver a folha mensal consolidada.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-xs text-gray-500 uppercase">
-                  <tr>
-                    <th className="px-4 py-3 text-left">Funcionário</th>
-                    <th className="px-4 py-3 text-right">Fixo</th>
-                    <th className="px-4 py-3 text-right">Benefícios</th>
-                    <th className="px-4 py-3 text-right">Comissão</th>
-                    <th className="px-4 py-3 text-right">Descontos</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                    <th className="px-4 py-3 text-center">Origem</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {folhaLines.map((l) => (
-                    <tr key={l.employee.id} className="hover:bg-gray-50">
+      <div className="rounded-xl border border-gray-200 bg-white">
+        {loading ? (
+          <div className="flex items-center justify-center py-12 text-gray-500">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            Carregando folha...
+          </div>
+        ) : !overview || overview.rows.length === 0 ? (
+          <div className="p-12 text-center text-sm text-gray-400">Nenhum funcionario ativo encontrado.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="px-4 py-3 text-left">Funcionario</th>
+                  <th className="px-4 py-3 text-left">Cargo</th>
+                  <th className="px-4 py-3 text-right">Fixo</th>
+                  <th className="px-4 py-3 text-right">Comissao</th>
+                  <th className="px-4 py-3 text-right">Adiantamentos</th>
+                  <th className="px-4 py-3 text-right">Liquido</th>
+                  <th className="px-4 py-3 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {overview.rows.map((row) => {
+                  const status = statusStyles[row.status] ?? statusStyles.RASCUNHO;
+                  return (
+                    <tr key={row.employeeId} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
-                        <p className="font-medium text-gray-900">
-                          {l.employee.nome}
-                        </p>
-                        <p className="text-[11px] text-gray-400">
-                          {l.employee.cargo} · {l.employee.tipoContrato}
-                        </p>
+                        <p className="font-medium text-gray-900">{row.name}</p>
+                        <p className="text-xs text-gray-500">{row.email}</p>
                       </td>
+                      <td className="px-4 py-3 text-gray-600">
+                        <p>{row.position}</p>
+                        <p className="text-xs text-gray-400">{row.department} · {row.contractType}</p>
+                      </td>
+                      <td className="px-4 py-3 text-right">{formatCurrency(row.baseSalary)}</td>
                       <td className="px-4 py-3 text-right">
-                        {formatCurrency(l.salarioFixo)}
+                        <p className="font-semibold text-emerald-700">{formatCurrency(row.commission)}</p>
+                        <p className="text-xs text-gray-400">{row.rentalCount} loc. · {row.captureCount} cap.</p>
                       </td>
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {formatCurrency(l.beneficios)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {formatCurrency(l.comissao)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600">
-                        {formatCurrency(l.descontos)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-gray-900">
-                        {formatCurrency(l.total)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span
-                          className={cn(
-                            "text-[10px] font-semibold px-2 py-0.5 rounded-full",
-                            l.origem === "IMPORTADO"
-                              ? "bg-blue-50 text-blue-600"
-                              : l.origem === "MANUAL"
-                              ? "bg-gray-100 text-gray-600"
-                              : "bg-amber-50 text-amber-600"
-                          )}
-                        >
-                          {l.origem}
+                      <td className="px-4 py-3 text-right text-amber-700">{formatCurrency(row.openAdvances)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{formatCurrency(row.net)}</td>
+                      <td className="px-4 py-3">
+                        <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold", status.color)}>
+                          {status.label}
                         </span>
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ─── Modal Funcionário ───────────────── */}
-      {editing && (
-        <EmployeeModal
-          employee={editing}
-          rules={rules}
-          onSave={saveEmployee}
-          onClose={() => setEditing(null)}
-        />
-      )}
-
-      {/* ─── Modal Importação ─────────────── */}
-      {showImport && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-blue-50 rounded-lg">
-                  <FileSpreadsheet className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">
-                    Importar planilha de resultados
-                  </h3>
-                  <p className="text-xs text-gray-500">Importação estruturada</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowImport(false)}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
-                <X className="h-4 w-4 text-gray-500" />
-              </button>
-            </div>
-
-            <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center">
-              <Upload className="h-8 w-8 text-gray-300 mx-auto mb-2" />
-              <p className="text-xs text-gray-500">
-                Arraste a planilha aqui ou clique para selecionar
-              </p>
-            </div>
-
-            <div className="mt-4 bg-amber-50 border border-amber-100 rounded-lg p-3">
-              <p className="text-[11px] text-amber-700">
-                <strong>Estrutura pronta</strong> — aguardando definição das regras
-                de comissão e do formato da planilha. Após compartilhar o modelo, a
-                o importador irá extrair quantidade de locações/captações, valor base e calcular
-                o total da folha automaticamente.
-              </p>
-            </div>
-
-            <button
-              onClick={() => setShowImport(false)}
-              className="w-full mt-4 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg"
-            >
-              Fechar
-            </button>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Modal de Funcionário ─────────────────────────
-
-function EmployeeModal({
-  employee,
-  rules,
-  onSave,
-  onClose,
-}: {
-  employee: Employee;
-  rules: CommissionRule[];
-  onSave: (e: Employee) => void;
-  onClose: () => void;
-}) {
-  const [form, setForm] = useState<Employee>(employee);
-
-  const update = <K extends keyof Employee>(key: K, value: Employee[K]) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
-
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-5 border-b border-gray-200 sticky top-0 bg-white">
-          <h3 className="font-semibold text-gray-900">
-            {employee.id ? "Editar funcionário" : "Novo funcionário"}
-          </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded">
-            <X className="h-4 w-4 text-gray-500" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Nome completo</label>
-            <input
-              type="text"
-              value={form.nome}
-              onChange={(e) => update("nome", e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">CPF</label>
-              <input
-                type="text"
-                value={form.cpf}
-                onChange={(e) => update("cpf", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">PIX</label>
-              <input
-                type="text"
-                value={form.pix}
-                onChange={(e) => update("pix", e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Cargo</label>
-              <select
-                value={form.cargo}
-                onChange={(e) => update("cargo", e.target.value as Role)}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              >
-                <option value="CAPTADOR">Captador</option>
-                <option value="CONSULTOR">Consultor</option>
-                <option value="ADMIN">Administrativo</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Tipo de contrato</label>
-              <select
-                value={form.tipoContrato}
-                onChange={(e) =>
-                  update("tipoContrato", e.target.value as ContractType)
-                }
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              >
-                <option value="CLT">CLT</option>
-                <option value="PJ">PJ</option>
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Salário fixo</label>
-            <input
-              type="number"
-              value={form.salarioFixo}
-              onChange={(e) => update("salarioFixo", Number(e.target.value))}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                Vale refeição
-              </label>
-              <input
-                type="number"
-                value={form.valeRefeicao}
-                onChange={(e) => update("valeRefeicao", Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                Vale transporte
-              </label>
-              <input
-                type="number"
-                value={form.valeTransporte}
-                onChange={(e) => update("valeTransporte", Number(e.target.value))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">
-              Regra de comissão
-            </label>
-            <select
-              value={form.regraComissaoId || ""}
-              onChange={(e) =>
-                update("regraComissaoId", e.target.value || undefined)
-              }
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-            >
-              <option value="">— sem regra (a definir) —</option>
-              {rules
-                .filter((r) => r.cargo === form.cargo)
-                .map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nome}
-                  </option>
-                ))}
-            </select>
-            <p className="text-[10px] text-gray-400 mt-1">
-              Regras serão cadastradas após definição do modelo de comissão.
-            </p>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={form.ativo}
-              onChange={(e) => update("ativo", e.target.checked)}
-            />
-            Funcionário ativo
-          </label>
-        </div>
-
-        <div className="flex justify-end gap-2 p-5 border-t border-gray-200 sticky bottom-0 bg-white">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 rounded-lg"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => onSave(form)}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Salvar
-          </button>
-        </div>
+        )}
       </div>
-    </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Link href="/comissoes" className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <Calculator className="h-4 w-4" />
+          Ver comissoes
+        </Link>
+        <Link href="/pessoas" className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+          <Settings2 className="h-4 w-4" />
+          Gerir funcionarios
+        </Link>
+      </div>
+    </PageShell>
   );
 }
