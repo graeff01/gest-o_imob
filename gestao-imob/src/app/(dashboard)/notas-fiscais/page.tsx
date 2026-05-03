@@ -189,6 +189,117 @@ function operationMessage(inv: Invoice) {
   return "Nota cancelada. Ela fica registrada para rastreabilidade.";
 }
 
+function InvoiceVisualPreview({ invoice, cep, aliquota }: { invoice: Invoice; cep: string; aliquota: string }) {
+  const amount = Number(invoice.amount) || 0;
+  const rate = Number(aliquota) || 0;
+  const issValue = amount * (rate / 100);
+  const competence = invoice.reference_month
+    ? `${MONTH_NAMES[invoice.reference_month - 1]}/${invoice.reference_year}`
+    : String(invoice.reference_year);
+  const serviceLabel = SERVICE_LABELS[invoice.service_type];
+  const verificationCode = invoice.gateway_id ?? "Gerado apos emissao";
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-100 p-3">
+      <div className="mx-auto overflow-hidden rounded-sm border border-slate-300 bg-white text-slate-900 shadow-sm">
+        <div className="flex items-start justify-between gap-4 border-b-4 border-blue-700 px-6 py-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-700">Prefeitura Municipal de Canoas</p>
+            <h3 className="mt-1 text-lg font-bold uppercase">Nota Fiscal de Servicos Eletronica</h3>
+            <p className="mt-0.5 text-[11px] text-slate-500">Espelho de conferencia com os dados que serao enviados</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase text-slate-500">Numero</p>
+            <p className="font-mono text-base font-bold">{invoice.nfse_number ?? "PREVIA"}</p>
+            <p className="mt-1 text-[10px] uppercase text-slate-500">Emissao</p>
+            <p className="text-xs font-semibold">{new Date().toLocaleDateString("pt-BR")}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 border-b border-slate-200 md:grid-cols-3">
+          <div className="border-b border-slate-200 p-4 md:col-span-2 md:border-b-0 md:border-r">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Prestador do servico</p>
+            <p className="mt-1 text-sm font-bold text-slate-900">Jardim do Lago</p>
+            <p className="mt-1 text-xs text-slate-600">Municipio de incidencia: Canoas - RS</p>
+            <p className="text-xs text-slate-600">Regime: Simples Nacional</p>
+          </div>
+          <div className="p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Competencia</p>
+            <p className="mt-1 text-sm font-bold">{competence}</p>
+            <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Titulo DW</p>
+            <p className="font-mono text-xs font-semibold">{invoice.title_number || "-"}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 border-b border-slate-200 md:grid-cols-2">
+          <div className="border-b border-slate-200 p-4 md:border-b-0 md:border-r">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Tomador do servico</p>
+            <p className="mt-1 text-sm font-bold">{invoice.client_name}</p>
+            <p className="mt-1 font-mono text-xs text-slate-700">{invoice.client_cpf_cnpj}</p>
+            <p className="mt-1 text-xs text-slate-600">{invoice.client_contact || "Contato nao informado"}</p>
+          </div>
+          <div className="p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Endereco vinculado</p>
+            <p className="mt-1 text-xs font-medium leading-relaxed text-slate-700">{invoice.property_address || "Endereco nao informado"}</p>
+            <p className="mt-2 font-mono text-xs text-slate-600">CEP: {cep.trim() || "pendente"}</p>
+          </div>
+        </div>
+
+        <div className="border-b border-slate-200 p-4">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Discriminacao dos servicos</p>
+          <p className="mt-2 text-sm font-semibold text-slate-900">{invoice.description_title || serviceLabel}</p>
+          <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-700">{invoice.description_body}</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
+            <div>
+              <p className="text-slate-500">Servico</p>
+              <p className="font-semibold">{serviceLabel}</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Cod. tributacao</p>
+              <p className="font-mono font-semibold">10.05.01</p>
+            </div>
+            <div>
+              <p className="text-slate-500">ISS retido</p>
+              <p className="font-semibold">Nao</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Verificacao</p>
+              <p className="font-mono font-semibold">{verificationCode}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 divide-x divide-slate-200 border-b border-slate-200 text-xs md:grid-cols-4">
+          <div className="p-4">
+            <p className="text-slate-500">Valor do servico</p>
+            <p className="mt-1 text-base font-bold">{formatCurrency(amount)}</p>
+          </div>
+          <div className="p-4">
+            <p className="text-slate-500">Aliquota ISS</p>
+            <p className="mt-1 text-base font-bold">{rate.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</p>
+          </div>
+          <div className="p-4">
+            <p className="text-slate-500">ISS estimado</p>
+            <p className="mt-1 text-base font-bold">{formatCurrency(issValue)}</p>
+          </div>
+          <div className="p-4">
+            <p className="text-slate-500">Valor liquido</p>
+            <p className="mt-1 text-base font-bold">{formatCurrency(amount)}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 px-6 py-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status da previa</p>
+            <p className="text-xs text-slate-700">Documento de conferencia. O numero oficial, PDF e XML sao gerados somente apos a emissao.</p>
+          </div>
+          <div className="h-8 w-32 rounded bg-[repeating-linear-gradient(90deg,#0f172a_0,#0f172a_2px,transparent_2px,transparent_5px)] opacity-70" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function buildInvoiceTimeline(inv: Invoice) {
   const events: Array<{
     label: string;
@@ -2013,7 +2124,7 @@ export default function NotasFiscaisPage() {
       ═══════════════════════════════════════════════════════════════════ */}
       {emitModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-xl">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-5xl">
             <div className="flex items-center justify-between p-6 border-b border-gray-100">
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Emitir NFS-e</h2>
@@ -2032,6 +2143,7 @@ export default function NotasFiscaisPage() {
                   <p className="font-mono text-gray-900 bg-gray-50 rounded px-2 py-1.5">{emitModal.client_cpf_cnpj}</p>
                 </div>
               </div>
+              <InvoiceVisualPreview invoice={emitModal} cep={emitCep} aliquota={emitAliquota} />
               <div className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div>

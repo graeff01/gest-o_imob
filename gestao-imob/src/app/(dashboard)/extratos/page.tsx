@@ -31,18 +31,6 @@ interface MonthSummary {
   saldo: number;
 }
 
-interface BatchSummary {
-  id: string;
-  importedAt: string;
-  bankName: string;
-  months: string[];
-  transactionCount: number;
-  totalReceitas: number;
-  totalDespesas: number;
-  pendingReview: number;
-  sourceFile?: string;
-}
-
 interface Transaction {
   id: string;
   date: string;
@@ -112,39 +100,10 @@ interface ImportPreview {
   parseErrors?: string[];
 }
 
-interface RuleItem {
-  id: string;
-  pattern: string;
-  kind: "receita" | "despesa";
-  category_id?: string | null;
-  category_label: string;
-  revenue_category?: string | null;
-  department: "VENDA" | "LOCACAO" | "ADMIN" | "AMBOS";
-  payment_method?: string | null;
-  confidence: number;
-  use_count: number;
-  is_active: boolean;
-}
-
-interface ReviewTransaction {
-  id: string;
-  monthKey: string;
-  batchId?: string | null;
-  date: string;
-  description: string;
-  amount: number;
-  isCredit: boolean;
-  category: string;
-  confidence: number;
-  matchedRule?: string | null;
-  bankName: string;
-}
-
 // ─── Componente principal ────────────────────────────────────────────────────
 
 export default function ExtratosPage() {
   const [months, setMonths] = useState<MonthSummary[]>([]);
-  const [batches, setBatches] = useState<BatchSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
   const [monthDetail, setMonthDetail] = useState<MonthDetail | null>(null);
@@ -169,13 +128,6 @@ export default function ExtratosPage() {
 
   // ── Edição de categoria ──
   const [editingTx, setEditingTx] = useState<string | null>(null);
-  const [reviewItems, setReviewItems] = useState<ReviewTransaction[]>([]);
-  const [selectedReviewIds, setSelectedReviewIds] = useState<string[]>([]);
-  const [bulkCategory, setBulkCategory] = useState("");
-  const [rules, setRules] = useState<RuleItem[]>([]);
-  const [rulePattern, setRulePattern] = useState("");
-  const [ruleKind, setRuleKind] = useState<"receita" | "despesa">("despesa");
-  const [ruleCategory, setRuleCategory] = useState("");
 
   // ── Fetch meses ──
   const fetchMonths = useCallback(async () => {
@@ -184,7 +136,6 @@ export default function ExtratosPage() {
       const res = await fetch("/api/extratos");
       const data = await res.json();
       setMonths(data.months ?? []);
-      setBatches(data.batches ?? []);
     } catch {
       // silently handle
     } finally {
@@ -193,31 +144,6 @@ export default function ExtratosPage() {
   }, []);
 
   useEffect(() => { fetchMonths(); }, [fetchMonths]);
-
-  const fetchReviewItems = useCallback(async () => {
-    try {
-      const res = await fetch("/api/extratos/revisao");
-      const data = await res.json();
-      setReviewItems(data.transactions ?? []);
-    } catch {
-      setReviewItems([]);
-    }
-  }, []);
-
-  const fetchRules = useCallback(async () => {
-    try {
-      const res = await fetch("/api/extratos/regras");
-      const data = await res.json();
-      setRules(data.rules ?? []);
-    } catch {
-      setRules([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchReviewItems();
-    fetchRules();
-  }, [fetchReviewItems, fetchRules]);
 
   // ── Fetch detalhe de um mês ──
   const fetchMonthDetail = useCallback(async (monthKey: string) => {
@@ -294,7 +220,6 @@ export default function ExtratosPage() {
       setUploadSuccess(data.message);
       setImportPreview(null);
       await fetchMonths();
-      await fetchReviewItems();
 
       if (data.months?.[0]) {
         setExpandedMonth(data.months[0]);
@@ -317,64 +242,8 @@ export default function ExtratosPage() {
       });
       setEditingTx(null);
       fetchMonthDetail(monthKey);
-      fetchReviewItems();
     } catch {
       // ignore
-    }
-  };
-
-  const bulkReview = async () => {
-    if (selectedReviewIds.length === 0 || !bulkCategory) return;
-    try {
-      const res = await fetch("/api/extratos/revisao", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ txIds: selectedReviewIds, category: bulkCategory }),
-      });
-      if (!res.ok) throw new Error("Falha ao revisar.");
-      setSelectedReviewIds([]);
-      setBulkCategory("");
-      await fetchReviewItems();
-      await fetchMonths();
-      if (expandedMonth) fetchMonthDetail(expandedMonth);
-    } catch {
-      setCleanupMessage("Falha ao revisar categorias em massa.");
-    }
-  };
-
-  const saveRule = async () => {
-    if (!rulePattern.trim() || !ruleCategory.trim()) return;
-    try {
-      const res = await fetch("/api/extratos/regras", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pattern: rulePattern,
-          kind: ruleKind,
-          categoryLabel: ruleCategory,
-          confidence: 100,
-          department: "AMBOS",
-        }),
-      });
-      if (!res.ok) throw new Error("Falha ao salvar regra.");
-      setRulePattern("");
-      setRuleCategory("");
-      await fetchRules();
-    } catch {
-      setCleanupMessage("Falha ao salvar regra de classificação.");
-    }
-  };
-
-  const toggleRule = async (rule: RuleItem) => {
-    try {
-      await fetch("/api/extratos/regras", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: rule.id, isActive: !rule.is_active }),
-      });
-      fetchRules();
-    } catch {
-      setCleanupMessage("Falha ao atualizar regra.");
     }
   };
 
@@ -412,7 +281,6 @@ export default function ExtratosPage() {
       setFilterCategory("");
       setReviewOnly(false);
       await fetchMonths();
-      await fetchReviewItems();
     } catch (error) {
       setCleanupMessage(error instanceof Error ? error.message : "Falha ao limpar extratos.");
     } finally {
@@ -510,127 +378,6 @@ export default function ExtratosPage() {
             <p className={cn("text-2xl font-bold", totalPendentes > 0 ? "text-amber-700" : "text-green-700")}>
               {totalPendentes}
             </p>
-          </div>
-        </div>
-      )}
-
-      {(reviewItems.length > 0 || rules.length > 0 || batches.length > 0) && (
-        <div className="grid gap-4 lg:grid-cols-3">
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Revisão de categorias</h2>
-                <p className="text-xs text-gray-500">{reviewItems.length} transação(ões) pendente(s)</p>
-              </div>
-              <button onClick={fetchReviewItems} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100">
-                <RefreshCw className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mb-3 flex gap-2">
-              <input
-                value={bulkCategory}
-                onChange={(event) => setBulkCategory(event.target.value)}
-                placeholder="Categoria para aprovacao em massa"
-                className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs"
-              />
-              <button
-                onClick={bulkReview}
-                disabled={selectedReviewIds.length === 0 || !bulkCategory}
-                className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white disabled:bg-gray-200"
-              >
-                Aplicar
-              </button>
-            </div>
-            <div className="max-h-72 space-y-2 overflow-y-auto">
-              {reviewItems.slice(0, 30).map((tx) => (
-                <label key={tx.id} className="flex cursor-pointer gap-2 rounded-lg border border-gray-100 bg-gray-50 p-2">
-                  <input
-                    type="checkbox"
-                    checked={selectedReviewIds.includes(tx.id)}
-                    onChange={(event) =>
-                      setSelectedReviewIds((current) =>
-                        event.target.checked ? [...current, tx.id] : current.filter((id) => id !== tx.id)
-                      )
-                    }
-                    className="mt-1"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium text-gray-900">{tx.description}</p>
-                    <p className="text-[11px] text-gray-500">
-                      {formatDate(tx.date)} · {tx.category} · {tx.confidence}%
-                    </p>
-                  </div>
-                  <span className={cn("text-xs font-semibold", tx.isCredit ? "text-green-700" : "text-red-600")}>
-                    {tx.isCredit ? "+" : "-"}{formatCurrency(tx.amount)}
-                  </span>
-                </label>
-              ))}
-              {reviewItems.length === 0 && <p className="py-6 text-center text-xs text-gray-400">Nenhuma pendência.</p>}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-gray-900">Regras configuráveis</h2>
-            <p className="mb-3 text-xs text-gray-500">Palavras do extrato que classificam automaticamente próximos lançamentos.</p>
-            <div className="mb-3 grid grid-cols-1 gap-2">
-              <input value={rulePattern} onChange={(event) => setRulePattern(event.target.value)} placeholder="Ex: PANVEL, ZAFFARI, IPTU" className="rounded-lg border border-gray-200 px-3 py-2 text-xs" />
-              <div className="flex gap-2">
-                <select value={ruleKind} onChange={(event) => setRuleKind(event.target.value as "receita" | "despesa")} className="rounded-lg border border-gray-200 px-2 py-2 text-xs">
-                  <option value="despesa">Despesa</option>
-                  <option value="receita">Entrada</option>
-                </select>
-                <input value={ruleCategory} onChange={(event) => setRuleCategory(event.target.value)} placeholder="Categoria" className="min-w-0 flex-1 rounded-lg border border-gray-200 px-3 py-2 text-xs" />
-                <button onClick={saveRule} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white">Salvar</button>
-              </div>
-            </div>
-            <div className="max-h-72 space-y-2 overflow-y-auto">
-              {rules.slice(0, 40).map((rule) => (
-                <div key={rule.id} className="flex items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold text-gray-900">{rule.pattern}</p>
-                    <p className="text-[11px] text-gray-500">{rule.category_label} · {rule.kind} · uso {rule.use_count}</p>
-                  </div>
-                  <button
-                    onClick={() => toggleRule(rule)}
-                    className={cn("rounded-full px-2 py-1 text-[10px] font-semibold", rule.is_active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500")}
-                  >
-                    {rule.is_active ? "ativa" : "inativa"}
-                  </button>
-                </div>
-              ))}
-              {rules.length === 0 && <p className="py-6 text-center text-xs text-gray-400">Nenhuma regra cadastrada.</p>}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-4">
-            <h2 className="text-sm font-semibold text-gray-900">Lotes importados</h2>
-            <p className="mb-3 text-xs text-gray-500">Rastreabilidade por arquivo/lote e limpeza pontual em HML.</p>
-            <div className="max-h-80 space-y-2 overflow-y-auto">
-              {batches.slice(0, 30).map((batch) => (
-                <div key={batch.id} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-gray-900">{batch.sourceFile ?? batch.id}</p>
-                      <p className="text-[11px] text-gray-500">
-                        {new Date(batch.importedAt).toLocaleString("pt-BR")} · {batch.transactionCount} transações
-                      </p>
-                      <p className="text-[11px] text-gray-500">Meses: {batch.months.join(", ")}</p>
-                    </div>
-                    {canClearAllStatements && (
-                      <button
-                        onClick={() => handleClearStatements({ batchId: batch.id })}
-                        disabled={cleanupLoading}
-                        className="rounded-lg border border-red-100 bg-white p-1.5 text-red-600 hover:bg-red-50"
-                        title="Apagar este lote"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {batches.length === 0 && <p className="py-6 text-center text-xs text-gray-400">Nenhum lote importado.</p>}
-            </div>
           </div>
         </div>
       )}
