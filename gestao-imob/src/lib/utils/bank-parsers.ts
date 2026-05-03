@@ -260,6 +260,10 @@ export function detectAndParse(content: string, fileName: string): ParseResult {
     return parseCaixaOFX(content);
   }
 
+  if (ext === "xml" || contentLower.includes("<?xml") || contentLower.includes("<lancamento") || contentLower.includes("<transacao")) {
+    return parseGenericXML(content);
+  }
+
   if (
     fileName.toLowerCase().includes("pipeimob") ||
     fileName.toLowerCase().includes("pipe") ||
@@ -274,7 +278,6 @@ export function detectAndParse(content: string, fileName: string): ParseResult {
 
 export function parseCaixaCSV(content: string): ParseResult {
   const errors: string[] = [];
-  const transactions: ParsedTransaction[] = [];
   const lines = normalizeLines(content);
 
   if (lines.length < 2) {
@@ -282,39 +285,8 @@ export function parseCaixaCSV(content: string): ParseResult {
   }
 
   const sep = detectSeparator(lines[0]);
-  const startIdx = normalizeBankText(lines[0]).includes("DATA") ? 1 : 0;
-
-  for (let i = startIdx; i < lines.length; i++) {
-    const cols = splitDelimitedLine(lines[i], sep);
-    if (cols.length < 3) {
-      errors.push(`Linha ${i + 1}: formato invalido (${cols.length} colunas)`);
-      continue;
-    }
-
-    const date = parseDate(cols[0]);
-    if (!date) {
-      errors.push(`Linha ${i + 1}: data invalida "${cols[0]}"`);
-      continue;
-    }
-
-    const amount = parseBRDecimal(cols[2] || "0");
-    if (Number.isNaN(amount)) {
-      errors.push(`Linha ${i + 1}: valor invalido "${cols[2]}"`);
-      continue;
-    }
-
-    const balance = cols[3] ? parseBRDecimal(cols[3]) : undefined;
-    const description = cols[1] || "";
-
-    transactions.push({
-      date,
-      description,
-      amount: Math.abs(amount),
-      balance: balance !== undefined && !Number.isNaN(balance) ? balance : undefined,
-      operationType: detectOperationType(description),
-      isCredit: amount >= 0,
-    });
-  }
+  const rows = lines.map((line) => splitDelimitedLine(line, sep));
+  const transactions = parseRows(rows, "Caixa CSV", errors);
 
   return {
     success: transactions.length > 0,
@@ -323,6 +295,269 @@ export function parseCaixaCSV(content: string): ParseResult {
     accountInfo: "Conta Corrente",
     errors,
   };
+}
+
+export function parseGenericXML(content: string): ParseResult {
+  const errors: string[] = [];
+  const spreadsheetRows = parseXmlSpreadsheetRows(content);
+  if (spreadsheetRows.length > 0) {
+    const transactions = parseRows(spreadsheetRows, "XML Spreadsheet", errors);
+    return {
+      success: transactions.length > 0,
+      transactions,
+      bankName: "Extrato XML",
+      accountInfo: "Arquivo XML",
+      errors,
+    };
+  }
+
+  const transactions: ParsedTransaction[] = [];
+  const blocks = extractXmlTransactionBlocks(content);
+  if (blocks.length === 0) {
+    return {
+      success: false,
+      transactions: [],
+      bankName: "Extrato XML",
+      accountInfo: "Arquivo XML",
+      errors: ["XML reconhecido, mas nao encontrei blocos de lancamento/transacao."],
+    };
+  }
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const dateRaw = getXmlField(block, ["data", "date", "dtposted", "dt_lancamento", "datalancamento", "datamovimento", "dtmovimento"]);
+    const description =
+      getXmlField(block, ["historico", "descricao", "description", "memo", "name", "nome", "complemento", "documento"]) ?? "";
+    const amountRaw = getXmlField(block, ["valor", "amount", "trnamt", "valorlancamento", "valortransacao"]);
+    const debitRaw = getXmlField(block, ["debito", "debit", "saida", "valorDebito"]);
+    const creditRaw = getXmlField(block, ["credito", "credit", "entrada", "valorCredito"]);
+    const balanceRaw = getXmlField(block, ["saldo", "balance", "balanco"]);
+    const docNumber = getXmlField(block, ["doc", "documento", "numero", "fitid", "id"]);
+    const typeRaw = getXmlField(block, ["tipo", "natureza", "dc", "sinal"]);
+
+    const date = dateRaw ? parseDate(dateRaw) : null;
+    if (!date) {
+      errors.push(`XML item ${i + 1}: data invalida ou ausente`);
+      continue;
+    }
+
+    const amountInfo = parseAmountFromFields(amountRaw, debitRaw, creditRaw, typeRaw);
+    if (!amountInfo) {
+      errors.push(`XML item ${i + 1}: valor invalido ou ausente`);
+      continue;
+    }
+
+    const balance = balanceRaw ? parseBRDecimal(decodeXmlEntities(balanceRaw)) : undefined;
+
+    transactions.push({
+      date,
+      description: decodeXmlEntities(description) || "Lancamento bancario",
+      amount: Math.abs(amountInfo.amount),
+      balance: balance !== undefined && !Number.isNaN(balance) ? balance : undefined,
+      docNumber: docNumber ? decodeXmlEntities(docNumber) : undefined,
+      operationType: typeRaw ? normalizeBankText(typeRaw) : detectOperationType(description),
+      isCredit: amountInfo.isCredit,
+    });
+  }
+
+  return {
+    success: transactions.length > 0,
+    transactions,
+    bankName: "Extrato XML",
+    accountInfo: "Arquivo XML",
+    errors,
+  };
+}
+
+function parseRows(rows: string[][], source: string, errors: string[]): ParsedTransaction[] {
+  const transactions: ParsedTransaction[] = [];
+  const firstUsefulRow = rows.findIndex((row) => row.some(Boolean));
+  if (firstUsefulRow < 0) return transactions;
+
+  const headerIndex = rows.findIndex((row) => row.some((cell) => normalizeBankText(cell).includes("DATA")));
+  const header = headerIndex >= 0 ? rows[headerIndex].map(normalizeBankText) : [];
+  const indexes = inferColumnIndexes(header);
+  const startIdx = headerIndex >= 0 ? headerIndex + 1 : firstUsefulRow;
+
+  for (let i = startIdx; i < rows.length; i++) {
+    const cols = rows[i];
+    if (!cols || cols.length < 2 || cols.every((cell) => !cell.trim())) {
+      continue;
+    }
+
+    const dateText = cols[indexes.date] ?? "";
+    const date = parseDate(dateText);
+    if (!date) {
+      errors.push(`${source} linha ${i + 1}: data invalida "${dateText}"`);
+      continue;
+    }
+
+    const description = buildRowDescription(cols, indexes.description);
+    const amountInfo = parseAmountFromFields(
+      indexes.amount >= 0 ? cols[indexes.amount] : undefined,
+      indexes.debit >= 0 ? cols[indexes.debit] : undefined,
+      indexes.credit >= 0 ? cols[indexes.credit] : undefined,
+      indexes.type >= 0 ? cols[indexes.type] : undefined
+    );
+    if (!amountInfo) {
+      errors.push(`${source} linha ${i + 1}: valor invalido ou ausente`);
+      continue;
+    }
+
+    const balance = indexes.balance >= 0 && cols[indexes.balance] ? parseBRDecimal(cols[indexes.balance]) : undefined;
+
+    transactions.push({
+      date,
+      description,
+      amount: Math.abs(amountInfo.amount),
+      balance: balance !== undefined && !Number.isNaN(balance) ? balance : undefined,
+      operationType: detectOperationType(description),
+      isCredit: amountInfo.isCredit,
+    });
+  }
+
+  if (transactions.length === 0 && errors.length === 0) {
+    errors.push(`${source}: nao encontrei linhas com data, descricao e valor.`);
+  }
+
+  return transactions;
+}
+
+function inferColumnIndexes(header: string[]) {
+  if (header.length === 0) {
+    return { date: 0, description: 1, amount: 2, debit: -1, credit: -1, balance: 3, type: -1 };
+  }
+
+  const find = (terms: string[]) => header.findIndex((cell) => terms.some((term) => cell.includes(normalizeBankText(term))));
+  const date = find(["DATA", "DT LANCAMENTO", "DATA MOVIMENTO", "DTPOSTED"]);
+  const description = find(["HISTORICO", "DESCRICAO", "LANCAMENTO", "MEMO", "NAME", "FAVORECIDO"]);
+  const amount = find(["VALOR", "AMOUNT", "TRNAMT"]);
+  const debit = find(["DEBITO", "SAIDA", "VALOR DEBITO"]);
+  const credit = find(["CREDITO", "ENTRADA", "VALOR CREDITO"]);
+  const balance = find(["SALDO", "BALANCE"]);
+  const type = find(["TIPO", "NATUREZA", "SINAL", "D C"]);
+
+  return {
+    date: date >= 0 ? date : 0,
+    description: description >= 0 ? description : 1,
+    amount: amount >= 0 ? amount : 2,
+    debit,
+    credit,
+    balance,
+    type,
+  };
+}
+
+function buildRowDescription(cols: string[], descriptionIndex: number): string {
+  const description = cols[descriptionIndex]?.trim();
+  if (description) return description;
+
+  const fallback = cols.find((cell) => {
+    const normalized = normalizeBankText(cell);
+    return normalized.length > 2 && !parseDate(cell) && Number.isNaN(parseBRDecimal(cell));
+  });
+
+  return fallback?.trim() || "Lancamento bancario";
+}
+
+function parseAmountFromFields(
+  amountRaw?: string,
+  debitRaw?: string,
+  creditRaw?: string,
+  typeRaw?: string
+): { amount: number; isCredit: boolean } | null {
+  const credit = creditRaw ? parseBRDecimal(decodeXmlEntities(creditRaw)) : Number.NaN;
+  if (!Number.isNaN(credit) && credit !== 0) return { amount: Math.abs(credit), isCredit: true };
+
+  const debit = debitRaw ? parseBRDecimal(decodeXmlEntities(debitRaw)) : Number.NaN;
+  if (!Number.isNaN(debit) && debit !== 0) return { amount: -Math.abs(debit), isCredit: false };
+
+  if (!amountRaw) return null;
+
+  const amount = parseBRDecimal(decodeXmlEntities(amountRaw));
+  if (Number.isNaN(amount) || amount === 0) return null;
+
+  const type = normalizeBankText(typeRaw ?? "");
+  const isDebitByType =
+    type.includes("DEBIT") ||
+    type === "D" ||
+    type.includes("SAIDA") ||
+    type.includes("PAGAMENTO") ||
+    type.includes("DEBITO");
+  const isCreditByType =
+    type.includes("CREDIT") ||
+    type === "C" ||
+    type.includes("ENTRADA") ||
+    type.includes("RECEB") ||
+    type.includes("CREDITO");
+
+  if (isDebitByType) return { amount: -Math.abs(amount), isCredit: false };
+  if (isCreditByType) return { amount: Math.abs(amount), isCredit: true };
+
+  return { amount, isCredit: amount > 0 };
+}
+
+function parseXmlSpreadsheetRows(content: string): string[][] {
+  if (!/<Workbook[\s>]/i.test(content) && !/<Row[\s>]/i.test(content)) return [];
+
+  const rows: string[][] = [];
+  const rowRegex = /<Row\b[^>]*>([\s\S]*?)<\/Row>/gi;
+  let rowMatch: RegExpExecArray | null;
+
+  while ((rowMatch = rowRegex.exec(content)) !== null) {
+    const cells: string[] = [];
+    const cellRegex = /<Cell\b[^>]*>[\s\S]*?<Data\b[^>]*>([\s\S]*?)<\/Data>[\s\S]*?<\/Cell>/gi;
+    let cellMatch: RegExpExecArray | null;
+
+    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+      cells.push(decodeXmlEntities(stripXmlTags(cellMatch[1])).trim());
+    }
+
+    if (cells.some(Boolean)) rows.push(cells);
+  }
+
+  return rows;
+}
+
+function extractXmlTransactionBlocks(content: string): string[] {
+  const tags = ["STMTTRN", "lancamento", "transacao", "transaction", "movimento", "item"];
+  const blocks: string[] = [];
+
+  for (const tag of tags) {
+    const regex = new RegExp(`<${tag}\\b[^>]*>([\\s\\S]*?)<\\/${tag}>`, "gi");
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      blocks.push(match[1]);
+    }
+    if (blocks.length > 0) break;
+  }
+
+  return blocks;
+}
+
+function getXmlField(block: string, fields: string[]): string | undefined {
+  for (const field of fields) {
+    const normalizedField = field.replace(/[-_]/g, "[-_]?");
+    const regex = new RegExp(`<${normalizedField}\\b[^>]*>([\\s\\S]*?)<\\/${normalizedField}>`, "i");
+    const match = block.match(regex);
+    if (match?.[1]) return stripXmlTags(match[1]).trim();
+  }
+  return undefined;
+}
+
+function stripXmlTags(value: string): string {
+  return value.replace(/<[^>]+>/g, " ");
+}
+
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(Number.parseInt(code, 16)));
 }
 
 export function parseCaixaOFX(content: string): ParseResult {
@@ -336,7 +571,9 @@ export function parseCaixaOFX(content: string): ParseResult {
     const trnType = extractOFXField(block, "TRNTYPE") || "OTHER";
     const dateRaw = extractOFXField(block, "DTPOSTED") || "";
     const amountStr = extractOFXField(block, "TRNAMT") || "0";
-    const memo = extractOFXField(block, "MEMO") || extractOFXField(block, "NAME") || "";
+    const name = extractOFXField(block, "NAME") || "";
+    const memo = extractOFXField(block, "MEMO") || "";
+    const description = [name, memo].filter(Boolean).join(" - ");
     const fitId = extractOFXField(block, "FITID") || "";
     const checkNum = extractOFXField(block, "CHECKNUM");
 
@@ -353,10 +590,10 @@ export function parseCaixaOFX(content: string): ParseResult {
 
     transactions.push({
       date: `${dateRaw.substring(0, 4)}-${dateRaw.substring(4, 6)}-${dateRaw.substring(6, 8)}`,
-      description: memo,
+      description,
       amount: Math.abs(amount),
       docNumber: checkNum || fitId,
-      operationType: trnType === "CREDIT" ? "CREDITO" : trnType === "DEBIT" ? "DEBITO" : detectOperationType(memo),
+      operationType: trnType === "CREDIT" ? "CREDITO" : trnType === "DEBIT" ? "DEBITO" : detectOperationType(description),
       isCredit: amount > 0,
     });
   }

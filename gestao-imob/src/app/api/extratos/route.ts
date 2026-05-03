@@ -99,15 +99,12 @@ export async function POST(request: NextRequest) {
     const bankAccount = await resolveBankAccount(requestedBankAccountId, parseResult.bankName);
     if (!bankAccount) {
       return NextResponse.json(
-        { error: "Nenhuma conta bancaria ativa encontrada. Rode o seed ou cadastre uma conta antes de importar." },
+        { error: "Nao foi possivel criar ou localizar uma conta bancaria para importar o extrato." },
         { status: 422 }
       );
     }
 
-    const categories = await prisma.expenseCategory.findMany({
-      where: { is_active: true },
-      select: { id: true, name: true, department: true },
-    });
+    const categories = await ensureImportCategories();
 
     const batchId = `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let imported = 0;
@@ -196,6 +193,30 @@ export async function POST(request: NextRequest) {
   }
 }
 
+async function ensureImportCategories(): Promise<DbCategory[]> {
+  const existing = await prisma.expenseCategory.findMany({
+      where: { is_active: true },
+      select: { id: true, name: true, department: true },
+    });
+  if (existing.length > 0) return existing;
+
+  await prisma.expenseCategory.upsert({
+    where: { code: "IMPORT.OUTROS" },
+    update: { is_active: true },
+    create: {
+      code: "IMPORT.OUTROS",
+      name: "Outros",
+      department: "AMBOS",
+      sort_order: 999,
+    },
+  });
+
+  return prisma.expenseCategory.findMany({
+    where: { is_active: true },
+    select: { id: true, name: true, department: true },
+  });
+}
+
 async function readStatementFile(file: File): Promise<string> {
   const extension = file.name.toLowerCase().split(".").pop();
   if (extension === "xlsx" || extension === "xls") {
@@ -219,9 +240,22 @@ async function resolveBankAccount(requestedId: string | null, bankName: string) 
   const preferred = await prisma.bankAccount.findUnique({ where: { id: preferredId } });
   if (preferred?.is_active) return preferred;
 
-  return prisma.bankAccount.findFirst({
+  const existing = await prisma.bankAccount.findFirst({
     where: { is_active: true },
     orderBy: { created_at: "asc" },
+  });
+  if (existing) return existing;
+
+  return prisma.bankAccount.upsert({
+    where: { id: preferredId },
+    update: { is_active: true },
+    create: {
+      id: preferredId,
+      bank_name: bankName || "Conta bancaria importada",
+      bank_code: normalizedBank.includes("PIPE") ? null : "000",
+      account_number: normalizedBank.includes("PIPE") ? "principal" : "importada",
+      account_type: normalizedBank.includes("PIPE") ? "PLATAFORMA" : "CORRENTE",
+    },
   });
 }
 

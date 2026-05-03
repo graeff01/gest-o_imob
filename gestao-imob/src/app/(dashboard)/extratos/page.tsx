@@ -141,7 +141,10 @@ export default function ExtratosPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setUploadError(data.error ?? "Erro ao importar.");
+        const details = [...(data.errors ?? []), ...(data.parseErrors ?? []), ...(data.importErrors ?? [])]
+          .slice(0, 3)
+          .join(" | ");
+        setUploadError(details ? `${data.error ?? "Erro ao importar."} ${details}` : data.error ?? "Erro ao importar.");
         return;
       }
 
@@ -492,7 +495,7 @@ export default function ExtratosPage() {
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".ofx,.qfx,.csv,.txt,.xlsx,.xls"
+                      accept=".ofx,.qfx,.csv,.txt,.xlsx,.xls,.xml"
                       className="hidden"
                       disabled={uploading}
                       onChange={(e) => {
