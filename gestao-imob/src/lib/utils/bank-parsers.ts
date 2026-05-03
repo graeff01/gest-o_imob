@@ -1,13 +1,12 @@
 /**
- * Parsers para extratos bancários
- * - Caixa Econômica Federal (CSV e OFX)
- * - Pipeimob (CSV plataforma)
+ * Parsers e categorizacao deterministica para extratos bancarios.
+ * Suporta Caixa CSV/OFX e CSV do Pipeimob.
  */
 
 export interface ParsedTransaction {
   date: string; // YYYY-MM-DD
   description: string;
-  amount: number; // positivo = crédito, negativo = débito
+  amount: number; // sempre positivo; isCredit define entrada/saida
   balance?: number;
   docNumber?: string;
   operationType: string;
@@ -22,72 +21,297 @@ export interface ParseResult {
   errors: string[];
 }
 
-// ═══════════════════════════════════════════
-// CAIXA ECONÔMICA - CSV
-// ═══════════════════════════════════════════
-// Formato típico:
-// Data;Histórico;Valor;Saldo
-// 01/03/2026;PIX RECEBIDO - FULANO;1.500,00;12.345,67
-// 02/03/2026;PAGTO TITULO;-800,00;11.545,67
+export const CATEGORIES = {
+  "Aluguel Recebido": { color: "bg-green-100 text-green-800", type: "receita" },
+  "Comissao Recebida": { color: "bg-emerald-100 text-emerald-800", type: "receita" },
+  "Repasse Recebido": { color: "bg-teal-100 text-teal-800", type: "receita" },
+  "Outras Receitas": { color: "bg-lime-100 text-lime-800", type: "receita" },
+  "Mercado / Copa": { color: "bg-amber-100 text-amber-800", type: "despesa" },
+  "Farmacia": { color: "bg-rose-100 text-rose-800", type: "despesa" },
+  "Ferragem / Material": { color: "bg-zinc-100 text-zinc-800", type: "despesa" },
+  "Alimentacao": { color: "bg-orange-100 text-orange-800", type: "despesa" },
+  "Folha / Comissoes": { color: "bg-blue-100 text-blue-800", type: "despesa" },
+  "Royalties Franquia": { color: "bg-violet-100 text-violet-800", type: "despesa" },
+  "Contas de Consumo": { color: "bg-amber-100 text-amber-800", type: "despesa" },
+  "Aluguel Escritorio": { color: "bg-orange-100 text-orange-800", type: "despesa" },
+  "Condominio": { color: "bg-yellow-100 text-yellow-800", type: "despesa" },
+  "IPTU / Impostos": { color: "bg-red-100 text-red-800", type: "despesa" },
+  "Tarifas Bancarias": { color: "bg-slate-100 text-slate-800", type: "despesa" },
+  "Marketing / Publicidade": { color: "bg-pink-100 text-pink-800", type: "despesa" },
+  "Manutencao / Reparos": { color: "bg-cyan-100 text-cyan-800", type: "despesa" },
+  "Material Escritorio": { color: "bg-indigo-100 text-indigo-800", type: "despesa" },
+  "Software / Sistemas": { color: "bg-purple-100 text-purple-800", type: "despesa" },
+  "Seguros": { color: "bg-sky-100 text-sky-800", type: "despesa" },
+  "Contabilidade / Juridico": { color: "bg-fuchsia-100 text-fuchsia-800", type: "despesa" },
+  "Transporte / Combustivel": { color: "bg-stone-100 text-stone-800", type: "despesa" },
+  "Outros": { color: "bg-gray-100 text-gray-800", type: "despesa" },
+} as const;
+
+export type CategoryName = keyof typeof CATEGORIES;
+export type BankTransactionKind = "receita" | "despesa";
+
+export interface TransactionCategorySuggestion {
+  category: CategoryName;
+  kind: BankTransactionKind;
+  expenseCategoryNames: string[];
+  revenueCategory:
+    | "INTERMEDIACAO"
+    | "AGENCIAMENTO"
+    | "CAMPANHA_SUCESSO"
+    | "CAMPANHA_CAPTACAO"
+    | "NFSE_ALUGUEL"
+    | "ROYALTY"
+    | "OUTRO";
+  department: "VENDA" | "LOCACAO" | "ADMIN" | "AMBOS";
+  paymentMethod?: "PIX" | "BOLETO" | "CARTAO" | "DINHEIRO" | "DEBITO_AUTOMATICO" | "TRANSFERENCIA";
+  supplier?: string;
+  confidence: number;
+  matchedRule: string;
+}
+
+interface RuleDefinition {
+  id: string;
+  category: CategoryName;
+  kind: BankTransactionKind;
+  any: string[];
+  all?: string[];
+  not?: string[];
+  expenseCategoryNames?: string[];
+  revenueCategory?: TransactionCategorySuggestion["revenueCategory"];
+  department?: TransactionCategorySuggestion["department"];
+  paymentMethod?: TransactionCategorySuggestion["paymentMethod"];
+  confidence?: number;
+}
+
+const SMART_RULES: RuleDefinition[] = [
+  {
+    id: "receita-aluguel",
+    category: "Aluguel Recebido",
+    kind: "receita",
+    any: ["ALUGUEL", "ALUG", "LOCACAO", "TAXA ADMINISTRACAO", "TX ADMIN"],
+    not: ["PAGAMENTO", "PAGTO", "DEBITO"],
+    revenueCategory: "NFSE_ALUGUEL",
+    department: "LOCACAO",
+    paymentMethod: "PIX",
+    confidence: 92,
+  },
+  {
+    id: "receita-repasse",
+    category: "Repasse Recebido",
+    kind: "receita",
+    any: ["PIPEIMOB", "REPASSE", "FIDC", "LIQUIDACAO PIPE"],
+    revenueCategory: "INTERMEDIACAO",
+    department: "LOCACAO",
+    paymentMethod: "TRANSFERENCIA",
+    confidence: 92,
+  },
+  {
+    id: "receita-comissao",
+    category: "Comissao Recebida",
+    kind: "receita",
+    any: ["COMISSAO", "INTERMEDIACAO", "AGENCIAMENTO"],
+    revenueCategory: "INTERMEDIACAO",
+    department: "AMBOS",
+    confidence: 85,
+  },
+  {
+    id: "mercado-copa",
+    category: "Mercado / Copa",
+    kind: "despesa",
+    any: [
+      "MERCADO", "SUPERMERCADO", "SUPER MERCADO", "HIPERMERCADO", "ATACADAO", "ASSAI",
+      "ZAFFARI", "CARREFOUR", "BIG ", "NACIONAL", "DIA BRASIL", "MAXXI", "RISSUL",
+      "UNISUPER", "COSTA ATACADO", "FORT ATACADISTA", "MACROMIX",
+    ],
+    expenseCategoryNames: ["Copa/Cozinha", "Mantimentos/Cafe", "Alimentacao/Copa", "Material"],
+    department: "AMBOS",
+    paymentMethod: "CARTAO",
+    confidence: 92,
+  },
+  {
+    id: "farmacia",
+    category: "Farmacia",
+    kind: "despesa",
+    any: ["FARMACIA", "DROGARIA", "DROGA", "PANVEL", "DROGASIL", "RAIA", "SAO JOAO", "PACHECO", "ULTRAFARMA", "NISSEI", "PAGUE MENOS"],
+    expenseCategoryNames: ["Farmacia", "Material", "Outros Operacionais Venda", "Mantimentos/Cafe"],
+    department: "AMBOS",
+    paymentMethod: "CARTAO",
+    confidence: 90,
+  },
+  {
+    id: "ferragem-manutencao",
+    category: "Ferragem / Material",
+    kind: "despesa",
+    any: ["FERRAGEM", "FERRAGENS", "MATERIAL CONSTRUCAO", "CONSTRUCAO", "LEROY", "TELHANORTE", "TUMELERO", "CASSOL", "FERRAMENTA", "PARAFUSO", "ELETRICA", "HIDRAULICA"],
+    expenseCategoryNames: ["Ferragens/Material de Construcao", "Ferragens e Utilidades", "Manutencao Geral", "Manutencao Eletrica", "Manutencao Hidraulica"],
+    department: "AMBOS",
+    paymentMethod: "CARTAO",
+    confidence: 91,
+  },
+  {
+    id: "alimentacao",
+    category: "Alimentacao",
+    kind: "despesa",
+    any: ["RESTAURANTE", "LANCH", "PADARIA", "CAFE", "IFOOD", "AIQFOME", "MCDONALD", "BURGER KING", "SUBWAY", "PIZZARIA", "CHURRASCARIA"],
+    expenseCategoryNames: ["Alimentacao/Copa", "Copa/Cozinha", "Mantimentos/Cafe", "VA (Vale Alimentacao) Locacao", "VA (Vale Alimentacao) Venda"],
+    department: "AMBOS",
+    paymentMethod: "CARTAO",
+    confidence: 82,
+  },
+  {
+    id: "tarifas",
+    category: "Tarifas Bancarias",
+    kind: "despesa",
+    any: ["TARIFA", "TAR ", "CESTA", "MANUT CONTA", "ANUIDADE", "IOF", "JUROS", "ENCARGOS", "TED TARIFA", "PIX TARIFA"],
+    expenseCategoryNames: ["TAR PIX", "Tarifa Boleto", "Tarifa TED/DOC", "Tarifa Cesta", "IOF", "Juros Bancarios", "Outras Tarifas"],
+    department: "AMBOS",
+    confidence: 94,
+  },
+  {
+    id: "transporte",
+    category: "Transporte / Combustivel",
+    kind: "despesa",
+    any: ["UBER", "99 ", "99APP", "CABIFY", "POSTO", "COMBUSTIVEL", "GASOLINA", "IPIRANGA", "SHELL", "RAIZEN", "ESTACIONAM", "PEDAGIO"],
+    expenseCategoryNames: ["Uber/Transporte", "VT (Vale Transporte) Locacao", "VT (Vale Transporte) Venda", "Outros Operacionais Venda"],
+    department: "AMBOS",
+    paymentMethod: "CARTAO",
+    confidence: 88,
+  },
+  {
+    id: "marketing",
+    category: "Marketing / Publicidade",
+    kind: "despesa",
+    any: ["GOOGLE", "META ADS", "FACEBOOK", "INSTAGRAM", "PUBLICIDADE", "ANUNCIO", "OLX", "ZAP IMOV", "MARKETING"],
+    expenseCategoryNames: ["Google Mensal", "Google Impulsionamento", "Facebook Impulsionamento", "Instagram Impulsionamento", "Associacao de Marketing"],
+    department: "AMBOS",
+    paymentMethod: "CARTAO",
+    confidence: 90,
+  },
+  {
+    id: "software",
+    category: "Software / Sistemas",
+    kind: "despesa",
+    any: ["SOFTWARE", "SISTEMA", "ASSINATURA", "MICROSOFT", "ADOBE", "ZOOM", "SUPERLOGICA", "JETIMOB", "IMOVIEW", "ARBO", "CHECK ON", "CHECK-ON", "PROCOB"],
+    expenseCategoryNames: ["Assinatura Digital/Aplicativo", "CHECK-ON (software)", "Procob (sistema de credito)", "Software Locacao"],
+    department: "AMBOS",
+    paymentMethod: "CARTAO",
+    confidence: 89,
+  },
+  {
+    id: "contas-consumo",
+    category: "Contas de Consumo",
+    kind: "despesa",
+    any: ["ENERGIA", "LUZ", "CEEE", "RGE", "CPFL", "AGUA", "DMAE", "CORSAN", "TELEFONE", "INTERNET", "VIVO", "CLARO", "TIM ", "OI ", "GAS", "SULGAS"],
+    expenseCategoryNames: ["Energia Eletrica", "Informatica/Internet", "Telefone Fixo", "Celular Claro", "Celular Vivo", "Celular TIM", "Agua Mineral"],
+    department: "AMBOS",
+    paymentMethod: "BOLETO",
+    confidence: 90,
+  },
+  {
+    id: "impostos",
+    category: "IPTU / Impostos",
+    kind: "despesa",
+    any: ["IPTU", "ISS", "DARF", "DAS ", "SIMPLES", "IRPJ", "CSLL", "PIS", "COFINS", "IMPOSTO"],
+    expenseCategoryNames: ["IPTU", "ISS", "Simples Nacional", "IRPJ", "CSLL", "PIS", "COFINS", "Outros Impostos"],
+    department: "AMBOS",
+    paymentMethod: "BOLETO",
+    confidence: 92,
+  },
+  {
+    id: "folha",
+    category: "Folha / Comissoes",
+    kind: "despesa",
+    any: ["SALARIO", "FOLHA", "FGTS", "INSS", "FERIAS", "RESCISAO", "PRO LABORE", "VALE TRANSPORTE", "VALE REFEICAO", "COMISSAO"],
+    expenseCategoryNames: ["Salarios Locacao", "Salarios Venda", "FGTS Locacao", "FGTS Venda", "GPS/INSS Locacao", "GPS/INSS Venda", "Pro-labore Locacao", "Pro-labore Venda"],
+    department: "AMBOS",
+    paymentMethod: "TRANSFERENCIA",
+    confidence: 87,
+  },
+  {
+    id: "gastos-espaco",
+    category: "Aluguel Escritorio",
+    kind: "despesa",
+    any: ["ALUGUEL", "CONDOMINIO", "IPTU ESCRITORIO", "SEGURO ESCRITORIO", "REFORMA"],
+    not: ["RECEB", "CREDITO"],
+    expenseCategoryNames: ["Aluguel Escritorio", "Condominio Escritorio", "IPTU Escritorio", "Seguro Escritorio", "Reforma/Obra"],
+    department: "AMBOS",
+    paymentMethod: "BOLETO",
+    confidence: 84,
+  },
+  {
+    id: "contabilidade-juridico",
+    category: "Contabilidade / Juridico",
+    kind: "despesa",
+    any: ["CONTABIL", "CONTADOR", "ADVOGAD", "JURIDIC", "HONORAR", "CARTORIO", "CERTIDAO", "CERTIDOES"],
+    expenseCategoryNames: ["Certidoes/Procuracao", "Cartoes de Visita", "Outros Operacionais Venda"],
+    department: "AMBOS",
+    paymentMethod: "TRANSFERENCIA",
+    confidence: 82,
+  },
+];
+
+export type BankSource = "caixa_csv" | "caixa_ofx" | "pipeimob";
+
+export function detectAndParse(content: string, fileName: string): ParseResult {
+  const ext = fileName.toLowerCase().split(".").pop() || "";
+  const contentLower = content.toLowerCase();
+
+  if (ext === "ofx" || ext === "qfx" || contentLower.includes("<ofx>") || contentLower.includes("ofxheader")) {
+    return parseCaixaOFX(content);
+  }
+
+  if (
+    fileName.toLowerCase().includes("pipeimob") ||
+    fileName.toLowerCase().includes("pipe") ||
+    contentLower.includes("pipeimob") ||
+    contentLower.includes("contrato")
+  ) {
+    return parsePipeimobCSV(content);
+  }
+
+  return parseCaixaCSV(content);
+}
 
 export function parseCaixaCSV(content: string): ParseResult {
   const errors: string[] = [];
   const transactions: ParsedTransaction[] = [];
-
-  const lines = content
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+  const lines = normalizeLines(content);
 
   if (lines.length < 2) {
-    return { success: false, transactions: [], bankName: "Caixa Econômica Federal", errors: ["Arquivo vazio ou sem dados"] };
+    return { success: false, transactions: [], bankName: "Caixa Economica Federal", errors: ["Arquivo vazio ou sem dados"] };
   }
 
-  // Detectar separador (ponto e vírgula ou tab)
-  const sep = lines[0].includes(";") ? ";" : "\t";
-
-  // Pular header
-  const startIdx = lines[0].toLowerCase().includes("data") ? 1 : 0;
+  const sep = detectSeparator(lines[0]);
+  const startIdx = normalizeBankText(lines[0]).includes("DATA") ? 1 : 0;
 
   for (let i = startIdx; i < lines.length; i++) {
-    const cols = lines[i].split(sep).map((c) => c.trim().replace(/^"|"$/g, ""));
+    const cols = splitDelimitedLine(lines[i], sep);
     if (cols.length < 3) {
-      errors.push(`Linha ${i + 1}: formato inválido (${cols.length} colunas)`);
+      errors.push(`Linha ${i + 1}: formato invalido (${cols.length} colunas)`);
       continue;
     }
 
-    const dateStr = cols[0];
+    const date = parseDate(cols[0]);
+    if (!date) {
+      errors.push(`Linha ${i + 1}: data invalida "${cols[0]}"`);
+      continue;
+    }
+
+    const amount = parseBRDecimal(cols[2] || "0");
+    if (Number.isNaN(amount)) {
+      errors.push(`Linha ${i + 1}: valor invalido "${cols[2]}"`);
+      continue;
+    }
+
+    const balance = cols[3] ? parseBRDecimal(cols[3]) : undefined;
     const description = cols[1] || "";
-    const valorStr = cols[2] || "0";
-    const saldoStr = cols.length > 3 ? cols[3] : undefined;
-
-    // Parse data DD/MM/YYYY -> YYYY-MM-DD
-    const dateParts = dateStr.split("/");
-    if (dateParts.length !== 3) {
-      errors.push(`Linha ${i + 1}: data inválida "${dateStr}"`);
-      continue;
-    }
-    const isoDate = `${dateParts[2]}-${dateParts[1].padStart(2, "0")}-${dateParts[0].padStart(2, "0")}`;
-
-    // Parse valor BR (1.234,56 -> 1234.56)
-    const amount = parseBRDecimal(valorStr);
-    if (isNaN(amount)) {
-      errors.push(`Linha ${i + 1}: valor inválido "${valorStr}"`);
-      continue;
-    }
-
-    const balance = saldoStr ? parseBRDecimal(saldoStr) : undefined;
-
-    // Detectar tipo de operação pelo histórico
-    const opType = detectOperationType(description);
 
     transactions.push({
-      date: isoDate,
-      description: description,
+      date,
+      description,
       amount: Math.abs(amount),
-      balance: balance !== undefined && !isNaN(balance) ? balance : undefined,
-      operationType: opType,
+      balance: balance !== undefined && !Number.isNaN(balance) ? balance : undefined,
+      operationType: detectOperationType(description),
       isCredit: amount >= 0,
     });
   }
@@ -95,28 +319,20 @@ export function parseCaixaCSV(content: string): ParseResult {
   return {
     success: transactions.length > 0,
     transactions,
-    bankName: "Caixa Econômica Federal",
+    bankName: "Caixa Economica Federal",
     accountInfo: "Conta Corrente",
     errors,
   };
 }
 
-// ═══════════════════════════════════════════
-// CAIXA ECONÔMICA - OFX
-// ═══════════════════════════════════════════
-// Formato OFX/QFX usado por bancos brasileiros
-
 export function parseCaixaOFX(content: string): ParseResult {
   const errors: string[] = [];
   const transactions: ParsedTransaction[] = [];
-
-  // Extrair transações do bloco STMTTRN
-  const transRegex = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi;
-  let match;
+  const transRegex = /<STMTTRN>([\s\S]*?)(?=<STMTTRN>|<\/BANKTRANLIST>|<\/STMTTRN>)/gi;
+  let match: RegExpExecArray | null;
 
   while ((match = transRegex.exec(content)) !== null) {
     const block = match[1];
-
     const trnType = extractOFXField(block, "TRNTYPE") || "OTHER";
     const dateRaw = extractOFXField(block, "DTPOSTED") || "";
     const amountStr = extractOFXField(block, "TRNAMT") || "0";
@@ -124,21 +340,19 @@ export function parseCaixaOFX(content: string): ParseResult {
     const fitId = extractOFXField(block, "FITID") || "";
     const checkNum = extractOFXField(block, "CHECKNUM");
 
-    // Parse data YYYYMMDD -> YYYY-MM-DD
     if (dateRaw.length < 8) {
-      errors.push(`Transação com data inválida: "${dateRaw}"`);
+      errors.push(`Transacao com data invalida: "${dateRaw}"`);
       continue;
     }
-    const isoDate = `${dateRaw.substring(0, 4)}-${dateRaw.substring(4, 6)}-${dateRaw.substring(6, 8)}`;
 
-    const amount = parseFloat(amountStr.replace(",", "."));
-    if (isNaN(amount)) {
-      errors.push(`Transação com valor inválido: "${amountStr}"`);
+    const amount = Number.parseFloat(amountStr.replace(",", "."));
+    if (Number.isNaN(amount)) {
+      errors.push(`Transacao com valor invalido: "${amountStr}"`);
       continue;
     }
 
     transactions.push({
-      date: isoDate,
+      date: `${dateRaw.substring(0, 4)}-${dateRaw.substring(4, 6)}-${dateRaw.substring(6, 8)}`,
       description: memo,
       amount: Math.abs(amount),
       docNumber: checkNum || fitId,
@@ -147,94 +361,64 @@ export function parseCaixaOFX(content: string): ParseResult {
     });
   }
 
-  // Extrair info da conta
   const acctId = extractOFXField(content, "ACCTID") || "";
-
-  // Saldo final
   const balAmtStr = extractOFXField(content, "BALAMT");
   if (balAmtStr && transactions.length > 0) {
-    const lastTx = transactions[transactions.length - 1];
-    lastTx.balance = parseFloat(balAmtStr.replace(",", "."));
+    transactions[transactions.length - 1].balance = Number.parseFloat(balAmtStr.replace(",", "."));
   }
 
   return {
     success: transactions.length > 0,
     transactions,
-    bankName: "Caixa Econômica Federal",
+    bankName: "Caixa Economica Federal",
     accountInfo: acctId ? `Ag/Conta: ${acctId}` : undefined,
     errors,
   };
 }
 
-// ═══════════════════════════════════════════
-// PIPEIMOB (CSV da plataforma)
-// ═══════════════════════════════════════════
-// Formato típico:
-// Data,Descrição,Tipo,Valor,Contrato
-// 01/03/2026,Aluguel Recebido - MV-2025-0001,CREDITO,2500.00,MV-2025-0001
-
 export function parsePipeimobCSV(content: string): ParseResult {
   const errors: string[] = [];
   const transactions: ParsedTransaction[] = [];
-
-  const lines = content
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+  const lines = normalizeLines(content);
 
   if (lines.length < 2) {
     return { success: false, transactions: [], bankName: "Pipeimob", errors: ["Arquivo vazio ou sem dados"] };
   }
 
-  const sep = lines[0].includes(";") ? ";" : ",";
-  const startIdx = lines[0].toLowerCase().includes("data") ? 1 : 0;
+  const sep = detectSeparator(lines[0]);
+  const startIdx = normalizeBankText(lines[0]).includes("DATA") ? 1 : 0;
 
   for (let i = startIdx; i < lines.length; i++) {
-    const cols = lines[i].split(sep).map((c) => c.trim().replace(/^"|"$/g, ""));
+    const cols = splitDelimitedLine(lines[i], sep);
     if (cols.length < 4) {
-      errors.push(`Linha ${i + 1}: formato inválido (${cols.length} colunas)`);
+      errors.push(`Linha ${i + 1}: formato invalido (${cols.length} colunas)`);
       continue;
     }
 
-    const dateStr = cols[0];
-    const description = cols[1] || "";
-    const tipo = (cols[2] || "").toUpperCase();
-    const valorStr = cols[3] || "0";
-    const contrato = cols.length > 4 ? cols[4] : undefined;
-
-    // Parse data
-    let isoDate: string;
-    if (dateStr.includes("/")) {
-      const parts = dateStr.split("/");
-      if (parts.length !== 3) {
-        errors.push(`Linha ${i + 1}: data inválida "${dateStr}"`);
-        continue;
-      }
-      isoDate = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
-    } else {
-      isoDate = dateStr; // Já em ISO
-    }
-
-    // Parse valor (aceita formato BR e EN)
-    let amount = parseBRDecimal(valorStr);
-    if (isNaN(amount)) {
-      amount = parseFloat(valorStr);
-    }
-    if (isNaN(amount)) {
-      errors.push(`Linha ${i + 1}: valor inválido "${valorStr}"`);
+    const date = parseDate(cols[0]);
+    if (!date) {
+      errors.push(`Linha ${i + 1}: data invalida "${cols[0]}"`);
       continue;
     }
 
-    const isCredit = tipo.includes("CREDIT") || tipo.includes("ENTRADA") || amount > 0;
+    let amount = parseBRDecimal(cols[3] || "0");
+    if (Number.isNaN(amount)) amount = Number.parseFloat(cols[3] || "0");
+    if (Number.isNaN(amount)) {
+      errors.push(`Linha ${i + 1}: valor invalido "${cols[3]}"`);
+      continue;
+    }
+
+    const tipo = normalizeBankText(cols[2] || "");
+    const contrato = cols[4];
+    const description = contrato ? `${cols[1] || ""} [${contrato}]` : cols[1] || "";
 
     transactions.push({
-      date: isoDate,
-      description: contrato ? `${description} [${contrato}]` : description,
+      date,
+      description,
       amount: Math.abs(amount),
       docNumber: contrato,
       operationType: tipo || detectOperationType(description),
-      isCredit,
+      isCredit: tipo.includes("CREDIT") || tipo.includes("ENTRADA") || amount > 0,
     });
   }
 
@@ -247,58 +431,153 @@ export function parsePipeimobCSV(content: string): ParseResult {
   };
 }
 
-// ═══════════════════════════════════════════
-// AUTO-DETECT & PARSE
-// ═══════════════════════════════════════════
-
-export type BankSource = "caixa_csv" | "caixa_ofx" | "pipeimob";
-
-export function detectAndParse(content: string, fileName: string): ParseResult {
-  const ext = fileName.toLowerCase().split(".").pop() || "";
-  const contentLower = content.toLowerCase();
-
-  // OFX
-  if (ext === "ofx" || ext === "qfx" || contentLower.includes("<ofx>") || contentLower.includes("ofxheader")) {
-    return parseCaixaOFX(content);
-  }
-
-  // Pipeimob (detectar por conteúdo)
-  if (
-    fileName.toLowerCase().includes("pipeimob") ||
-    fileName.toLowerCase().includes("pipe") ||
-    contentLower.includes("pipeimob") ||
-    contentLower.includes("contrato")
-  ) {
-    return parsePipeimobCSV(content);
-  }
-
-  // Default: Caixa CSV
-  return parseCaixaCSV(content);
+export function suggestCategory(description: string): CategoryName {
+  return suggestTransactionClassification(description).category;
 }
 
-// ═══════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════
+export function suggestTransactionClassification(
+  description: string,
+  isCredit?: boolean
+): TransactionCategorySuggestion {
+  const normalized = normalizeBankText(description);
+  const kind: BankTransactionKind = isCredit ? "receita" : "despesa";
+  const candidates = SMART_RULES.filter((rule) => isCredit === undefined || rule.kind === kind);
+
+  for (const rule of candidates) {
+    if (matchesRule(normalized, rule)) {
+      return {
+        category: rule.category,
+        kind: rule.kind,
+        expenseCategoryNames: rule.expenseCategoryNames ?? ["Outros Operacionais Venda", "Outros Operacionais Locacao"],
+        revenueCategory: rule.revenueCategory ?? "OUTRO",
+        department: rule.department ?? "AMBOS",
+        paymentMethod: rule.paymentMethod ?? detectPaymentMethod(normalized),
+        supplier: extractLikelySupplier(description),
+        confidence: rule.confidence ?? 80,
+        matchedRule: rule.id,
+      };
+    }
+  }
+
+  if (isCredit) {
+    return {
+      category: "Outras Receitas",
+      kind: "receita",
+      expenseCategoryNames: [],
+      revenueCategory: "OUTRO",
+      department: "AMBOS",
+      paymentMethod: detectPaymentMethod(normalized),
+      supplier: extractLikelySupplier(description),
+      confidence: 55,
+      matchedRule: "fallback-receita",
+    };
+  }
+
+  return {
+    category: "Outros",
+    kind: "despesa",
+    expenseCategoryNames: ["Outros Operacionais Venda", "Outros Operacionais Locacao", "Outras Manutencoes"],
+    revenueCategory: "OUTRO",
+    department: "AMBOS",
+    paymentMethod: detectPaymentMethod(normalized),
+    supplier: extractLikelySupplier(description),
+    confidence: 35,
+    matchedRule: "fallback-despesa",
+  };
+}
+
+export function normalizeBankText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toUpperCase();
+}
+
+function normalizeLines(content: string): string[] {
+  return content
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function detectSeparator(header: string): string {
+  if (header.includes(";")) return ";";
+  if (header.includes("\t")) return "\t";
+  return ",";
+}
+
+function splitDelimitedLine(line: string, sep: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let insideQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      insideQuotes = !insideQuotes;
+      continue;
+    }
+    if (char === sep && !insideQuotes) {
+      result.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+
+  result.push(current.trim());
+  return result.map((item) => item.replace(/^"|"$/g, "").trim());
+}
+
+function parseDate(value: string): string | null {
+  const clean = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+
+  const br = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (br) {
+    const year = br[3].length === 2 ? `20${br[3]}` : br[3];
+    return `${year}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+  }
+
+  const compact = clean.match(/^(\d{4})(\d{2})(\d{2})/);
+  if (compact) return `${compact[1]}-${compact[2]}-${compact[3]}`;
+
+  return null;
+}
 
 function parseBRDecimal(value: string): number {
-  // Remove espaços e R$
-  let clean = value.replace(/\s/g, "").replace(/R\$/g, "").trim();
-  // Formato BR: 1.234,56 -> 1234.56
-  if (clean.includes(",")) {
-    clean = clean.replace(/\./g, "").replace(",", ".");
+  let clean = value.replace(/\s/g, "").replace(/R\$/gi, "").trim();
+  const creditDebitSuffix = clean.match(/^(.+?)([CD])$/i);
+  let suffixSign = 1;
+  if (creditDebitSuffix) {
+    clean = creditDebitSuffix[1];
+    suffixSign = creditDebitSuffix[2].toUpperCase() === "D" ? -1 : 1;
   }
-  return parseFloat(clean);
+
+  if (clean.includes(",") && clean.includes(".")) {
+    clean = clean.replace(/\./g, "").replace(",", ".");
+  } else if (clean.includes(",")) {
+    clean = clean.replace(",", ".");
+  }
+
+  const parsed = Number.parseFloat(clean);
+  return Number.isNaN(parsed) ? Number.NaN : parsed * suffixSign;
 }
 
 function extractOFXField(content: string, field: string): string | undefined {
-  // OFX tag: <FIELD>value or <FIELD>value</FIELD>
-  const regex = new RegExp(`<${field}>([^<\\n]+)`, "i");
+  const regex = new RegExp(`<${field}>([^<\\n\\r]+)`, "i");
   const match = content.match(regex);
   return match ? match[1].trim() : undefined;
 }
 
 function detectOperationType(description: string): string {
-  const desc = description.toUpperCase();
+  const desc = normalizeBankText(description);
   if (desc.includes("PIX")) return "PIX";
   if (desc.includes("TED")) return "TED";
   if (desc.includes("DOC")) return "DOC";
@@ -306,121 +585,36 @@ function detectOperationType(description: string): string {
   if (desc.includes("TARIFA") || desc.includes("TAR ")) return "TARIFA";
   if (desc.includes("IOF")) return "IOF";
   if (desc.includes("SAQUE")) return "SAQUE";
-  if (desc.includes("DEPOSITO") || desc.includes("DEPÓSITO")) return "DEPOSITO";
+  if (desc.includes("DEPOSITO")) return "DEPOSITO";
   if (desc.includes("TRANSF")) return "TRANSFERENCIA";
   if (desc.includes("ALUGUEL") || desc.includes("LOCACAO")) return "ALUGUEL";
-  if (desc.includes("COMISSAO") || desc.includes("COMISSÃO")) return "COMISSAO";
+  if (desc.includes("COMISSAO")) return "COMISSAO";
+  if (desc.includes("COMPRA") || desc.includes("CARTAO")) return "COMPRA";
   return "OUTROS";
 }
 
-// ═══════════════════════════════════════════
-// CATEGORIZAÇÃO INTELIGENTE
-// ═══════════════════════════════════════════
+function matchesRule(normalizedDescription: string, rule: RuleDefinition): boolean {
+  if (!rule.any.some((term) => normalizedDescription.includes(normalizeBankText(term)))) return false;
+  if (rule.all && !rule.all.every((term) => normalizedDescription.includes(normalizeBankText(term)))) return false;
+  return !(rule.not?.some((term) => normalizedDescription.includes(normalizeBankText(term))) ?? false);
+}
 
-/**
- * Categorias do sistema — cada transação é classificada em uma dessas.
- * As cores são usadas nos gráficos e badges.
- */
-export const CATEGORIES = {
-  "Aluguel Recebido":        { color: "bg-green-100 text-green-800",  icon: "🏠", type: "receita" },
-  "Comissão Recebida":       { color: "bg-emerald-100 text-emerald-800", icon: "💰", type: "receita" },
-  "Repasse Recebido":        { color: "bg-teal-100 text-teal-800",   icon: "🔄", type: "receita" },
-  "Outras Receitas":         { color: "bg-lime-100 text-lime-800",   icon: "📈", type: "receita" },
-  "Folha / Comissões":       { color: "bg-blue-100 text-blue-800",   icon: "👥", type: "despesa" },
-  "Royalties Franquia":      { color: "bg-violet-100 text-violet-800", icon: "🏢", type: "despesa" },
-  "Contas de Consumo":       { color: "bg-amber-100 text-amber-800", icon: "⚡", type: "despesa" },
-  "Aluguel Escritório":      { color: "bg-orange-100 text-orange-800", icon: "🏗️", type: "despesa" },
-  "Condomínio":              { color: "bg-yellow-100 text-yellow-800", icon: "🏢", type: "despesa" },
-  "IPTU / Impostos":         { color: "bg-red-100 text-red-800",     icon: "📋", type: "despesa" },
-  "Tarifas Bancárias":       { color: "bg-slate-100 text-slate-800", icon: "🏦", type: "despesa" },
-  "Marketing / Publicidade": { color: "bg-pink-100 text-pink-800",   icon: "📣", type: "despesa" },
-  "Manutenção / Reparos":    { color: "bg-cyan-100 text-cyan-800",   icon: "🔧", type: "despesa" },
-  "Material Escritório":     { color: "bg-indigo-100 text-indigo-800", icon: "📎", type: "despesa" },
-  "Software / Sistemas":     { color: "bg-purple-100 text-purple-800", icon: "💻", type: "despesa" },
-  "Seguros":                 { color: "bg-sky-100 text-sky-800",     icon: "🛡️", type: "despesa" },
-  "Contabilidade / Jurídico":{ color: "bg-fuchsia-100 text-fuchsia-800", icon: "⚖️", type: "despesa" },
-  "Transporte / Combustível":{ color: "bg-stone-100 text-stone-800", icon: "🚗", type: "despesa" },
-  "Outros":                  { color: "bg-gray-100 text-gray-800",   icon: "📌", type: "despesa" },
-} as const;
+function detectPaymentMethod(normalizedDescription: string): TransactionCategorySuggestion["paymentMethod"] {
+  if (normalizedDescription.includes("PIX")) return "PIX";
+  if (normalizedDescription.includes("BOLETO") || normalizedDescription.includes("TITULO")) return "BOLETO";
+  if (normalizedDescription.includes("CARTAO") || normalizedDescription.includes("CREDITO") || normalizedDescription.includes("DEBITO")) return "CARTAO";
+  if (normalizedDescription.includes("TED") || normalizedDescription.includes("DOC") || normalizedDescription.includes("TRANSF")) return "TRANSFERENCIA";
+  if (normalizedDescription.includes("DEB AUT") || normalizedDescription.includes("DEBITO AUTOMATICO")) return "DEBITO_AUTOMATICO";
+  return undefined;
+}
 
-export type CategoryName = keyof typeof CATEGORIES;
+function extractLikelySupplier(description: string): string | undefined {
+  const cleaned = description
+    .replace(/\b(PIX|TED|DOC|PAGTO|PAGAMENTO|COMPRA|CARTAO|DEBITO|CREDITO|BOLETO|TITULO|TRANSF|RECEBIDO|ENVIADO)\b/gi, " ")
+    .replace(/\d{2}\/\d{2}(\/\d{2,4})?/g, " ")
+    .replace(/[0-9.,-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-/**
- * Categorização inteligente por palavras-chave na descrição do extrato.
- * Retorna a categoria sugerida ou "Outros" como fallback.
- */
-export function suggestCategory(description: string): CategoryName {
-  const desc = description.toUpperCase();
-
-  // ── RECEITAS ──
-  if (desc.includes("ALUGUEL") && (desc.includes("RECEB") || desc.includes("CREDIT"))) return "Aluguel Recebido";
-  if (desc.includes("LOCACAO") && desc.includes("RECEB")) return "Aluguel Recebido";
-  if ((desc.includes("COMISSAO") || desc.includes("COMISSÃO")) && desc.includes("RECEB")) return "Comissão Recebida";
-  if (desc.includes("REPASSE") || desc.includes("PIPEIMOB")) return "Repasse Recebido";
-
-  // ── FOLHA / COMISSÕES (saída) ──
-  if (desc.includes("SALARIO") || desc.includes("SALÁRIO") || desc.includes("FOLHA PGTO")) return "Folha / Comissões";
-  if ((desc.includes("COMISSAO") || desc.includes("COMISSÃO")) && !desc.includes("RECEB")) return "Folha / Comissões";
-  if (desc.includes("VALE") && (desc.includes("TRANSPORTE") || desc.includes("REFEIC") || desc.includes("ALIMENT"))) return "Folha / Comissões";
-  if (desc.includes("FGTS") || desc.includes("INSS") || desc.includes("RESCISAO")) return "Folha / Comissões";
-  if (desc.includes("FERIAS") || desc.includes("13 SALARIO") || desc.includes("DECIMO")) return "Folha / Comissões";
-
-  // ── ROYALTIES FRANQUIA ──
-  if (desc.includes("AUXILIADORA") || desc.includes("ROYALT") || desc.includes("FRANQUIA")) return "Royalties Franquia";
-
-  // ── CONTAS DE CONSUMO ──
-  if (desc.includes("LUZ") || desc.includes("ENERGIA") || desc.includes("CEEE") || desc.includes("RGE") || desc.includes("CPFL")) return "Contas de Consumo";
-  if (desc.includes("ÁGUA") || desc.includes("AGUA") || desc.includes("DMAE") || desc.includes("CORSAN")) return "Contas de Consumo";
-  if (desc.includes("GAS") || desc.includes("SULGAS")) return "Contas de Consumo";
-  if (desc.includes("TELEFON") || desc.includes("INTERNET") || desc.includes("VIVO") || desc.includes("CLARO") || desc.includes("TIM") || desc.includes("OI ")) return "Contas de Consumo";
-
-  // ── ALUGUEL ESCRITÓRIO ──
-  if (desc.includes("ALUGUEL") && !desc.includes("RECEB") && !desc.includes("CREDIT")) return "Aluguel Escritório";
-  if (desc.includes("LOCACAO") && !desc.includes("RECEB")) return "Aluguel Escritório";
-
-  // ── CONDOMÍNIO ──
-  if (desc.includes("CONDOMINI") || desc.includes("COND ")) return "Condomínio";
-
-  // ── IMPOSTOS ──
-  if (desc.includes("IPTU")) return "IPTU / Impostos";
-  if (desc.includes("ISS") || desc.includes("IMPOSTO") || desc.includes("DAS ") || desc.includes("SIMPLES NACIONAL")) return "IPTU / Impostos";
-  if (desc.includes("DARF") || desc.includes("IRPJ") || desc.includes("CSLL") || desc.includes("PIS") || desc.includes("COFINS")) return "IPTU / Impostos";
-
-  // ── TARIFAS BANCÁRIAS ──
-  if (desc.includes("TARIFA") || desc.includes("TAR ") || desc.includes("ANUIDADE") || desc.includes("MANUT CONTA") || desc.includes("IOF")) return "Tarifas Bancárias";
-  if (desc.includes("TED TARIFA") || desc.includes("PIX TARIFA") || desc.includes("TAXA BANCARIA")) return "Tarifas Bancárias";
-
-  // ── MARKETING ──
-  if (desc.includes("MARKETING") || desc.includes("PUBLICIDADE") || desc.includes("GOOGLE") || desc.includes("META ADS") || desc.includes("FACEBOOK")) return "Marketing / Publicidade";
-  if (desc.includes("INSTAGRAM") || desc.includes("ANUNCIO") || desc.includes("PROPAGANDA") || desc.includes("OLX") || desc.includes("ZAP IMOV")) return "Marketing / Publicidade";
-
-  // ── MANUTENÇÃO ──
-  if (desc.includes("MANUTENC") || desc.includes("REPARO") || desc.includes("CONSERTO") || desc.includes("REFORMA")) return "Manutenção / Reparos";
-  if (desc.includes("LIMPEZA") || desc.includes("PINTURA") || desc.includes("ELETRIC") || desc.includes("ENCANAD")) return "Manutenção / Reparos";
-
-  // ── MATERIAL ESCRITÓRIO ──
-  if (desc.includes("MATERIAL") || desc.includes("PAPELARIA") || desc.includes("KALUNGA") || desc.includes("STAPLES")) return "Material Escritório";
-  if (desc.includes("CARTORIO") || desc.includes("XEROX") || desc.includes("IMPRESSAO")) return "Material Escritório";
-
-  // ── SOFTWARE / SISTEMAS ──
-  if (desc.includes("SOFTWAR") || desc.includes("SISTEMA") || desc.includes("LICEN") || desc.includes("ASSINATURA")) return "Software / Sistemas";
-  if (desc.includes("IMOVIEW") || desc.includes("SUPERLOGI") || desc.includes("JETIMOB") || desc.includes("ARBO")) return "Software / Sistemas";
-  if (desc.includes("MICROSOFT") || desc.includes("ADOBE") || desc.includes("ZOOM") || desc.includes("SLACK")) return "Software / Sistemas";
-
-  // ── SEGUROS ──
-  if (desc.includes("SEGURO") || desc.includes("PORTO SEGURO") || desc.includes("BRADESCO SEGUR") || desc.includes("ZURICH")) return "Seguros";
-
-  // ── CONTABILIDADE / JURÍDICO ──
-  if (desc.includes("CONTABIL") || desc.includes("CONTADOR") || desc.includes("ESCRITORIO CONTAB")) return "Contabilidade / Jurídico";
-  if (desc.includes("ADVOGAD") || desc.includes("JURIDIC") || desc.includes("HONORAR")) return "Contabilidade / Jurídico";
-
-  // ── TRANSPORTE ──
-  if (desc.includes("COMBUSTI") || desc.includes("GASOLINA") || desc.includes("POSTO") || desc.includes("SHELL") || desc.includes("IPIRANGA")) return "Transporte / Combustível";
-  if (desc.includes("UBER") || desc.includes("99 ") || desc.includes("ESTACIONAM") || desc.includes("PEDAGIO")) return "Transporte / Combustível";
-
-  // ── RECEITAS GENÉRICAS (créditos não categorizados acima) ──
-  // Esta checagem é feita por último — se a transação é crédito e não foi pega acima
-  // O caller pode checar isCredit e reclassificar
-
-  return "Outros";
+  return cleaned.length >= 3 ? cleaned.slice(0, 80) : undefined;
 }
