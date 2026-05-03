@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authErrorResponse } from "@/server/api-response";
 import { requireAuth } from "@/server/authz";
+import { ensureFoundationSchema } from "@/server/foundation-schema";
 
 type AuditEvent = {
   id: string;
@@ -23,7 +24,12 @@ export async function GET() {
   }
 
   try {
-    const [invoices, documents, bankTransactions, webhooks] = await Promise.all([
+    await ensureFoundationSchema();
+    const [persistedEvents, invoices, documents, bankTransactions, webhooks] = await Promise.all([
+      prisma.auditEvent.findMany({
+        orderBy: { created_at: "desc" },
+        take: 200,
+      }),
       prisma.invoice.findMany({
         orderBy: { updated_at: "desc" },
         take: 120,
@@ -47,6 +53,17 @@ export async function GET() {
     ]);
 
     const events: AuditEvent[] = [
+      ...persistedEvents.map((event) => ({
+        id: `audit-${event.id}`,
+        timestamp: event.created_at.toISOString(),
+        actor: event.actor_email ?? event.actor_type,
+        actorType: event.actor_type === "HUMAN" ? "HUMAN" as const : event.actor_type === "AUTOMATION" ? "AUTOMATION" as const : "SYSTEM" as const,
+        action: event.action,
+        entityType: event.entity_type ?? "Sistema",
+        entityLabel: event.entity_label ?? event.entity_id ?? "-",
+        summary: event.summary,
+        severity: event.severity,
+      })),
       ...invoices.map((invoice) => ({
         id: `invoice-${invoice.id}`,
         timestamp: invoice.updated_at.toISOString(),

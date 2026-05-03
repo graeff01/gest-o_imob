@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authErrorResponse } from "@/server/api-response";
 import { requireAuth } from "@/server/authz";
+import { ensureFoundationSchema } from "@/server/foundation-schema";
 
 function toNumber(value: unknown) {
   return Number(value ?? 0);
@@ -22,7 +23,13 @@ export async function GET(request: Request) {
   const search = searchParams.get("search")?.trim().toLowerCase() ?? "";
 
   try {
-    const [expenses, bankTransactions, rules] = await Promise.all([
+    await ensureFoundationSchema();
+    const [officialSuppliers, expenses, bankTransactions, rules] = await Promise.all([
+      prisma.supplier.findMany({
+        where: { is_active: true },
+        include: { category: { select: { name: true } } },
+        orderBy: { name: "asc" },
+      }),
       prisma.expense.findMany({
         where: { status: { not: "CANCELADO" } },
         select: {
@@ -89,6 +96,17 @@ export async function GET(request: Request) {
         source: "DESPESA" as const,
       };
       map.set(key, { ...current, ...patch });
+    }
+
+    for (const supplier of officialSuppliers) {
+      touch(supplier.name, {
+        id: supplier.id,
+        category: supplier.category?.name ?? supplier.default_category ?? "A classificar",
+        totalMoved: toNumber(supplier.total_moved),
+        expenseCount: supplier.transaction_count,
+        confidence: supplier.confidence,
+        source: "MISTO",
+      });
     }
 
     for (const expense of expenses) {

@@ -239,6 +239,12 @@ enum RewardType {
   PERCENTUAL
 }
 
+enum AuditSeverity {
+  INFO
+  WARN
+  CRITICAL
+}
+
 // =============================================================================
 // TABELAS
 // =============================================================================
@@ -444,8 +450,33 @@ model ExpenseCategory {
   expenses          Expense[]
   bank_transactions BankTransaction[]
   classification_rules BankClassificationRule[]
+  suppliers         Supplier[]
 
   @@map("expense_categories")
+}
+
+// --------------- FORNECEDORES ---------------
+
+model Supplier {
+  id                 String    @id @default(uuid())
+  name               String
+  cpf_cnpj           String?   @unique
+  category_id        String?
+  classification_key String?   @unique
+  default_category   String?
+  confidence         Int       @default(0)
+  total_moved        Decimal   @default(0) @db.Decimal(14, 2)
+  transaction_count  Int       @default(0)
+  notes              String?   @db.Text
+  is_active          Boolean   @default(true)
+  created_at         DateTime  @default(now())
+  updated_at         DateTime  @updatedAt
+
+  category ExpenseCategory? @relation(fields: [category_id], references: [id])
+
+  @@index([name])
+  @@index([is_active])
+  @@map("suppliers")
 }
 
 // --------------- RECEITAS ---------------
@@ -909,4 +940,42 @@ model RoyaltyPayment {
 
   @@index([reference_year, reference_month])
   @@map("royalty_payments")
+}
+
+// --------------- AUDITORIA E PARAMETROS ---------------
+
+model AuditEvent {
+  id          String        @id @default(uuid())
+  action      String
+  actor_id    String?
+  actor_email String?
+  actor_type  String        @default("SYSTEM")
+  entity_type String?
+  entity_id   String?
+  entity_label String?
+  summary     String
+  severity    AuditSeverity @default(INFO)
+  metadata    Json?
+  ip_address  String?
+  created_at  DateTime      @default(now())
+
+  @@index([created_at])
+  @@index([action])
+  @@index([entity_type, entity_id])
+  @@map("audit_events")
+}
+
+model SystemParameterVersion {
+  id          String   @id @default(uuid())
+  scope       String
+  version     Int
+  payload     Json
+  reason      String?  @db.Text
+  created_by  String?
+  created_at  DateTime @default(now())
+  is_active   Boolean  @default(true)
+
+  @@unique([scope, version])
+  @@index([scope, is_active])
+  @@map("system_parameter_versions")
 }
