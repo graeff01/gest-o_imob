@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { authErrorResponse } from "@/server/api-response";
 import { requireAuth } from "@/server/authz";
+import { ensureBankImportSchema } from "@/server/bank-import-schema";
 import { prisma } from "@/lib/prisma";
 import {
   detectAndParse,
@@ -17,6 +18,20 @@ type DbCategory = {
   department: "VENDA" | "LOCACAO" | "ADMIN" | "AMBOS";
 };
 
+type LearnedRule = {
+  id: string;
+  normalized_pattern: string;
+  kind: string;
+  category_id: string | null;
+  category_label: string;
+  revenue_category: TransactionCategorySuggestion["revenueCategory"] | null;
+  department: TransactionCategorySuggestion["department"];
+  payment_method: TransactionCategorySuggestion["paymentMethod"] | null;
+  confidence: number;
+};
+
+const REVIEW_CONFIDENCE_THRESHOLD = 80;
+
 export async function GET() {
   try {
     await requireAuth();
@@ -25,6 +40,7 @@ export async function GET() {
   }
 
   try {
+    await ensureBankImportSchema();
     const transactions = await prisma.bankTransaction.findMany({
       include: { bank_account: true, category: true },
       orderBy: [{ date: "desc" }, { created_at: "desc" }],
@@ -41,6 +57,7 @@ export async function GET() {
       .map(([monthKey, txs]) => {
         const totalReceitas = txs.filter((tx) => tx.is_credit).reduce((sum, tx) => sum + Number(tx.amount), 0);
         const totalDespesas = txs.filter((tx) => !tx.is_credit).reduce((sum, tx) => sum + Number(tx.amount), 0);
+        const pendingReview = txs.filter((tx) => tx.needs_review).length;
         const first = txs[0];
 
         return {
@@ -52,6 +69,7 @@ export async function GET() {
           transactionCount: txs.length,
           totalReceitas,
           totalDespesas,
+          pendingReview,
           saldo: totalReceitas - totalDespesas,
         };
       })
@@ -86,6 +104,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    await ensureBankImportSchema();
     const content = await readStatementFile(file);
     const parseResult = detectAndParse(content, file.name);
 
@@ -105,6 +124,21 @@ export async function POST(request: NextRequest) {
     }
 
     const categories = await ensureImportCategories();
+    const learnedRules = await prisma.bankClassificationRule.findMany({
+      where: { is_active: true },
+      orderBy: [{ use_count: "desc" }, { updated_at: "desc" }],
+      select: {
+        id: true,
+        normalized_pattern: true,
+        kind: true,
+        category_id: true,
+        category_label: true,
+        revenue_category: true,
+        department: true,
+        payment_method: true,
+        confidence: true,
+      },
+    });
 
     const batchId = `import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let imported = 0;
@@ -115,27 +149,71 @@ export async function POST(request: NextRequest) {
     const months = new Set<string>();
 
     for (const tx of parseResult.transactions) {
-      const suggestion = suggestTransactionClassification(tx.description, tx.isCredit);
-      const expenseCategory = tx.isCredit ? null : findExpenseCategory(categories, suggestion);
+      const baseSuggestion = suggestTransactionClassification(tx.description, tx.isCredit);
+      const { suggestion, learnedRuleId, learnedCategoryId } = applyLearnedRules(tx, baseSuggestion, learnedRules);
+      const needsReview = shouldReview(suggestion);
+      const expenseCategory = tx.isCredit
+        ? null
+        : findExpenseCategory(
+            categories,
+            needsReview
+              ? { ...suggestion, expenseCategoryNames: ["A Classificar", ...suggestion.expenseCategoryNames, "Outros"] }
+              : suggestion,
+            learnedCategoryId
+          );
+      const normalizedKey = buildExternalId(tx);
 
       try {
+        const existingTx = await prisma.bankTransaction.findFirst({
+          where: {
+            bank_account_id: bankAccount.id,
+            OR: [
+              { normalized_key: normalizedKey },
+              {
+                date: new Date(`${tx.date}T00:00:00`),
+                doc_number: tx.docNumber ?? normalizedKey.slice(0, 64),
+                amount: tx.amount,
+              },
+            ],
+          },
+          select: { id: true },
+        });
+
+        if (existingTx) {
+          skipped++;
+          continue;
+        }
+
         const createdTx = await prisma.bankTransaction.create({
           data: {
             bank_account_id: bankAccount.id,
-            external_id: buildExternalId(tx),
+            external_id: normalizedKey,
+            normalized_key: normalizedKey,
             date: new Date(`${tx.date}T00:00:00`),
             description: tx.description,
+            counterparty: suggestion.supplier ?? extractCounterparty(tx.description),
             amount: tx.amount,
             balance: tx.balance ?? null,
-            doc_number: tx.docNumber ?? buildExternalId(tx).slice(0, 64),
+            doc_number: tx.docNumber ?? normalizedKey.slice(0, 64),
             operation_type: tx.operationType,
             is_credit: tx.isCredit,
             category_id: expenseCategory?.id ?? null,
+            classification_label: suggestion.category,
+            classification_rule: learnedRuleId ? `learned:${learnedRuleId}` : suggestion.matchedRule,
+            classification_confidence: suggestion.confidence,
+            needs_review: needsReview,
             import_batch_id: batchId,
             is_reconciled: false,
             notes: buildTransactionNotes(suggestion),
           },
         });
+
+        if (learnedRuleId) {
+          await prisma.bankClassificationRule.update({
+            where: { id: learnedRuleId },
+            data: { use_count: { increment: 1 } },
+          });
+        }
 
         const linkedId = await createFinancialEntryFromTransaction(
           createdTx.id,
@@ -200,16 +278,21 @@ async function ensureImportCategories(): Promise<DbCategory[]> {
     });
   if (existing.length > 0) return existing;
 
-  await prisma.expenseCategory.upsert({
-    where: { code: "IMPORT.OUTROS" },
-    update: { is_active: true },
-    create: {
-      code: "IMPORT.OUTROS",
-      name: "Outros",
-      department: "AMBOS",
-      sort_order: 999,
-    },
-  });
+  for (const category of [
+    { code: "IMPORT.CLASSIFICAR", name: "A Classificar", sort_order: 998 },
+    { code: "IMPORT.OUTROS", name: "Outros", sort_order: 999 },
+  ]) {
+    await prisma.expenseCategory.upsert({
+      where: { code: category.code },
+      update: { is_active: true },
+      create: {
+        code: category.code,
+        name: category.name,
+        department: "AMBOS",
+        sort_order: category.sort_order,
+      },
+    });
+  }
 
   return prisma.expenseCategory.findMany({
     where: { is_active: true },
@@ -259,7 +342,16 @@ async function resolveBankAccount(requestedId: string | null, bankName: string) 
   });
 }
 
-function findExpenseCategory(categories: DbCategory[], suggestion: TransactionCategorySuggestion): DbCategory | null {
+function findExpenseCategory(
+  categories: DbCategory[],
+  suggestion: TransactionCategorySuggestion,
+  preferredCategoryId?: string | null
+): DbCategory | null {
+  if (preferredCategoryId) {
+    const preferred = categories.find((category) => category.id === preferredCategoryId);
+    if (preferred) return preferred;
+  }
+
   for (const wanted of suggestion.expenseCategoryNames) {
     const normalizedWanted = normalizeBankText(wanted);
     const exact = categories.find((category) => normalizeBankText(category.name) === normalizedWanted);
@@ -273,6 +365,7 @@ function findExpenseCategory(categories: DbCategory[], suggestion: TransactionCa
   }
 
   return (
+    categories.find((category) => normalizeBankText(category.name).includes("A CLASSIFICAR")) ??
     categories.find((category) => normalizeBankText(category.name).includes("OUTROS OPERACIONAIS")) ??
     categories.find((category) => normalizeBankText(category.name).includes("OUTROS")) ??
     categories[0] ??
@@ -336,6 +429,42 @@ function buildTransactionNotes(suggestion: TransactionCategorySuggestion): strin
 
 function buildExternalId(tx: ParsedTransaction): string {
   return normalizeBankText(`${tx.date}|${tx.docNumber ?? ""}|${tx.description}|${tx.amount}|${tx.isCredit ? "C" : "D"}`).slice(0, 128);
+}
+
+function applyLearnedRules(
+  tx: ParsedTransaction,
+  suggestion: TransactionCategorySuggestion,
+  rules: LearnedRule[]
+): { suggestion: TransactionCategorySuggestion; learnedRuleId?: string; learnedCategoryId?: string | null } {
+  const normalizedDescription = normalizeBankText(tx.description);
+  const kind = tx.isCredit ? "receita" : "despesa";
+  const rule = rules.find((candidate) => {
+    return candidate.kind === kind && normalizedDescription.includes(candidate.normalized_pattern);
+  });
+
+  if (!rule) return { suggestion };
+
+  return {
+    learnedRuleId: rule.id,
+    learnedCategoryId: rule.category_id,
+    suggestion: {
+      ...suggestion,
+      category: rule.category_label as TransactionCategorySuggestion["category"],
+      revenueCategory: rule.revenue_category ?? suggestion.revenueCategory,
+      department: rule.department,
+      paymentMethod: rule.payment_method ?? suggestion.paymentMethod,
+      confidence: Math.max(rule.confidence, 95),
+      matchedRule: `learned:${rule.normalized_pattern}`,
+    },
+  };
+}
+
+function shouldReview(suggestion: TransactionCategorySuggestion): boolean {
+  return suggestion.confidence < REVIEW_CONFIDENCE_THRESHOLD || suggestion.matchedRule.startsWith("fallback");
+}
+
+function extractCounterparty(description: string): string | undefined {
+  return description.split(" - ")[0]?.trim().slice(0, 80) || undefined;
 }
 
 function toMonthKey(date: Date): string {

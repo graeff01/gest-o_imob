@@ -26,6 +26,7 @@ interface MonthSummary {
   transactionCount: number;
   totalReceitas: number;
   totalDespesas: number;
+  pendingReview: number;
   saldo: number;
 }
 
@@ -39,6 +40,9 @@ interface Transaction {
   isCredit: boolean;
   category: string;
   categoryManual: boolean;
+  needsReview?: boolean;
+  confidence?: number;
+  matchedRule?: string;
 }
 
 interface CategorySummaryItem {
@@ -76,6 +80,7 @@ export default function ExtratosPage() {
   // ── Filtros ──
   const [search, setSearch] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
+  const [reviewOnly, setReviewOnly] = useState(false);
 
   // ── Upload ──
   const [showUpload, setShowUpload] = useState(false);
@@ -182,12 +187,14 @@ export default function ExtratosPage() {
   const filteredTransactions = monthDetail?.statement.transactions.filter((tx) => {
     if (search && !tx.description.toLowerCase().includes(search.toLowerCase())) return false;
     if (filterCategory && tx.category !== filterCategory) return false;
+    if (reviewOnly && !tx.needsReview) return false;
     return true;
   }) ?? [];
 
   // ── Totais globais ──
   const totalReceitas = months.reduce((s, m) => s + m.totalReceitas, 0);
   const totalDespesas = months.reduce((s, m) => s + m.totalDespesas, 0);
+  const totalPendentes = months.reduce((s, m) => s + (m.pendingReview ?? 0), 0);
 
   return (
     <div className="space-y-6">
@@ -218,7 +225,7 @@ export default function ExtratosPage() {
 
       {/* ── Cards globais ── */}
       {months.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-white p-4 rounded-xl border border-gray-200">
             <p className="text-xs text-gray-500 mb-1">Meses Importados</p>
             <p className="text-2xl font-bold text-gray-900">{months.length}</p>
@@ -242,6 +249,12 @@ export default function ExtratosPage() {
               totalReceitas - totalDespesas >= 0 ? "text-green-700" : "text-red-600"
             )}>
               {formatCurrency(totalReceitas - totalDespesas)}
+            </p>
+          </div>
+          <div className="bg-white p-4 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 mb-1">A revisar</p>
+            <p className={cn("text-2xl font-bold", totalPendentes > 0 ? "text-amber-700" : "text-green-700")}>
+              {totalPendentes}
             </p>
           </div>
         </div>
@@ -368,6 +381,18 @@ export default function ExtratosPage() {
                             {filterCategory} <X className="h-3 w-3" />
                           </button>
                         )}
+                        <button
+                          onClick={() => setReviewOnly((current) => !current)}
+                          className={cn(
+                            "flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium",
+                            reviewOnly
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                          )}
+                        >
+                          <AlertTriangle className="h-3 w-3" />
+                          A revisar
+                        </button>
                         <p className="text-xs text-gray-400 ml-auto">
                           {filteredTransactions.length} de {monthDetail.statement.transactions.length} transações
                         </p>
@@ -421,10 +446,15 @@ export default function ExtratosPage() {
                                       >
                                         <span className={cn(
                                           "text-[10px] font-medium px-1.5 py-0.5 rounded",
-                                          monthDetail.categorySummary.find((c) => c.category === tx.category)?.color ?? "bg-gray-100 text-gray-700"
+                                          tx.needsReview
+                                            ? "bg-amber-100 text-amber-800"
+                                            : monthDetail.categorySummary.find((c) => c.category === tx.category)?.color ?? "bg-gray-100 text-gray-700"
                                         )}>
                                           {tx.category}
                                         </span>
+                                        {tx.needsReview && (
+                                          <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                        )}
                                         <Pencil className="h-2.5 w-2.5 text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                                         {tx.categoryManual && (
                                           <Check className="h-2.5 w-2.5 text-blue-400" />

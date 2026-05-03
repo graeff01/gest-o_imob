@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authErrorResponse } from "@/server/api-response";
 import { requireAuth } from "@/server/authz";
+import { ensureBankImportSchema } from "@/server/bank-import-schema";
 import { prisma } from "@/lib/prisma";
 import {
   CATEGORIES,
@@ -33,6 +34,7 @@ export async function GET(
   }
 
   try {
+    await ensureBankImportSchema();
     const transactions = await prisma.bankTransaction.findMany({
       where: { date: { gte: range.start, lt: range.end } },
       include: { bank_account: true, category: true },
@@ -49,15 +51,17 @@ export async function GET(
         id: tx.id,
         date: tx.date.toISOString(),
         description: tx.description,
+        counterparty: tx.counterparty ?? undefined,
         amount: Number(tx.amount),
         balance: tx.balance === null ? undefined : Number(tx.balance),
         operationType: tx.operation_type,
         isCredit: tx.is_credit,
-        category: tx.is_credit ? suggestion.category : tx.category?.name ?? suggestion.category,
+        category: tx.classification_label ?? (tx.is_credit ? suggestion.category : tx.category?.name ?? suggestion.category),
         categoryManual: tx.notes?.includes("Categoria alterada manualmente") ?? false,
         isReconciled: tx.is_reconciled,
-        confidence: suggestion.confidence,
-        matchedRule: suggestion.matchedRule,
+        needsReview: tx.needs_review,
+        confidence: tx.classification_confidence || suggestion.confidence,
+        matchedRule: tx.classification_rule ?? suggestion.matchedRule,
       };
     });
 
@@ -109,6 +113,7 @@ export async function PATCH(
   }
 
   try {
+    await ensureBankImportSchema();
     const tx = await prisma.bankTransaction.findFirst({
       where: { id: txId, date: { gte: range.start, lt: range.end } },
     });
@@ -121,13 +126,49 @@ export async function PATCH(
       where: { is_active: true },
       select: { id: true, name: true, department: true },
     });
-    const suggestion = suggestTransactionClassification(category, tx.is_credit);
-    const expenseCategory = tx.is_credit ? null : findExpenseCategory(categories, category, suggestion);
+    const baseSuggestion = suggestTransactionClassification(tx.description, tx.is_credit);
+    const selectedSuggestion = classifyManualSelection(category, tx.is_credit, baseSuggestion);
+    const expenseCategory = tx.is_credit ? null : findExpenseCategory(categories, category, selectedSuggestion);
+    const normalizedPattern = buildLearnedPattern(tx.counterparty ?? tx.description);
+
+    const learnedRule = await prisma.bankClassificationRule.upsert({
+      where: {
+        normalized_pattern_kind: {
+          normalized_pattern: normalizedPattern,
+          kind: tx.is_credit ? "receita" : "despesa",
+        },
+      },
+      update: {
+        category_id: expenseCategory?.id ?? null,
+        category_label: category,
+        revenue_category: tx.is_credit ? selectedSuggestion.revenueCategory : null,
+        department: expenseCategory?.department ?? selectedSuggestion.department,
+        payment_method: selectedSuggestion.paymentMethod ?? null,
+        confidence: 100,
+        is_active: true,
+      },
+      create: {
+        pattern: tx.counterparty ?? tx.description.slice(0, 80),
+        normalized_pattern: normalizedPattern,
+        kind: tx.is_credit ? "receita" : "despesa",
+        category_id: expenseCategory?.id ?? null,
+        category_label: category,
+        revenue_category: tx.is_credit ? selectedSuggestion.revenueCategory : null,
+        department: expenseCategory?.department ?? selectedSuggestion.department,
+        payment_method: selectedSuggestion.paymentMethod ?? null,
+        confidence: 100,
+      },
+    });
 
     await prisma.bankTransaction.update({
       where: { id: tx.id },
       data: {
         category_id: expenseCategory?.id ?? tx.category_id,
+        classification_label: category,
+        classification_rule: `learned:${learnedRule.id}`,
+        classification_confidence: 100,
+        needs_review: false,
+        reviewed_at: new Date(),
         notes: appendManualCategoryNote(tx.notes, category),
       },
     });
@@ -138,6 +179,17 @@ export async function PATCH(
         data: {
           category_id: expenseCategory.id,
           department: expenseCategory.department,
+          notes: appendManualCategoryNote(null, category),
+        },
+      });
+    }
+
+    if (tx.is_credit && tx.reconciled_with_type === "REVENUE" && tx.reconciled_with_id) {
+      await prisma.revenue.update({
+        where: { id: tx.reconciled_with_id },
+        data: {
+          category: selectedSuggestion.revenueCategory,
+          department: selectedSuggestion.department,
           notes: appendManualCategoryNote(null, category),
         },
       });
@@ -208,6 +260,45 @@ function findExpenseCategory(
 function appendManualCategoryNote(existing: string | null, category: string): string {
   const note = `Categoria alterada manualmente para: ${category}.`;
   return existing ? `${existing}\n${note}` : note;
+}
+
+function classifyManualSelection(
+  category: string,
+  isCredit: boolean,
+  baseSuggestion: TransactionCategorySuggestion
+): TransactionCategorySuggestion {
+  if (!isCredit) {
+    return {
+      ...baseSuggestion,
+      category: category as TransactionCategorySuggestion["category"],
+      expenseCategoryNames: [category, ...baseSuggestion.expenseCategoryNames],
+      confidence: 100,
+      matchedRule: "manual",
+    };
+  }
+
+  const normalized = normalizeBankText(category);
+  let revenueCategory: TransactionCategorySuggestion["revenueCategory"] = "OUTRO";
+  if (normalized.includes("ALUGUEL")) revenueCategory = "NFSE_ALUGUEL";
+  if (normalized.includes("COMISSAO") || normalized.includes("INTERMEDIACAO")) revenueCategory = "INTERMEDIACAO";
+  if (normalized.includes("REPASSE") || normalized.includes("ROYALTY")) revenueCategory = "ROYALTY";
+
+  return {
+    ...baseSuggestion,
+    category: category as TransactionCategorySuggestion["category"],
+    revenueCategory,
+    confidence: 100,
+    matchedRule: "manual",
+  };
+}
+
+function buildLearnedPattern(description: string): string {
+  const normalized = normalizeBankText(description);
+  const tokens = normalized
+    .split(" ")
+    .filter((token) => token.length > 2 && !/^\d+$/.test(token))
+    .slice(0, 4);
+  return (tokens.join(" ") || normalized.slice(0, 60)).slice(0, 80);
 }
 
 function monthRange(monthKey: string): { start: Date; end: Date } | null {

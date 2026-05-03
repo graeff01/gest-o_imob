@@ -88,6 +88,7 @@ async function main() {
     "Farmacia",
     "Alimentacao/Copa",
     "Ferragens e Utilidades",
+    "A Classificar",
   ];
 
   // Subcategorias - Manutencao

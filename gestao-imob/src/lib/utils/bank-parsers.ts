@@ -44,6 +44,7 @@ export const CATEGORIES = {
   "Seguros": { color: "bg-sky-100 text-sky-800", type: "despesa" },
   "Contabilidade / Juridico": { color: "bg-fuchsia-100 text-fuchsia-800", type: "despesa" },
   "Transporte / Combustivel": { color: "bg-stone-100 text-stone-800", type: "despesa" },
+  "A Classificar": { color: "bg-amber-100 text-amber-900", type: "despesa" },
   "Outros": { color: "bg-gray-100 text-gray-800", type: "despesa" },
 } as const;
 

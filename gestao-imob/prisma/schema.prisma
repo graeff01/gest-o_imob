@@ -443,6 +443,7 @@ model ExpenseCategory {
 
   expenses          Expense[]
   bank_transactions BankTransaction[]
+  classification_rules BankClassificationRule[]
 
   @@map("expense_categories")
 }
@@ -530,14 +531,21 @@ model BankTransaction {
   id                   String              @id @default(uuid())
   bank_account_id      String
   external_id          String?
+  normalized_key       String?
   operation_type       String
   date                 DateTime            @db.Date
   time                 DateTime?           @db.Time()
   doc_number           String?
   description          String
+  counterparty         String?
   amount               Decimal             @db.Decimal(14, 2)
   balance              Decimal?            @db.Decimal(14, 2)
   category_id          String?
+  classification_label String?
+  classification_rule  String?
+  classification_confidence Int             @default(0)
+  needs_review         Boolean             @default(false)
+  reviewed_at          DateTime?
   is_credit            Boolean
   is_reconciled        Boolean             @default(false)
   reconciled_with_type ReconciliationType?
@@ -557,8 +565,33 @@ model BankTransaction {
   @@index([date])
   @@index([bank_account_id])
   @@index([is_reconciled])
+  @@index([needs_review])
   @@index([import_batch_id])
   @@map("bank_transactions")
+}
+
+model BankClassificationRule {
+  id                String    @id @default(uuid())
+  pattern           String
+  normalized_pattern String
+  kind              String
+  category_id       String?
+  category_label    String
+  revenue_category  RevenueCategory?
+  department        Department
+  payment_method    PaymentMethod?
+  confidence        Int       @default(100)
+  use_count         Int       @default(0)
+  is_active         Boolean   @default(true)
+  created_by        String?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+
+  category ExpenseCategory? @relation(fields: [category_id], references: [id])
+
+  @@unique([normalized_pattern, kind])
+  @@index([is_active])
+  @@map("bank_classification_rules")
 }
 
 // --------------- REGRAS DE COMISSAO ---------------
