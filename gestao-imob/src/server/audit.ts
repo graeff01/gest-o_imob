@@ -16,6 +16,8 @@ type AuditAction =
   | "record.created"
   | "record.updated"
   | "record.deleted"
+  | "system.hml_reset"
+  | "system.hml_seeded"
   | "settings.updated";
 
 interface AuditPayload {

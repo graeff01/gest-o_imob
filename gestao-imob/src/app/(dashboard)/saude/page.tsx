@@ -7,6 +7,9 @@ import {
   XCircle,
   AlertCircle,
   RefreshCw,
+  Database,
+  PlayCircle,
+  RotateCcw,
 } from "lucide-react";
 import { PageShell } from "@/components/shared/page-shell";
 import { cn } from "@/lib/utils";
@@ -59,6 +62,17 @@ interface ManualReadinessItem {
   id: string;
   title: string;
   description: string;
+}
+
+interface HmlFixtureSnapshot {
+  ready: boolean;
+  checks: Array<{
+    id: string;
+    label: string;
+    count: number;
+    minimum: number;
+    ok: boolean;
+  }>;
 }
 
 const MANUAL_READINESS: ManualReadinessItem[] = [
@@ -216,20 +230,62 @@ export default function SaudePage() {
   const [checks, setChecks] = useState<HealthCheck[]>([]);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
   const [systemHealthError, setSystemHealthError] = useState<string | null>(null);
+  const [hmlFixture, setHmlFixture] = useState<HmlFixtureSnapshot | null>(null);
+  const [hmlFixtureError, setHmlFixtureError] = useState<string | null>(null);
+  const [hmlFixtureLoading, setHmlFixtureLoading] = useState(false);
   const [manualReady, setManualReady] = useState<Record<string, boolean>>({});
 
   const refresh = async () => {
     setChecks(runChecks());
     setSystemHealthError(null);
+    setHmlFixtureError(null);
 
+    await Promise.all([
+      fetch("/api/system/health", { cache: "no-store" })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error ?? "Falha ao checar saude tecnica.");
+          setSystemHealth(data);
+        })
+        .catch((error) => {
+          setSystemHealth(null);
+          setSystemHealthError(error instanceof Error ? error.message : "Falha ao checar saude tecnica.");
+        }),
+      fetch("/api/system/hml-fixtures", { cache: "no-store" })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error ?? "Falha ao checar base HML.");
+          setHmlFixture(data);
+        })
+        .catch((error) => {
+          setHmlFixture(null);
+          setHmlFixtureError(error instanceof Error ? error.message : "Falha ao checar base HML.");
+        }),
+    ]);
+  };
+
+  const runHmlFixtureAction = async (action: "seed" | "reset-and-seed") => {
+    const resetConfirmed =
+      action === "seed" ||
+      window.confirm("Isso apaga dados operacionais de HML e recria a base de teste. Usuarios de login sao preservados. Continuar?");
+    if (!resetConfirmed) return;
+
+    setHmlFixtureLoading(true);
+    setHmlFixtureError(null);
     try {
-      const response = await fetch("/api/system/health", { cache: "no-store" });
+      const response = await fetch("/api/system/hml-fixtures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Falha ao checar saude tecnica.");
-      setSystemHealth(data);
+      if (!response.ok) throw new Error(data.error ?? "Falha ao preparar HML.");
+      setHmlFixture(data.snapshot);
+      await refresh();
     } catch (error) {
-      setSystemHealth(null);
-      setSystemHealthError(error instanceof Error ? error.message : "Falha ao checar saude tecnica.");
+      setHmlFixtureError(error instanceof Error ? error.message : "Falha ao preparar HML.");
+    } finally {
+      setHmlFixtureLoading(false);
     }
   };
 
@@ -365,6 +421,67 @@ export default function SaudePage() {
               })}
             </div>
           </>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-gray-200 bg-white p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-2">
+              <Database className="h-5 w-5 text-blue-700" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-gray-900">Base de validacao HML</h2>
+              <p className="mt-1 text-xs text-gray-500">
+                Prepara dados minimos para testar cadastros, contratos, financeiro, extratos, NFS-e, campanhas,
+                comissoes, folha, relatorios e auditoria sem cadastro manual.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => runHmlFixtureAction("seed")}
+              disabled={hmlFixtureLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              <PlayCircle className="h-3.5 w-3.5" />
+              Preparar base
+            </button>
+            <button
+              onClick={() => runHmlFixtureAction("reset-and-seed")}
+              disabled={hmlFixtureLoading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Resetar e preparar
+            </button>
+          </div>
+        </div>
+
+        {hmlFixtureError && (
+          <div className="mt-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {hmlFixtureError}
+          </div>
+        )}
+
+        {hmlFixture && (
+          <div className="mt-4 grid gap-2 md:grid-cols-2 lg:grid-cols-4">
+            {hmlFixture.checks.map((item) => (
+              <div
+                key={item.id}
+                className={cn(
+                  "rounded-lg border px-3 py-2",
+                  item.ok ? "border-emerald-100 bg-emerald-50" : "border-amber-100 bg-amber-50"
+                )}
+              >
+                <p className="text-[10px] font-semibold uppercase text-gray-500">{item.label}</p>
+                <p className="mt-1 text-sm font-bold text-gray-900">
+                  {item.count}
+                  {item.minimum > 0 && <span className="text-xs font-medium text-gray-500"> / min {item.minimum}</span>}
+                </p>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

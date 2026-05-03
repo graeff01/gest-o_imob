@@ -22,15 +22,29 @@ export class AuthError extends Error {
 export async function requireAuth(): Promise<AuthContext> {
   const session = await auth();
   const user = session?.user as
-    | { id?: string; email?: string | null; role?: AppRole }
+    | { id?: string; name?: string | null; email?: string | null; role?: AppRole }
     | undefined;
 
   if (!user?.id || !user.email || !user.role) {
     throw new AuthError("Nao autenticado.", 401);
   }
 
-  const dbUser = await prisma.user.findUnique({
+  const dbRole = user.role === "ADMIN_MASTER" ? "ADMIN" : "MANAGER";
+  const displayName = user.name ?? user.email;
+  const dbUser = await prisma.user.upsert({
     where: { email: user.email.toLowerCase() },
+    update: {
+      name: displayName,
+      role: dbRole,
+      is_active: true,
+    },
+    create: {
+      name: displayName,
+      email: user.email.toLowerCase(),
+      password_hash: "managed-by-env-auth",
+      role: dbRole,
+      is_active: true,
+    },
     select: { id: true, is_active: true },
   });
 

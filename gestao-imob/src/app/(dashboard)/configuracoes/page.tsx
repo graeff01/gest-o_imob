@@ -4,12 +4,7 @@ import { useEffect, useState } from "react";
 import { Settings2, Save, History, AlertCircle, Building2, ShieldCheck } from "lucide-react";
 import { PageShell } from "@/components/shared/page-shell";
 import { cn } from "@/lib/utils";
-import {
-  ParametrosSistema,
-  getParametrosVigentes,
-  getParametrosHistorico,
-  saveParametros,
-} from "@/lib/stores/core-store";
+import { PARAMETROS_DEFAULT, type ParametrosSistema } from "@/lib/stores/core-store";
 
 interface FieldDef {
   key: keyof ParametrosSistema;
@@ -51,6 +46,43 @@ interface NfseCompanyDraft {
 }
 
 const NFSE_COMPANY_DRAFT_KEY = "gestao-imob:nfse-company-draft:v1";
+const PARAMETERS_SCOPE = "business";
+
+interface ParameterVersionApi {
+  id: string;
+  scope: string;
+  version: number;
+  payload: Record<string, unknown>;
+  reason?: string | null;
+  created_by?: string | null;
+  created_at: string;
+  is_active: boolean;
+}
+
+function toParametrosSistema(version: ParameterVersionApi | null): ParametrosSistema {
+  if (!version) {
+    return {
+      versao: 1,
+      vigenteDesde: new Date().toISOString(),
+      ...PARAMETROS_DEFAULT,
+    };
+  }
+
+  return {
+    versao: version.version,
+    vigenteDesde: version.created_at,
+    ...PARAMETROS_DEFAULT,
+    ...version.payload,
+    alteradoPor: version.created_by ?? "Sistema",
+    motivo: version.reason ?? undefined,
+  } as ParametrosSistema;
+}
+
+function payloadFromParametros(params: ParametrosSistema) {
+  const { versao: _v, vigenteDesde: _d, alteradoPor: _a, motivo: _m, ...payload } = params;
+  void _v; void _d; void _a; void _m;
+  return payload;
+}
 
 const SECTIONS: SectionDef[] = [
   {
@@ -133,6 +165,9 @@ export default function ConfiguracoesPage() {
   const [motivo, setMotivo] = useState("");
   const [showHistory, setShowHistory] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [loadingParameters, setLoadingParameters] = useState(true);
+  const [savingParameters, setSavingParameters] = useState(false);
+  const [parametersError, setParametersError] = useState<string | null>(null);
   const [nfseConfig, setNfseConfig] = useState<NfseConfig | null>(null);
   const [nfseConfigError, setNfseConfigError] = useState<string | null>(null);
   const [nfseDraft, setNfseDraft] = useState<NfseCompanyDraft>({
@@ -149,10 +184,33 @@ export default function ConfiguracoesPage() {
   const [nfseDraftSaved, setNfseDraftSaved] = useState(false);
 
   useEffect(() => {
-    const v = getParametrosVigentes();
-    setVigente(v);
-    setForm(v);
-    setHistorico(getParametrosHistorico());
+    async function loadParameters() {
+      setLoadingParameters(true);
+      setParametersError(null);
+      try {
+        const response = await fetch(`/api/system/parameters?scope=${PARAMETERS_SCOPE}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Falha ao carregar parametros.");
+        const current = toParametrosSistema(data.current ?? null);
+        const versions = Array.isArray(data.versions)
+          ? data.versions.map((item: ParameterVersionApi) => toParametrosSistema(item)).reverse()
+          : [current];
+        setVigente(current);
+        setForm(current);
+        setHistorico(versions.length ? versions : [current]);
+      } catch (error) {
+        const fallback = toParametrosSistema(null);
+        setVigente(fallback);
+        setForm(fallback);
+        setHistorico([fallback]);
+        setParametersError(error instanceof Error ? error.message : "Falha ao carregar parametros.");
+      } finally {
+        setLoadingParameters(false);
+      }
+    }
+
+    void loadParameters();
+
     fetch("/api/system/nfse-config", { cache: "no-store" })
       .then(async (response) => {
         const data = await response.json();
@@ -181,6 +239,20 @@ export default function ConfiguracoesPage() {
     }
   }, []);
 
+  if (loadingParameters) {
+    return (
+      <PageShell
+        title="Parametros do Sistema"
+        description="Carregando regras versionadas do banco."
+        icon={Settings2}
+      >
+        <div className="rounded-xl border border-gray-200 bg-white p-5 text-sm text-gray-600">
+          Carregando parametros...
+        </div>
+      </PageShell>
+    );
+  }
+
   if (!form || !vigente) return null;
 
   const dirty = JSON.stringify(form) !== JSON.stringify(vigente);
@@ -188,20 +260,38 @@ export default function ConfiguracoesPage() {
   const update = <K extends keyof ParametrosSistema>(key: K, value: ParametrosSistema[K]) =>
     setForm((prev) => (prev ? { ...prev, [key]: value } : prev));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!motivo.trim()) {
       alert("Informe um motivo para a alteração (auditoria).");
       return;
     }
-    const { versao: _v, vigenteDesde: _d, alteradoPor: _a, motivo: _m, ...rest } = form;
-    void _v; void _d; void _a; void _m;
-    const novo = saveParametros(rest, motivo);
-    setVigente(novo);
-    setForm(novo);
-    setHistorico(getParametrosHistorico());
-    setMotivo("");
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 2000);
+    setSavingParameters(true);
+    setParametersError(null);
+    try {
+      const response = await fetch("/api/system/parameters", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scope: PARAMETERS_SCOPE,
+          payload: payloadFromParametros(form),
+          reason: motivo,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Falha ao salvar parametros.");
+
+      const novo = toParametrosSistema(data.parameter);
+      setVigente(novo);
+      setForm(novo);
+      setHistorico((current) => [...current, novo]);
+      setMotivo("");
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 2000);
+    } catch (error) {
+      setParametersError(error instanceof Error ? error.message : "Falha ao salvar parametros.");
+    } finally {
+      setSavingParameters(false);
+    }
   };
 
   const saveNfseDraft = () => {
@@ -238,6 +328,12 @@ export default function ConfiguracoesPage() {
           </p>
         </div>
       </div>
+
+      {parametersError && (
+        <div className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm font-medium text-red-700">
+          {parametersError}
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <div className="flex items-start justify-between gap-4 mb-4">
@@ -437,12 +533,12 @@ export default function ConfiguracoesPage() {
           />
           <button
             onClick={handleSave}
-            disabled={!dirty || !motivo.trim()}
+            disabled={!dirty || !motivo.trim() || savingParameters}
             className={cn(
               "flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-colors",
               savedFlash
                 ? "bg-green-600 text-white"
-                : dirty && motivo.trim()
+                : dirty && motivo.trim() && !savingParameters
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-100 text-gray-400 cursor-not-allowed"
             )}
