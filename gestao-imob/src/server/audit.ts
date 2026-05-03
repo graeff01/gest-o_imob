@@ -8,13 +8,14 @@ type AuditAction =
   | "invoice.emit.failed"
   | "invoice.import.previewed"
   | "invoice.import.confirmed"
-  | "invoice.import.cleaned";
+  | "invoice.import.cleaned"
+  | "bank_statement.cleaned";
 
 interface AuditPayload {
   action: AuditAction;
   actorId?: string;
   entityId?: string;
-  entityType?: "invoice" | "import_batch";
+  entityType?: "invoice" | "import_batch" | "bank_transaction";
   summary: string;
   metadata?: Record<string, unknown>;
 }

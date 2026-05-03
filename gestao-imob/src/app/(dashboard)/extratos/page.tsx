@@ -11,8 +11,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Upload, Search, ArrowUpCircle, ArrowDownCircle,
   ChevronDown, ChevronRight, FileText, Loader2, X,
-  RefreshCw, AlertTriangle, Pencil, Check,
+  RefreshCw, AlertTriangle, Pencil, Check, Trash2,
 } from "lucide-react";
+import { appEnvironment } from "@/lib/app-env";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 // ─── Types (espelham a API) ──────────────────────────────────────────────────
@@ -76,6 +77,9 @@ export default function ExtratosPage() {
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
   const [monthDetail, setMonthDetail] = useState<MonthDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
+  const canClearAllStatements = appEnvironment === "homologacao";
 
   // ── Filtros ──
   const [search, setSearch] = useState("");
@@ -183,6 +187,41 @@ export default function ExtratosPage() {
     }
   };
 
+  const handleClearAllStatements = async () => {
+    if (!confirm("Apagar todos os extratos importados e os lançamentos financeiros gerados por eles? Esta ação é apenas para HML.")) {
+      return;
+    }
+
+    setCleanupLoading(true);
+    setCleanupMessage(null);
+    try {
+      const previewResponse = await fetch("/api/extratos", { method: "DELETE" });
+      const preview = await previewResponse.json().catch(() => ({}));
+      if (!previewResponse.ok) throw new Error(preview.error ?? "Falha ao simular limpeza dos extratos.");
+
+      if ((preview.removable ?? 0) === 0) {
+        setCleanupMessage("Nao ha extratos importados para remover neste ambiente.");
+        return;
+      }
+
+      const cleanupResponse = await fetch("/api/extratos?dryRun=false", { method: "DELETE" });
+      const cleanup = await cleanupResponse.json().catch(() => ({}));
+      if (!cleanupResponse.ok) throw new Error(cleanup.error ?? "Falha ao limpar extratos.");
+
+      setCleanupMessage(cleanup.message ?? `${cleanup.deleted ?? 0} transacao(oes) removida(s).`);
+      setExpandedMonth(null);
+      setMonthDetail(null);
+      setSearch("");
+      setFilterCategory("");
+      setReviewOnly(false);
+      await fetchMonths();
+    } catch (error) {
+      setCleanupMessage(error instanceof Error ? error.message : "Falha ao limpar extratos.");
+    } finally {
+      setCleanupLoading(false);
+    }
+  };
+
   // ── Transações filtradas ──
   const filteredTransactions = monthDetail?.statement.transactions.filter((tx) => {
     if (search && !tx.description.toLowerCase().includes(search.toLowerCase())) return false;
@@ -213,6 +252,17 @@ export default function ExtratosPage() {
           >
             <RefreshCw className="h-4 w-4" />
           </button>
+          {canClearAllStatements && (
+            <button
+              onClick={handleClearAllStatements}
+              disabled={cleanupLoading}
+              className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+              title="Remove extratos e lançamentos gerados para testar reimportação em HML"
+            >
+              {cleanupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              Limpar teste
+            </button>
+          )}
           <button
             onClick={() => { setShowUpload(true); setUploadSuccess(null); setUploadError(null); }}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
@@ -222,6 +272,12 @@ export default function ExtratosPage() {
           </button>
         </div>
       </div>
+
+      {cleanupMessage && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
+          {cleanupMessage}
+        </div>
+      )}
 
       {/* ── Cards globais ── */}
       {months.length > 0 && (

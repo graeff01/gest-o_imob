@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { authErrorResponse } from "@/server/api-response";
-import { requireAuth } from "@/server/authz";
+import { AuthError, requireAuth, requireElevatedRole } from "@/server/authz";
+import { auditEvent } from "@/server/audit";
 import { ensureBankImportSchema } from "@/server/bank-import-schema";
+import { appConfig } from "@/server/env";
 import { prisma } from "@/lib/prisma";
 import {
   detectAndParse,
@@ -268,6 +270,92 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("[extratos] import error:", error);
     return NextResponse.json({ error: "Erro interno ao importar extrato." }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  let userId: string;
+  try {
+    const ctx = await requireElevatedRole();
+    userId = ctx.dbUserId;
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("[extratos] cleanup auth error:", error);
+    return NextResponse.json({ error: "Erro de autenticacao." }, { status: 500 });
+  }
+
+  if (!appConfig.isHomolog) {
+    return NextResponse.json(
+      { error: "Limpeza total de extratos e permitida somente em homologacao." },
+      { status: 403 }
+    );
+  }
+
+  const dryRun = request.nextUrl.searchParams.get("dryRun") !== "false";
+
+  try {
+    await ensureBankImportSchema();
+
+    const transactions = await prisma.bankTransaction.findMany({
+      select: {
+        id: true,
+        reconciled_with_id: true,
+        reconciled_with_type: true,
+      },
+    });
+
+    const expenseIds = transactions
+      .filter((tx) => tx.reconciled_with_type === "EXPENSE" && tx.reconciled_with_id)
+      .map((tx) => tx.reconciled_with_id as string);
+    const revenueIds = transactions
+      .filter((tx) => tx.reconciled_with_type === "REVENUE" && tx.reconciled_with_id)
+      .map((tx) => tx.reconciled_with_id as string);
+
+    if (dryRun) {
+      return NextResponse.json({
+        dryRun: true,
+        removable: transactions.length,
+        generatedExpenses: expenseIds.length,
+        generatedRevenues: revenueIds.length,
+        message: "Simulacao concluida. Use ?dryRun=false para remover todos os extratos importados.",
+      });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const deletedExpenses = expenseIds.length
+        ? await tx.expense.deleteMany({ where: { id: { in: expenseIds } } })
+        : { count: 0 };
+      const deletedRevenues = revenueIds.length
+        ? await tx.revenue.deleteMany({ where: { id: { in: revenueIds } } })
+        : { count: 0 };
+      const deletedTransactions = await tx.bankTransaction.deleteMany({});
+
+      return {
+        transactions: deletedTransactions.count,
+        expenses: deletedExpenses.count,
+        revenues: deletedRevenues.count,
+      };
+    });
+
+    await auditEvent({
+      action: "bank_statement.cleaned",
+      actorId: userId,
+      entityType: "bank_transaction",
+      summary: "Extratos importados removidos em ambiente de homologacao.",
+      metadata: result,
+    });
+
+    return NextResponse.json({
+      deleted: result.transactions,
+      deletedExpenses: result.expenses,
+      deletedRevenues: result.revenues,
+      message: `${result.transactions} transacao(oes), ${result.expenses} despesa(s) e ${result.revenues} receita(s) removida(s).`,
+    });
+  } catch (error) {
+    console.error("[extratos] cleanup error:", error);
+    return NextResponse.json({ error: "Erro ao limpar extratos importados." }, { status: 500 });
   }
 }
 
