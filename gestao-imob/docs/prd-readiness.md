@@ -54,7 +54,7 @@ Em `production`, o sistema bloqueia `GATEWAY_STUB_MODE=true`.
 - testar limpeza DW em modo simulacao e confirmacao
 - testar emissao/cancelamento de nota em modo stub ou homologacao
 - conferir `/saude` com Admin Master
-- confirmar que Dono nao acessa `/saude`, `/auditoria`, `/configuracoes` e `/caixa-entrada`
+- confirmar que Dono nao acessa `/saude`, `/auditoria` e `/configuracoes`
 - seguir `docs/checklist-validacao-manual.md`
 
 ## Antes de PRD

@@ -10,7 +10,7 @@ Preparar a base do sistema para homologacao/PRD com separacao clara de perfis, d
 ## Entregue
 
 - Suporte a 1 perfil tecnico `ADMIN_MASTER` e ate 2 perfis operacionais `DONO` via variaveis de ambiente.
-- Bloqueio server-side para telas tecnicas: `/saude`, `/auditoria`, `/configuracoes` e `/caixa-entrada`.
+- Bloqueio server-side para telas tecnicas: `/saude`, `/auditoria` e `/configuracoes`.
 - API tecnica `/api/system/health` restrita ao `ADMIN_MASTER`.
 - Diagnostico tecnico na tela de saude com ambiente, gateway, banco, usuarios ativos e notas pendentes.
 - Checklist de readiness em `docs/prd-readiness.md`.

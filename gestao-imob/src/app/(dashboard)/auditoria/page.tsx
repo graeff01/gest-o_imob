@@ -5,7 +5,6 @@ import {
   Shield,
   Search,
   User,
-  Sparkles,
   Cpu,
   Filter,
   Download,
@@ -24,8 +23,8 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   DELETE: "Remoção",
   APPROVE: "Aprovação",
   REJECT: "Rejeição",
-  AI_CLASSIFY: "Classificação IA",
-  AI_AUTO_APPROVE: "Auto-aprovação IA",
+  AUTO_CLASSIFY: "Classificação automática",
+  AUTO_APPROVE: "Aprovação automática",
   LOGIN: "Login",
   EXPORT: "Exportação",
   CONFIG_CHANGE: "Alteração de config",
@@ -38,8 +37,8 @@ const ACTION_COLORS: Record<AuditAction, string> = {
   DELETE: "bg-red-50 text-red-700",
   APPROVE: "bg-emerald-50 text-emerald-700",
   REJECT: "bg-amber-50 text-amber-700",
-  AI_CLASSIFY: "bg-indigo-50 text-indigo-700",
-  AI_AUTO_APPROVE: "bg-purple-50 text-purple-700",
+  AUTO_CLASSIFY: "bg-indigo-50 text-indigo-700",
+  AUTO_APPROVE: "bg-purple-50 text-purple-700",
   LOGIN: "bg-gray-50 text-gray-600",
   EXPORT: "bg-gray-50 text-gray-600",
   CONFIG_CHANGE: "bg-amber-50 text-amber-700",
@@ -50,7 +49,7 @@ function describeAuditImpact(entry: AuditEntry) {
   if (entry.action === "DELETE") return "Registro removido. Revisar se a exclusao foi autorizada.";
   if (entry.action === "CONFIG_CHANGE") return "Regra/configuracao alterada. Impacta calculos futuros.";
   if (entry.action === "IMPORT") return "Dados importados. Conferir origem e duplicidades.";
-  if (entry.action === "AI_AUTO_APPROVE") return "Aprovacao automatica. Conferir score de confianca.";
+  if (entry.action === "AUTO_APPROVE") return "Aprovacao automatica. Conferir score de confianca.";
   if (entry.action === "EXPORT") return "Dados exportados. Conferir finalidade e destino.";
   return "Evento registrado para rastreabilidade.";
 }
@@ -58,7 +57,7 @@ function describeAuditImpact(entry: AuditEntry) {
 export default function AuditoriaPage() {
   const [log, setLog] = useState<AuditEntry[]>([]);
   const [query, setQuery] = useState("");
-  const [actorFilter, setActorFilter] = useState<"ALL" | "HUMAN" | "AI" | "SYSTEM">("ALL");
+  const [actorFilter, setActorFilter] = useState<"ALL" | "HUMAN" | "AUTOMATION" | "SYSTEM">("ALL");
   const [actionFilter, setActionFilter] = useState<AuditAction | "ALL">("ALL");
 
   useEffect(() => {
@@ -82,7 +81,7 @@ export default function AuditoriaPage() {
     });
   }, [log, query, actorFilter, actionFilter]);
 
-  const totalIA = log.filter((e) => e.actorType === "AI").length;
+  const totalAutomacao = log.filter((e) => e.actorType === "AUTOMATION" || e.actorType === "SYSTEM").length;
   const totalHumano = log.filter((e) => e.actorType === "HUMAN").length;
   const eventosCriticos = log.filter((e) =>
     ["DELETE", "CONFIG_CHANGE", "EXPORT", "IMPORT"].includes(e.action)
@@ -118,7 +117,7 @@ export default function AuditoriaPage() {
   return (
     <PageShell
       title="Log de Auditoria"
-      description="Trilha imutável de todas as ações do sistema — humanos e IA"
+      description="Trilha imutável de todas as ações do sistema — humanos e automações"
       icon={Shield}
       actions={
         <button
@@ -132,10 +131,10 @@ export default function AuditoriaPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Stat label="Total de eventos" value={log.length} />
         <Stat label="Ações humanas" value={totalHumano} color="blue" />
-        <Stat label="Ações da IA" value={totalIA} color="emerald" />
+        <Stat label="Ações automáticas" value={totalAutomacao} color="emerald" />
         <Stat
           label="% automatizado"
-          value={log.length > 0 ? `${Math.round((totalIA / log.length) * 100)}%` : "—"}
+          value={log.length > 0 ? `${Math.round((totalAutomacao / log.length) * 100)}%` : "—"}
           color="amber"
         />
       </div>
@@ -191,7 +190,7 @@ export default function AuditoriaPage() {
           >
             <option value="ALL">Todos os atores</option>
             <option value="HUMAN">Apenas humanos</option>
-            <option value="AI">Apenas IA</option>
+            <option value="AUTOMATION">Apenas automação</option>
             <option value="SYSTEM">Apenas sistema</option>
           </select>
           <select
@@ -231,7 +230,7 @@ export default function AuditoriaPage() {
             <tbody className="divide-y divide-gray-100">
               {filtered.slice(0, 200).map((e) => {
                 const ActorIcon =
-                  e.actorType === "AI" ? Sparkles : e.actorType === "SYSTEM" ? Cpu : User;
+                  e.actorType === "AUTOMATION" || e.actorType === "SYSTEM" ? Cpu : User;
                 return (
                   <tr key={e.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-xs text-gray-600 font-mono whitespace-nowrap">
@@ -242,7 +241,7 @@ export default function AuditoriaPage() {
                         <ActorIcon
                           className={cn(
                             "h-3.5 w-3.5",
-                            e.actorType === "AI"
+                            e.actorType === "AUTOMATION"
                               ? "text-indigo-600"
                               : e.actorType === "SYSTEM"
                               ? "text-gray-500"

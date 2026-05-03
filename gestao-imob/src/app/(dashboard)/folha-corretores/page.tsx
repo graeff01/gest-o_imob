@@ -5,7 +5,7 @@
  *
  * Estrutura preparada para receber:
  * 1. Regras reais de comissão (a definir com base na planilha do usuário)
- * 2. Importação automática via IA de planilha de resultados mensais
+ * 2. Importação estruturada de planilha de resultados mensais
  *
  * A função `calculatePayroll` está isolada — quando as regras forem definidas,
  * basta preencher o corpo dela sem alterar a UI.
@@ -18,7 +18,6 @@ import {
   User,
   X,
   Upload,
-  Sparkles,
   Settings2,
   Users,
   FileSpreadsheet,
@@ -63,7 +62,7 @@ interface CommissionRule {
 }
 
 /**
- * Resultado mensal de um funcionário — o que a IA vai extrair da planilha.
+ * Resultado mensal de um funcionário extraído da planilha.
  * Campos são genéricos de propósito; serão mapeados para colunas reais depois.
  */
 interface MonthlyResult {
@@ -74,9 +73,9 @@ interface MonthlyResult {
   quantidade: number;
   /** Valor base sobre o qual a comissão incide */
   valorBase: number;
-  /** Campos adicionais extraídos pela IA (chave → valor) */
+  /** Campos adicionais extraídos da planilha (chave → valor) */
   extras: Record<string, number>;
-  origem: "MANUAL" | "IA";
+  origem: "MANUAL" | "IMPORTADO";
 }
 
 interface PayrollLine {
@@ -86,7 +85,7 @@ interface PayrollLine {
   comissao: number;
   descontos: number;
   total: number;
-  origem: "MANUAL" | "IA" | "PENDENTE";
+  origem: "MANUAL" | "IMPORTADO" | "PENDENTE";
 }
 
 // ─── Persistência local (placeholder até ter banco) ────
@@ -276,8 +275,8 @@ export default function FolhaPage() {
             onClick={() => setShowImport(true)}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:shadow-md hover:shadow-blue-600/25 transition-all"
           >
-            <Sparkles className="h-3.5 w-3.5" />
-            Importar planilha (IA)
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Importar planilha
           </button>
         </div>
       </div>
@@ -501,7 +500,7 @@ export default function FolhaPage() {
                         <span
                           className={cn(
                             "text-[10px] font-semibold px-2 py-0.5 rounded-full",
-                            l.origem === "IA"
+                            l.origem === "IMPORTADO"
                               ? "bg-blue-50 text-blue-600"
                               : l.origem === "MANUAL"
                               ? "bg-gray-100 text-gray-600"
@@ -530,7 +529,7 @@ export default function FolhaPage() {
         />
       )}
 
-      {/* ─── Modal Importação IA ─────────────── */}
+      {/* ─── Modal Importação ─────────────── */}
       {showImport && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
@@ -543,7 +542,7 @@ export default function FolhaPage() {
                   <h3 className="font-semibold text-gray-900">
                     Importar planilha de resultados
                   </h3>
-                  <p className="text-xs text-gray-500">Processamento via IA</p>
+                  <p className="text-xs text-gray-500">Importação estruturada</p>
                 </div>
               </div>
               <button
@@ -565,7 +564,7 @@ export default function FolhaPage() {
               <p className="text-[11px] text-amber-700">
                 <strong>Estrutura pronta</strong> — aguardando definição das regras
                 de comissão e do formato da planilha. Após compartilhar o modelo, a
-                IA irá extrair quantidade de locações/captações, valor base e calcular
+                o importador irá extrair quantidade de locações/captações, valor base e calcular
                 o total da folha automaticamente.
               </p>
             </div>

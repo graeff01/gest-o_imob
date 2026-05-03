@@ -22,8 +22,6 @@ import {
   Trophy,
   Users,
   Building,
-  Sparkles,
-  Inbox,
   HeartPulse,
   Store,
   UserSquare,
@@ -52,8 +50,6 @@ const iconMap: Record<string, React.ElementType> = {
   Trophy,
   Users,
   Building,
-  Sparkles,
-  Inbox,
   HeartPulse,
   Store,
   UserSquare,
@@ -127,38 +123,6 @@ export function Sidebar({ userName, role }: SidebarProps) {
           const isActive =
             pathname === item.href ||
             (item.href !== "/" && pathname.startsWith(item.href));
-
-          if (item.highlight) {
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all relative group",
-                  isActive
-                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/25"
-                    : "bg-gradient-to-r from-blue-600/10 to-indigo-600/10 text-blue-400 hover:from-blue-600/20 hover:to-indigo-600/20 hover:text-blue-300"
-                )}
-              >
-                <div className={cn(
-                  "p-1 rounded-md",
-                  isActive ? "bg-white/20" : "bg-blue-500/20"
-                )}>
-                  <Icon className="h-4 w-4 flex-shrink-0" />
-                </div>
-                <span className="flex-1">{item.title}</span>
-                <span className={cn(
-                  "text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wide",
-                  isActive
-                    ? "bg-white/20 text-white"
-                    : "bg-blue-500/20 text-blue-400 animate-pulse"
-                )}>
-                  IA
-                </span>
-              </Link>
-            );
-          }
 
           return (
             <Link

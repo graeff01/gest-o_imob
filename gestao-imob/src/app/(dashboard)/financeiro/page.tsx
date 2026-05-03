@@ -5,7 +5,7 @@ import { CreditCard, Database, FileClock, Receipt, TrendingDown, TrendingUp, Zap
 import { EmptyState, PageShell, Stat } from "@/components/shared/page-shell";
 
 const FINANCIAL_SOURCES = [
-  "Despesas aprovadas pela Central IA",
+  "Despesas importadas de extratos",
   "Receitas conciliadas por extrato",
   "Notas fiscais emitidas",
   "Repasses e comissoes consolidados",
@@ -65,7 +65,7 @@ export default function FinanceiroPage() {
             </div>
             <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2">
               <Zap className="h-4 w-4 text-blue-600" />
-              Lancamentos vindos da Central IA com auditoria
+              Lancamentos importados de extratos com auditoria
             </div>
           </div>
         </div>

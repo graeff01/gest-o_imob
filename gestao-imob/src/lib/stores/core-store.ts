@@ -85,7 +85,7 @@ export interface ParametrosSistema {
   // Fiscais
   prazoEmissaoNF: number; // dia do mês limite
   indiceReajustePadrao: "IGPM" | "IPCA";
-  // IA
+  // Automacao
   scoreConfiancaAutoAprovacao: number; // >= este valor, aprova sozinho
   /** Autor da alteração */
   alteradoPor?: string;
@@ -123,7 +123,7 @@ export const PARAMETROS_DEFAULT: Omit<ParametrosSistema, "versao" | "vigenteDesd
 
 /**
  * Log de auditoria — imutável, append-only.
- * Toda ação relevante (humana ou IA) deve gerar um registro.
+ * Toda ação relevante (humana ou automática) deve gerar um registro.
  */
 export type AuditAction =
   | "CREATE"
@@ -131,8 +131,8 @@ export type AuditAction =
   | "DELETE"
   | "APPROVE"
   | "REJECT"
-  | "AI_CLASSIFY"
-  | "AI_AUTO_APPROVE"
+  | "AUTO_CLASSIFY"
+  | "AUTO_APPROVE"
   | "LOGIN"
   | "EXPORT"
   | "CONFIG_CHANGE"
@@ -141,15 +141,15 @@ export type AuditAction =
 export interface AuditEntry {
   id: string;
   timestamp: string;
-  actor: string; // "Sistema IA" | nome do usuário
-  actorType: "HUMAN" | "AI" | "SYSTEM";
+  actor: string; // sistema | nome do usuário
+  actorType: "HUMAN" | "AUTOMATION" | "SYSTEM";
   action: AuditAction;
   entityType: string; // "Fornecedor" | "Contrato" | "Parametros" | ...
   entityId?: string;
   entityLabel?: string;
   /** Descrição curta da mudança */
   summary: string;
-  /** Score de confiança da IA (quando aplicável) */
+  /** Score de confiança da automação (quando aplicável) */
   confidence?: number;
   /** Dados antes/depois (diff) */
   diff?: { before?: unknown; after?: unknown };
@@ -157,12 +157,12 @@ export interface AuditEntry {
 
 /**
  * Fila de exceções — tudo que exige atenção humana.
- * Alimentada por IA e por validações cruzadas.
+ * Alimentada por automações e por validações cruzadas.
  */
 export type ExceptionSeverity = "INFO" | "WARN" | "CRITICAL";
 export type ExceptionStatus = "OPEN" | "REVIEWING" | "RESOLVED" | "DISMISSED";
 export type ExceptionKind =
-  | "AI_LOW_CONFIDENCE"
+  | "AUTO_LOW_CONFIDENCE"
   | "DUPLICATE"
   | "DIVERGENCE"
   | "MISSING_LINK"

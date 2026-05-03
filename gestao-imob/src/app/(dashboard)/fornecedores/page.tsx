@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Store, Plus, Pencil, Trash2, X, Search, Sparkles } from "lucide-react";
+import { Store, Plus, Pencil, Trash2, X, Search, Tags } from "lucide-react";
 import { PageShell, EmptyState, Stat } from "@/components/shared/page-shell";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
@@ -69,7 +69,7 @@ export default function FornecedoresPage() {
   return (
     <PageShell
       title="Fornecedores"
-      description="Entidades que emitem despesas — base para classificação automática por IA"
+      description="Entidades que emitem despesas — base para classificação automática por regras"
       icon={Store}
       actions={
         <button
@@ -85,20 +85,20 @@ export default function FornecedoresPage() {
         <Stat label="Com regra de classificação" value={totalComRegra} color="blue" />
         <Stat label="Total movimentado" value={formatCurrency(totalMovimentado)} color="emerald" />
         <Stat
-          label="Cobertura IA"
+          label="Cobertura de regras"
           value={list.length > 0 ? `${Math.round((totalComRegra / list.length) * 100)}%` : "—"}
           color="amber"
         />
       </div>
 
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3">
-        <Sparkles className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+        <Tags className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
         <div className="text-xs text-blue-700">
           <p className="font-medium mb-0.5">Como funciona a classificação automática</p>
           <p className="text-blue-600/80">
-            Ao cadastrar uma categoria padrão para o fornecedor, próximas despesas identificadas pela IA
-            (via Central IA) serão classificadas automaticamente nessa categoria. Quanto maior o número
-            de lançamentos confirmados, maior a confiança da IA nas próximas sugestões.
+            Ao cadastrar uma categoria padrão para o fornecedor, próximas despesas importadas de extratos
+            serão classificadas automaticamente nessa categoria. Quanto maior o número de lançamentos confirmados,
+            maior a confiança das regras nas próximas classificações.
           </p>
         </div>
       </div>
@@ -120,7 +120,7 @@ export default function FornecedoresPage() {
           <EmptyState
             icon={Store}
             title="Nenhum fornecedor cadastrado"
-            description="Cadastre fornecedores para permitir que a IA classifique despesas automaticamente ao processar documentos."
+            description="Cadastre fornecedores para permitir classificação automática por regras ao importar extratos."
           />
         ) : (
           <table className="w-full text-sm">
@@ -131,7 +131,7 @@ export default function FornecedoresPage() {
                 <th className="px-4 py-3 text-left">Categoria padrão</th>
                 <th className="px-4 py-3 text-right">Lançamentos</th>
                 <th className="px-4 py-3 text-right">Total</th>
-                <th className="px-4 py-3 text-center">Confiança IA</th>
+                <th className="px-4 py-3 text-center">Confiança da regra</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>

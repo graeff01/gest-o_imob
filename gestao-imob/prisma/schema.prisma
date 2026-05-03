@@ -868,9 +868,6 @@ model Document {
   storage_url         String
   uploaded_by         String
   document_type       DocumentType
-  ai_extracted_data   Json?
-  ai_classification   String?
-  ai_confidence       Decimal?           @db.Decimal(3, 2)
   processing_status   ProcessingStatus   @default(PENDENTE)
   processing_error    String?
   related_entity_type RelatedEntityType?

@@ -6,7 +6,7 @@ Use este checklist antes de mergear uma sprint para `main` e antes de liberar um
 
 - Login com `ADMIN_MASTER` funciona.
 - Login com cada usuario `DONO` funciona.
-- Usuario `DONO` nao acessa `/saude`, `/auditoria`, `/configuracoes` e `/caixa-entrada`.
+- Usuario `DONO` nao acessa `/saude`, `/auditoria` e `/configuracoes`.
 - Usuario sem sessao e redirecionado para `/login`.
 - APIs protegidas retornam `401` sem sessao.
 
@@ -26,7 +26,7 @@ Use este checklist antes de mergear uma sprint para `main` e antes de liberar um
 - `GATEWAY_STUB_MODE=false` em producao.
 - `/saude` nao exibe segredo, senha, token ou URL sensivel completa.
 - Endpoints de exemplo retornam 404 fora do ambiente local.
-- OCR sem `OPENAI_API_KEY` so usa mock quando fallback local estiver explicitamente liberado.
+- Importacao de extratos funciona sem dependencias externas e sem mocks em homologacao.
 
 ## Operacao
 

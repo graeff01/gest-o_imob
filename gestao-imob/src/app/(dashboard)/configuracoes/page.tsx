@@ -106,8 +106,8 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
-    title: "Fiscal e IA",
-    description: "Parâmetros fiscais e thresholds da IA",
+    title: "Fiscal e automações",
+    description: "Parâmetros fiscais e limites para aprovação automática",
     fields: [
       { key: "prazoEmissaoNF", label: "Prazo emissão NF (dia do mês)", unit: "" },
       {
@@ -118,9 +118,9 @@ const SECTIONS: SectionDef[] = [
       },
       {
         key: "scoreConfiancaAutoAprovacao",
-        label: "Score mínimo para auto-aprovação da IA",
+        label: "Score mínimo para aprovação automática",
         unit: "%",
-        hint: "Sugestões da IA com confiança ≥ este valor são aprovadas automaticamente",
+        hint: "Classificações automáticas com confiança ≥ este valor podem ser aprovadas sem revisão",
       },
     ],
   },

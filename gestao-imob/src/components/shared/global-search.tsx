@@ -14,9 +14,7 @@ import {
   Building,
   Settings2,
   Shield,
-  Inbox,
   HeartPulse,
-  Sparkles,
   CreditCard,
   Trophy,
   Percent,
@@ -40,8 +38,6 @@ interface SearchResult {
 
 const PAGES: SearchResult[] = [
   { id: "p-painel", type: "page", title: "Painel", subtitle: "Dashboard executivo", href: "/", icon: LayoutDashboard },
-  { id: "p-ia", type: "page", title: "Central IA", subtitle: "Hub de upload e classificação", href: "/documentos", icon: Sparkles },
-  { id: "p-caixa", type: "page", title: "Caixa de Entrada", subtitle: "Fila de exceções", href: "/caixa-entrada", icon: Inbox, roles: ["ADMIN_MASTER"] },
   { id: "p-saude", type: "page", title: "Saúde Operacional", subtitle: "Checagens automáticas", href: "/saude", icon: HeartPulse, roles: ["ADMIN_MASTER"] },
   { id: "p-contratos", type: "page", title: "Contratos", href: "/contratos", icon: FileText },
   { id: "p-financeiro", type: "page", title: "Financeiro", href: "/financeiro", icon: DollarSign },

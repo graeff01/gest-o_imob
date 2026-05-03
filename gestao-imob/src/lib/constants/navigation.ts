@@ -15,7 +15,6 @@ export interface NavItem {
 export const navigationItems: NavItem[] = [
   // ─── Principal — todos veem ───
   { title: "Painel", href: "/", icon: "LayoutDashboard", section: "main" },
-  { title: "Central IA", href: "/documentos", icon: "Sparkles", highlight: true, section: "main" },
 
   // ─── Operação — todos veem ───
   { title: "Contratos", href: "/contratos", icon: "FileText", section: "operacao" },
@@ -33,7 +32,6 @@ export const navigationItems: NavItem[] = [
   { title: "DIMOB", href: "/dimob", icon: "FileOutput", section: "cadastros" },
 
   // ─── Sistema — só ADMIN_MASTER ───
-  { title: "Caixa de Entrada", href: "/caixa-entrada", icon: "Inbox", section: "sistema", roles: ["ADMIN_MASTER"] },
   { title: "Saúde Operacional", href: "/saude", icon: "HeartPulse", section: "sistema", roles: ["ADMIN_MASTER"] },
   { title: "Parâmetros", href: "/configuracoes", icon: "Settings2", section: "sistema", roles: ["ADMIN_MASTER"] },
   { title: "Auditoria", href: "/auditoria", icon: "Shield", section: "sistema", roles: ["ADMIN_MASTER"] },

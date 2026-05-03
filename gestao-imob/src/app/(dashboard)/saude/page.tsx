@@ -19,7 +19,7 @@ import {
 
 interface HealthCheck {
   id: string;
-  category: "Cadastro" | "Financeiro" | "IA" | "Configuração";
+  category: "Cadastro" | "Financeiro" | "Automação" | "Configuração";
   title: string;
   description: string;
   status: "OK" | "WARN" | "FAIL";
@@ -167,12 +167,12 @@ function runChecks(): HealthCheck[] {
     details: `${totalOpen} pendência(s) total`,
   });
 
-  // ─── IA ───
+  // ─── Automação ───
   checks.push({
     id: "score-confianca",
-    category: "IA",
+    category: "Automação",
     title: "Threshold de auto-aprovação configurado",
-    description: "Score mínimo para que a IA aprove sozinha sem revisão humana",
+    description: "Score mínimo para que uma classificação automática seja aprovada sem revisão humana",
     status: params.scoreConfiancaAutoAprovacao >= 90 ? "OK" : "WARN",
     details: `${params.scoreConfiancaAutoAprovacao}% — recomendado ≥ 90%`,
   });
