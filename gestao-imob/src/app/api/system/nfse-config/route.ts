@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { getNFSeCompanyConfig } from "@/server/nfse-config";
-import { AuthError, requireTechnicalRole } from "@/server/authz";
+import { AuthError, requireElevatedRole } from "@/server/authz";
 
 export async function GET() {
   try {
-    await requireTechnicalRole();
+    await requireElevatedRole();
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { emitNfse } from "@/lib/utils/nfse-gateway";
 import { validateCNPJ, validateCPF } from "@/lib/utils";
 import { auditEvent } from "@/server/audit";
+import { nfseEmissionBlockedReason } from "@/server/env";
 import type {
   CreateInvoiceInput,
   InvoiceFilters,
@@ -263,6 +264,11 @@ export async function emitInvoice(
   id: string,
   options: { cep?: string; aliquota?: number; confirmDuplicate?: boolean }
 ) {
+  const blockedReason = nfseEmissionBlockedReason();
+  if (blockedReason) {
+    throw new InvoiceServiceError(blockedReason, 423);
+  }
+
   const invoice = await prisma.invoice.findUnique({ where: { id } });
   if (!invoice) {
     throw new InvoiceServiceError("Nota fiscal nao encontrada.", 404);

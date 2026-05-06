@@ -37,12 +37,15 @@ Fora do ambiente local, mocks/fallbacks devem permanecer desligados.
 Para gateway real:
 
 - `GATEWAY_STUB_MODE=false`
+- `NFSE_PRD_READY=false` enquanto os dados fiscais finais nao estiverem confirmados
 - `NFSE_GATEWAY_API_KEY`
 - `NFSE_COMPANY_ID`
 - `NFSE_COMPANY_CNPJ`
 - `NFSE_COMPANY_IM`
 
 Em `production`, o sistema bloqueia `GATEWAY_STUB_MODE=true`.
+Com `NFSE_PRD_READY=false`, o sistema pode subir em PRD, mas qualquer tentativa de emissao real de NFS-e e bloqueada no backend e sinalizada na tela de notas fiscais.
+Altere para `NFSE_PRD_READY=true` somente apos validar gateway, empresa, inscricao municipal, codigo de servico, codigo complementar e aliquota com o cliente/contador.
 
 ## Antes de mergear uma sprint
 

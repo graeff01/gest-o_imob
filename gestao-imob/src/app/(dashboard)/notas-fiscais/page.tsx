@@ -59,6 +59,24 @@ interface Summary {
   enviadas: number; pagas: number; canceladas: number; totalAmount: number;
 }
 
+interface NfseCompanyConfig {
+  appEnv: "local" | "homolog" | "production";
+  gatewayMode: "stub" | "real";
+  apiKeyConfigured: boolean;
+  companyIdConfigured: boolean;
+  companyCnpjConfigured: boolean;
+  municipalRegistrationConfigured: boolean;
+  cityCode: string;
+  serviceCode: string;
+  serviceCodeComplement: string;
+  defaultAliquota: string;
+  homologacao: boolean;
+  prdReady: boolean;
+  emissionEnabled: boolean;
+  emissionBlockedReason: string | null;
+  pendingProductionFields: string[];
+}
+
 interface PreviewRow {
   rowIndex: number; title_number: string; client_name: string;
   client_cpf_cnpj: string; property_address: string | null;
@@ -503,8 +521,31 @@ export default function NotasFiscaisPage() {
   const autoSyncInFlightRef = useRef(false);
   const runtimeEnv = (process.env.NEXT_PUBLIC_APP_ENV ?? "").toLowerCase();
   const canClearAllDw = ["homolog", "homologacao", "hml"].includes(runtimeEnv);
+  const isProductionRuntime = ["production", "prod", "prd"].includes(runtimeEnv);
+  const [nfseConfig, setNfseConfig] = useState<NfseCompanyConfig | null>(null);
+  const [nfseConfigError, setNfseConfigError] = useState<string | null>(null);
+  const nfseEmissionBlocked = isProductionRuntime
+    ? nfseConfig?.emissionEnabled !== true
+    : nfseConfig?.emissionEnabled === false;
+  const nfseEmissionBlockedMessage =
+    nfseConfig?.emissionBlockedReason ??
+    nfseConfigError ??
+    "Validando configuracao fiscal antes de permitir emissao em PRD.";
 
   // ── Carregar dados ──
+  const fetchNfseConfig = useCallback(async () => {
+    try {
+      const res = await fetch("/api/system/nfse-config");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Erro ao carregar configuracao fiscal.");
+      setNfseConfig(data);
+      setNfseConfigError(null);
+    } catch (err) {
+      setNfseConfig(null);
+      setNfseConfigError(err instanceof Error ? err.message : "Erro ao carregar configuracao fiscal.");
+    }
+  }, []);
+
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -539,6 +580,10 @@ export default function NotasFiscaisPage() {
     const timer = setTimeout(fetchInvoices, 300);
     return () => clearTimeout(timer);
   }, [fetchInvoices]);
+
+  useEffect(() => {
+    void fetchNfseConfig();
+  }, [fetchNfseConfig]);
 
   // ── Auto-refresh (polling 30s) ──
   // Roda apenas quando ha notas em PROCESSANDO ou EMITIDA-sem-PDF aguardando webhook.
@@ -799,6 +844,10 @@ export default function NotasFiscaisPage() {
   // ── Emissão via gateway ──
   const handleEmit = async () => {
     if (!emitModal) return;
+    if (nfseEmissionBlocked) {
+      setEmitError(nfseEmissionBlockedMessage);
+      return;
+    }
     const checks = validateInvoiceForEmission(emitModal, emitCep, emitAliquota);
     const blockingIssues = checks.filter((check) => !check.ok);
     if (blockingIssues.length > 0) {
@@ -1226,6 +1275,33 @@ export default function NotasFiscaisPage() {
             </button>
           </div>
         </div>
+
+        {nfseEmissionBlocked && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>
+                <p className="font-semibold">Emissao fiscal bloqueada em PRD</p>
+                <p className="mt-0.5 text-xs">{nfseEmissionBlockedMessage}</p>
+                {nfseConfig?.pendingProductionFields?.length ? (
+                  <p className="mt-1 text-xs">Pendencias: {nfseConfig.pendingProductionFields.join(", ")}</p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {nfseConfigError && isProductionRuntime && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <div>
+                <p className="font-semibold">Nao foi possivel validar a configuracao fiscal.</p>
+                <p className="mt-0.5 text-xs">{nfseConfigError}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {dwCleanupMessage && (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
@@ -2306,6 +2382,15 @@ export default function NotasFiscaisPage() {
                 <p>Ambiente de homologação — emissões são enviadas ao sandbox do gateway e <strong>não geram notas fiscais reais</strong>.</p>
               </div>
               )}
+              {nfseEmissionBlocked && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold">PRD preparado, mas emissao real bloqueada.</p>
+                    <p className="mt-0.5">{nfseEmissionBlockedMessage}</p>
+                  </div>
+                </div>
+              )}
               <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
                 <Zap className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <div>
@@ -2341,9 +2426,12 @@ export default function NotasFiscaisPage() {
               {!emitReady && (
                 <p className="mr-auto text-xs font-medium text-red-600">Resolva as pendencias do checklist para emitir.</p>
               )}
+              {nfseEmissionBlocked && (
+                <p className="mr-auto text-xs font-medium text-amber-700">Emissao em PRD bloqueada ate confirmacao fiscal.</p>
+              )}
               <button onClick={() => setEmitModal(null)} disabled={emitting} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:opacity-50">Cancelar</button>
               <button
-                onClick={handleEmit} disabled={emitting || !emitReady}
+                onClick={handleEmit} disabled={emitting || !emitReady || nfseEmissionBlocked}
                 className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {emitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Emitindo...</> : <><FileText className="h-4 w-4" /> Confirmar Emissão</>}
