@@ -61,7 +61,8 @@ export async function GET(request: NextRequest) {
         bairro: r.bairro,
         cidade: r.localidade,
         uf: r.uf,
-      }));
+      }))
+      .filter((result) => result.cep.length === 8 && result.cep !== "00000000");
 
     return NextResponse.json({ results });
   } catch {

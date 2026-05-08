@@ -216,102 +216,188 @@ function InvoiceVisualPreview({ invoice, cep, aliquota }: { invoice: Invoice; ce
     : String(invoice.reference_year);
   const serviceLabel = SERVICE_LABELS[invoice.service_type];
   const verificationCode = invoice.gateway_id ?? "Gerado apos emissao";
+  const previewNumber = invoice.nfse_number ?? "000000";
+  const previewSeries = invoice.year_sequence
+    ? String(invoice.year_sequence).padStart(6, "0")
+    : "000000";
+  const cleanCepDigits = cep.replace(/\D/g, "");
+  const cleanCep = cleanCepDigits.length === 8 && cleanCepDigits !== "00000000"
+    ? cep.trim()
+    : null;
+  const environmentLabel = process.env.NEXT_PUBLIC_APP_ENV === "production"
+    ? "PREFEITURA MUNICIPAL"
+    : "PREFEITURA DE TESTE";
+  const environmentNotice = process.env.NEXT_PUBLIC_APP_ENV === "production"
+    ? "Pre-visualizacao da estrutura final da NFS-e"
+    : "Sem valor fiscal ou contabil";
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-100 p-3">
-      <div className="mx-auto overflow-hidden rounded-sm border border-slate-300 bg-white text-slate-900 shadow-sm">
-        <div className="flex items-start justify-between gap-4 border-b-4 border-blue-700 px-6 py-4">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-700">Prefeitura Municipal de Canoas</p>
-            <h3 className="mt-1 text-lg font-bold uppercase">Nota Fiscal de Servicos Eletronica</h3>
-            <p className="mt-0.5 text-[11px] text-slate-500">Espelho de conferencia com os dados que serao enviados</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[10px] uppercase text-slate-500">Numero</p>
-            <p className="font-mono text-base font-bold">{invoice.nfse_number ?? "PREVIA"}</p>
-            <p className="mt-1 text-[10px] uppercase text-slate-500">Emissao</p>
-            <p className="text-xs font-semibold">{new Date().toLocaleDateString("pt-BR")}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 border-b border-slate-200 md:grid-cols-3">
-          <div className="border-b border-slate-200 p-4 md:col-span-2 md:border-b-0 md:border-r">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Prestador do servico</p>
-            <p className="mt-1 text-sm font-bold text-slate-900">Jardim do Lago</p>
-            <p className="mt-1 text-xs text-slate-600">Municipio de incidencia: Canoas - RS</p>
-            <p className="text-xs text-slate-600">Regime: Simples Nacional</p>
-          </div>
-          <div className="p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Competencia</p>
-            <p className="mt-1 text-sm font-bold">{competence}</p>
-            <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Titulo DW</p>
-            <p className="font-mono text-xs font-semibold">{invoice.title_number || "-"}</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 border-b border-slate-200 md:grid-cols-2">
-          <div className="border-b border-slate-200 p-4 md:border-b-0 md:border-r">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Tomador do servico</p>
-            <p className="mt-1 text-sm font-bold">{invoice.client_name}</p>
-            <p className="mt-1 font-mono text-xs text-slate-700">{invoice.client_cpf_cnpj}</p>
-            <p className="mt-1 text-xs text-slate-600">{invoice.client_contact || "Contato nao informado"}</p>
-          </div>
-          <div className="p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Endereco vinculado</p>
-            <p className="mt-1 text-xs font-medium leading-relaxed text-slate-700">{invoice.property_address || "Endereco nao informado"}</p>
-            <p className="mt-2 font-mono text-xs text-slate-600">CEP: {cep.trim() || "pendente"}</p>
-          </div>
-        </div>
-
-        <div className="border-b border-slate-200 p-4">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Discriminacao dos servicos</p>
-          <p className="mt-2 text-sm font-semibold text-slate-900">{invoice.description_title || serviceLabel}</p>
-          <p className="mt-1 whitespace-pre-line text-xs leading-relaxed text-slate-700">{invoice.description_body}</p>
-          <div className="mt-3 grid grid-cols-2 gap-3 text-xs md:grid-cols-4">
-            <div>
-              <p className="text-slate-500">Servico</p>
-              <p className="font-semibold">{serviceLabel}</p>
+    <div className="rounded-2xl border border-slate-200 bg-[#eef2f7] p-3">
+      <div className="mx-auto overflow-hidden rounded-[2px] border border-slate-400 bg-white text-slate-900 shadow-sm">
+        <div className="border-b border-slate-400 bg-slate-50 px-5 py-4">
+          <div className="grid grid-cols-[1.25fr_1fr] gap-4 border border-slate-400 bg-white">
+            <div className="border-r border-slate-400 px-4 py-3">
+              <p className="text-center text-[13px] font-bold uppercase tracking-wide">NFS-e - Nota Fiscal de Servicos Eletronica</p>
+              <p className="mt-2 text-center text-[12px] font-bold uppercase text-red-600">
+                {environmentLabel} ({environmentNotice})
+              </p>
             </div>
-            <div>
-              <p className="text-slate-500">Cod. tributacao</p>
-              <p className="font-mono font-semibold">10.05.01</p>
-            </div>
-            <div>
-              <p className="text-slate-500">ISS retido</p>
-              <p className="font-semibold">Nao</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Verificacao</p>
-              <p className="font-mono font-semibold">{verificationCode}</p>
+            <div className="grid grid-cols-2 divide-x divide-slate-400">
+              <div className="px-3 py-2">
+                <p className="text-[10px] uppercase text-slate-500">Emitida em</p>
+                <p className="mt-1 text-[12px] font-semibold">{new Date().toLocaleDateString("pt-BR")}</p>
+                <p className="text-[12px] font-semibold">{new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</p>
+              </div>
+              <div className="px-3 py-2">
+                <p className="text-[10px] uppercase text-slate-500">Competencia</p>
+                <p className="mt-1 text-[12px] font-semibold">{competence}</p>
+                <p className="mt-2 text-[10px] uppercase text-slate-500">Numero</p>
+                <p className="font-mono text-[12px] font-bold">{previewNumber}</p>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 divide-x divide-slate-200 border-b border-slate-200 text-xs md:grid-cols-4">
-          <div className="p-4">
-            <p className="text-slate-500">Valor do servico</p>
-            <p className="mt-1 text-base font-bold">{formatCurrency(amount)}</p>
-          </div>
-          <div className="p-4">
-            <p className="text-slate-500">Aliquota ISS</p>
-            <p className="mt-1 text-base font-bold">{rate.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</p>
-          </div>
-          <div className="p-4">
-            <p className="text-slate-500">ISS estimado</p>
-            <p className="mt-1 text-base font-bold">{formatCurrency(issValue)}</p>
-          </div>
-          <div className="p-4">
-            <p className="text-slate-500">Valor liquido</p>
-            <p className="mt-1 text-base font-bold">{formatCurrency(amount)}</p>
+        <div className="border-b border-slate-400 px-5 py-4">
+          <div className="grid grid-cols-[1.15fr_0.85fr] gap-0 border border-slate-400">
+            <div className="border-r border-slate-400 px-4 py-3">
+              <p className="text-[10px] uppercase text-slate-500">Prestador dos servicos</p>
+              <p className="mt-1 text-[14px] font-bold uppercase">Jardim do Lago</p>
+              <p className="mt-2 text-[12px]">Municipio de incidencia: Canoas</p>
+              <p className="text-[12px]">UF: RS</p>
+              <p className="text-[12px]">Regime especial de tributacao: Simples Nacional</p>
+            </div>
+            <div className="px-4 py-3">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[12px]">
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Serie do RPS</p>
+                  <p className="font-semibold">IO</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Numero do RPS</p>
+                  <p className="font-mono font-semibold">{previewSeries}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Codigo verificacao</p>
+                  <p className="font-mono font-semibold">{verificationCode}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Titulo DW</p>
+                  <p className="font-mono font-semibold">{invoice.title_number || "-"}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-4 px-6 py-3">
+        <div className="border-b border-slate-400 px-5 py-4">
+          <div className="border border-slate-400">
+            <div className="border-b border-slate-400 bg-slate-50 px-4 py-2">
+              <p className="text-center text-[12px] font-bold uppercase">Tomador dos servicos</p>
+            </div>
+            <div className="grid grid-cols-[0.9fr_1.1fr] gap-0">
+              <div className="border-r border-slate-400 px-4 py-3">
+                <p className="text-[10px] uppercase text-slate-500">CPF/CNPJ</p>
+                <p className="font-mono text-[12px] font-semibold">{invoice.client_cpf_cnpj}</p>
+                <p className="mt-2 text-[10px] uppercase text-slate-500">Nome</p>
+                <p className="text-[13px] font-bold uppercase">{invoice.client_name}</p>
+              </div>
+              <div className="px-4 py-3">
+                <p className="text-[10px] uppercase text-slate-500">Endereco</p>
+                <p className="text-[12px] leading-relaxed">
+                  {invoice.property_address || "Endereco nao informado"} - CEP: {cleanCep ?? "Nao informado"}
+                </p>
+                <p className="mt-2 text-[10px] uppercase text-slate-500">Contato</p>
+                <p className="text-[12px]">{invoice.client_contact || "Nao informado"}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-b border-slate-400 px-5 py-4">
+          <div className="border border-slate-400">
+            <div className="border-b border-slate-400 bg-slate-50 px-4 py-2">
+              <p className="text-center text-[12px] font-bold uppercase">Discriminacao dos servicos</p>
+            </div>
+            <div className="px-4 py-3">
+              <p className="text-[13px] leading-relaxed">{invoice.description_body}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-b border-slate-400 px-5 py-4">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.95fr_1.05fr]">
+            <div className="border border-slate-400">
+              <div className="border-b border-slate-400 bg-slate-50 px-4 py-2">
+                <p className="text-center text-[12px] font-bold uppercase">Dados fiscais</p>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3 text-[12px]">
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Codigo do servico</p>
+                  <p className="font-semibold">10.05.01 / Servico prestado</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Subitem LC 116/03</p>
+                  <p className="font-semibold">1005</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Natureza da operacao</p>
+                  <p className="font-semibold">Tributacao no municipio</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">ISS retido</p>
+                  <p className="font-semibold">Nao</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Tipo do servico</p>
+                  <p className="font-semibold">{serviceLabel}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase text-slate-500">Regime</p>
+                  <p className="font-semibold">ME ou EPP do Simples Nacional</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border border-slate-400">
+              <div className="border-b border-slate-400 bg-slate-50 px-4 py-2">
+                <p className="text-center text-[12px] font-bold uppercase">Valores</p>
+              </div>
+              <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 px-4 py-3 text-[12px]">
+                <p>Valor dos servicos</p>
+                <p className="font-semibold">{formatCurrency(amount)}</p>
+                <p>(-) Descontos</p>
+                <p className="font-semibold">{formatCurrency(0)}</p>
+                <p>(-) Deducoes</p>
+                <p className="font-semibold">{formatCurrency(0)}</p>
+                <p>(-) Retencoes federais</p>
+                <p className="font-semibold">{formatCurrency(0)}</p>
+                <p>(-) ISS retido na fonte</p>
+                <p className="font-semibold">{formatCurrency(0)}</p>
+                <p>(=) Base de calculo</p>
+                <p className="font-semibold">{formatCurrency(amount)}</p>
+                <p>(x) Aliquota</p>
+                <p className="font-semibold">{rate.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%</p>
+                <p>(=) Valor do ISS</p>
+                <p className="font-semibold">{formatCurrency(issValue)}</p>
+                <p className="border-t border-slate-300 pt-2 text-[13px] font-bold">Valor liquido</p>
+                <p className="border-t border-slate-300 pt-2 text-[13px] font-bold">{formatCurrency(amount)}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 px-5 py-3">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Status da previa</p>
-            <p className="text-xs text-slate-700">Documento de conferencia. O numero oficial, PDF e XML sao gerados somente apos a emissao.</p>
+            <p className="text-xs text-slate-700">
+              Espelho visual de conferencia. Numero oficial, PDF e XML sao definidos pelo gateway e pela prefeitura apos a emissao.
+            </p>
           </div>
-          <div className="h-8 w-32 rounded bg-[repeating-linear-gradient(90deg,#0f172a_0,#0f172a_2px,transparent_2px,transparent_5px)] opacity-70" />
+          <div className="w-44 border border-slate-400 px-3 py-2 text-center">
+            <p className="text-[10px] uppercase tracking-wide text-slate-500">Autenticacao visual</p>
+            <div className="mt-1 h-7 w-full bg-[repeating-linear-gradient(90deg,#0f172a_0,#0f172a_2px,transparent_2px,transparent_5px)] opacity-70" />
+          </div>
         </div>
       </div>
     </div>
@@ -485,6 +571,7 @@ export default function NotasFiscaisPage() {
   const [cepLoading, setCepLoading]   = useState(false);
   const [cepResults, setCepResults]   = useState<{ cep_formatted: string; logradouro: string; bairro: string }[]>([]);
   const [showFixedFields, setShowFixedFields] = useState(false);
+  const autoCepLookupRef = useRef<string | null>(null);
 
   // ── Seleção e emissão em lote ──
   const [selectedIds, setSelectedIds]     = useState<Set<string>>(new Set());
@@ -877,16 +964,40 @@ export default function NotasFiscaisPage() {
   };
 
   // ── CEP lookup ──
-  const lookupCep = async () => {
-    if (!emitModal?.property_address) return;
+  const lookupCep = async (addressOverride?: string) => {
+    const targetAddress = addressOverride ?? emitModal?.property_address;
+    if (!targetAddress) return;
     setCepLoading(true);
     setCepResults([]);
     try {
-      const res = await fetch(`/api/cep-lookup?address=${encodeURIComponent(emitModal.property_address)}`);
+      const res = await fetch(`/api/cep-lookup?address=${encodeURIComponent(targetAddress)}`);
       const data = await res.json();
-      if (data.results?.length > 0) { setCepResults(data.results); setEmitCep(data.results[0].cep_formatted); }
+      const validResults = Array.isArray(data.results)
+        ? data.results.filter((result: { cep_formatted?: string }) => {
+            const digits = (result.cep_formatted ?? "").replace(/\D/g, "");
+            return digits.length === 8 && digits !== "00000000";
+          })
+        : [];
+
+      if (validResults.length > 0) {
+        setCepResults(validResults);
+        setEmitCep(validResults[0].cep_formatted);
+      }
     } catch { /* falha silenciosa */ } finally { setCepLoading(false); }
   };
+
+  useEffect(() => {
+    if (!emitModal?.property_address) {
+      autoCepLookupRef.current = null;
+      return;
+    }
+
+    if (emitCep.trim()) return;
+    if (autoCepLookupRef.current === emitModal.property_address) return;
+
+    autoCepLookupRef.current = emitModal.property_address;
+    void lookupCep(emitModal.property_address);
+  }, [emitModal, emitCep]);
 
   // ── Import DW: parse (preview) ──
   const handleFileSelect = async (file: File) => {
@@ -2209,16 +2320,6 @@ export default function NotasFiscaisPage() {
               <button onClick={() => setEmitModal(null)} className="text-gray-400 hover:text-gray-600 p-1"><X className="h-5 w-5" /></button>
             </div>
             <div className="p-6 space-y-4 overflow-y-auto max-h-[70vh]">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <p className="text-gray-400 mb-0.5">Tomador</p>
-                  <p className="font-medium text-gray-900 bg-gray-50 rounded px-2 py-1.5 truncate">{emitModal.client_name}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 mb-0.5">CPF / CNPJ</p>
-                  <p className="font-mono text-gray-900 bg-gray-50 rounded px-2 py-1.5">{emitModal.client_cpf_cnpj}</p>
-                </div>
-              </div>
               <InvoiceVisualPreview invoice={emitModal} cep={emitCep} aliquota={emitAliquota} />
               <div className="border border-gray-200 rounded-xl p-4">
                 <div className="flex items-center justify-between gap-3 mb-3">
@@ -2235,23 +2336,44 @@ export default function NotasFiscaisPage() {
                     Revalidar nota
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {emitChecks.map((check) => (
-                    <div
-                      key={check.id}
-                      className={cn(
-                        "flex items-start gap-2 rounded-lg border px-3 py-2 text-xs",
-                        check.ok ? "bg-green-50 border-green-100 text-green-800" : "bg-red-50 border-red-100 text-red-800"
-                      )}
-                    >
-                      {check.ok ? <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />}
-                      <div>
-                        <p className="font-semibold">{check.label}</p>
-                        <p className={check.ok ? "text-green-700" : "text-red-700"}>{check.detail}</p>
-                      </div>
-                    </div>
-                  ))}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {emitChecks.filter((check) => check.ok).length} validado(s)
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium",
+                      emitChecks.some((check) => !check.ok)
+                        ? "bg-red-50 text-red-700"
+                        : "bg-gray-100 text-gray-600"
+                    )}
+                  >
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    {emitChecks.filter((check) => !check.ok).length} pendencia(s)
+                  </span>
                 </div>
+                {emitChecks.some((check) => !check.ok) && (
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                    {emitChecks.filter((check) => !check.ok).map((check) => (
+                      <div
+                        key={check.id}
+                        className="flex items-start gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-800"
+                      >
+                        <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="font-semibold">{check.label}</p>
+                          <p className="text-red-700">{check.detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {emitReady && (
+                  <div className="mt-3 rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-xs text-green-800">
+                    A nota esta consistente para emissao.
+                  </div>
+                )}
               </div>
               {emitDuplicates.length > 0 && (
                 <div className="border border-amber-200 bg-amber-50 rounded-xl p-4 text-xs text-amber-800">
@@ -2261,7 +2383,6 @@ export default function NotasFiscaisPage() {
                       <p className="font-semibold">Possivel duplicidade encontrada</p>
                       <p className="mt-1">
                         Existe(m) {emitDuplicates.length} nota(s) com mesmo titulo DW ou mesmo cliente, valor e competencia.
-                        Revise antes de emitir para evitar duplicidade fiscal.
                       </p>
                       <div className="mt-2 space-y-1">
                         {emitDuplicates.slice(0, 3).map((dup) => (
@@ -2289,21 +2410,21 @@ export default function NotasFiscaisPage() {
                     />
                   </div>
                   {emitModal.property_address && (
-                    <button
-                      onClick={lookupCep} disabled={cepLoading}
+                        <button
+                          onClick={() => void lookupCep()} disabled={cepLoading}
                       className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50 whitespace-nowrap"
                     >
                       {cepLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-                      Buscar CEP
+                      Buscar novamente
                     </button>
                   )}
                 </div>
                 {cepResults.length > 0 && (
                   <div className="mt-1.5 space-y-1">
                     {cepResults.length > 1 && <p className="text-[10px] text-gray-400">Selecione o CEP correto:</p>}
-                    {cepResults.map((r) => (
+                    {cepResults.map((r, index) => (
                       <button
-                        key={r.cep_formatted} onClick={() => setEmitCep(r.cep_formatted)}
+                        key={`${r.cep_formatted}-${r.logradouro}-${r.bairro}-${index}`} onClick={() => setEmitCep(r.cep_formatted)}
                         className={cn(
                           "w-full text-left text-xs px-2 py-1.5 rounded border transition-colors",
                           emitCep === r.cep_formatted ? "border-blue-400 bg-blue-50 text-blue-800" : "border-gray-200 hover:bg-gray-50 text-gray-700"
@@ -2315,7 +2436,7 @@ export default function NotasFiscaisPage() {
                   </div>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
+              <div className="hidden grid grid-cols-2 gap-3 text-xs">
                 <div>
                   <p className="text-gray-400 mb-0.5">Valor do serviço</p>
                   <p className="text-xl font-bold text-gray-900 bg-gray-50 rounded px-2 py-1.5">{formatCurrency(Number(emitModal.amount))}</p>
@@ -2329,7 +2450,7 @@ export default function NotasFiscaisPage() {
                   />
                 </div>
               </div>
-              <div className="text-xs">
+              <div className="hidden text-xs">
                 <p className="text-gray-400 mb-0.5">Descrição da NFS-e</p>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                   <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Descricao que sera enviada ao gateway</p>
@@ -2349,7 +2470,7 @@ export default function NotasFiscaisPage() {
                 >
                   <span className="flex items-center gap-1.5">
                     <Info className="h-3.5 w-3.5 text-gray-400" />
-                    Campos preenchidos automaticamente pelo sistema
+                    Ver campos tecnicos
                   </span>
                   {showFixedFields ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
                 </button>
@@ -2391,16 +2512,13 @@ export default function NotasFiscaisPage() {
                   </div>
                 </div>
               )}
-              <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
+              <div className="hidden items-start gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">
                 <Zap className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
                 <div>
                   <p className="font-medium">Preparado para NFS.io</p>
                   <p className="mt-0.5">Quando HML/PRD estiverem prontos, este mesmo fluxo usara as variaveis NFSE_* e o certificado A1 configurados no ambiente.</p>
                 </div>
               </div>
-              {emitModal.emit_attempts > 0 && (
-                <p className="text-xs text-gray-400">Tentativas anteriores: {emitModal.emit_attempts}</p>
-              )}
               {emitError && (
                 <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">
                   <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
