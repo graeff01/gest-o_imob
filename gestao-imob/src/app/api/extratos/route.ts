@@ -514,9 +514,11 @@ async function analyzeTransactions(
     const needsReview = shouldReview(enrichedSuggestion) || financialConflict;
     const statusReason = financialConflict
       ? "Existe um lancamento financeiro ja vinculado a outra transacao com os mesmos sinais."
-      : needsReview
-        ? "Classificacao automatica abaixo do limiar de confianca."
-        : "Classificacao automatica aplicada com sucesso.";
+      : enrichedSuggestion.matchedRule.startsWith("transferencia-interna")
+        ? "Transferencia interna detectada. Confirmar antes de gerar impacto financeiro."
+        : needsReview
+          ? "Classificacao automatica abaixo do limiar de confianca."
+          : "Classificacao automatica aplicada com sucesso.";
 
     analyzed.push({
       tx,
@@ -671,6 +673,7 @@ async function createFinancialEntryFromTransaction(
   const commonNotes = `Gerado automaticamente pelo importador de extrato. Transacao bancaria: ${bankTransactionId}. ExtratoKey: ${normalizedKey}. Regra: ${suggestion.matchedRule}. Confianca: ${suggestion.confidence}%.`;
 
   if (existingFinancialId) return existingFinancialId;
+  if (suggestion.matchedRule.startsWith("transferencia-interna")) return null;
 
   if (tx.isCredit) {
     const revenue = await prisma.revenue.create({
@@ -933,6 +936,7 @@ function applyLearnedRules(
 }
 
 function shouldReview(suggestion: TransactionCategorySuggestion): boolean {
+  if (suggestion.matchedRule.startsWith("transferencia-interna")) return true;
   return suggestion.confidence < REVIEW_CONFIDENCE_THRESHOLD || suggestion.matchedRule.startsWith("fallback");
 }
 

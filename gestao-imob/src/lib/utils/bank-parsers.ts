@@ -44,6 +44,7 @@ export const CATEGORIES = {
   "Seguros": { color: "bg-sky-100 text-sky-800", type: "despesa" },
   "Contabilidade / Juridico": { color: "bg-fuchsia-100 text-fuchsia-800", type: "despesa" },
   "Transporte / Combustivel": { color: "bg-stone-100 text-stone-800", type: "despesa" },
+  "Transferencia Interna": { color: "bg-cyan-100 text-cyan-800", type: "despesa" },
   "A Classificar": { color: "bg-amber-100 text-amber-900", type: "despesa" },
   "Outros": { color: "bg-gray-100 text-gray-800", type: "despesa" },
 } as const;
@@ -85,6 +86,25 @@ interface RuleDefinition {
 }
 
 const SMART_RULES: RuleDefinition[] = [
+  {
+    id: "transferencia-interna-saida",
+    category: "Transferencia Interna",
+    kind: "despesa",
+    any: ["ENTRE CONTAS", "MESMA TITULARIDADE", "RESGATE AUTOMATICO", "APLICACAO AUTOMATICA", "TRANSF ENTRE CONTAS", "TRANSFERENCIA ENTRE CONTAS"],
+    expenseCategoryNames: ["Transferencia Interna", "A Classificar"],
+    department: "ADMIN",
+    paymentMethod: "TRANSFERENCIA",
+    confidence: 97,
+  },
+  {
+    id: "transferencia-interna-entrada",
+    category: "Transferencia Interna",
+    kind: "receita",
+    any: ["ENTRE CONTAS", "MESMA TITULARIDADE", "RESGATE AUTOMATICO", "APLICACAO AUTOMATICA", "TRANSF ENTRE CONTAS", "TRANSFERENCIA ENTRE CONTAS"],
+    department: "ADMIN",
+    paymentMethod: "TRANSFERENCIA",
+    confidence: 97,
+  },
   {
     id: "receita-aluguel",
     category: "Aluguel Recebido",
