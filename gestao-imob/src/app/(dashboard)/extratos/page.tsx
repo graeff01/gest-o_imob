@@ -118,42 +118,12 @@ interface AccountSummary {
   lastImportedAt: string | null;
 }
 
-interface ReviewQueueItem {
-  id: string;
-  monthKey: string;
-  batchId?: string;
-  date: string;
-  description: string;
-  amount: number;
-  isCredit: boolean;
-  category: string;
-  confidence: number;
-  matchedRule?: string;
-  bankName: string;
-  processingStatus?: string;
-  statusReason?: string;
-}
-
-interface ImportBatchSummary {
-  id: string;
-  importedAt: string;
-  bankName: string;
-  months: string[];
-  transactionCount: number;
-  totalReceitas: number;
-  totalDespesas: number;
-  pendingReview: number;
-  reconciledCount: number;
-  sourceFile?: string;
-}
 
 // ─── Componente principal ────────────────────────────────────────────────────
 
 export default function ExtratosPage() {
   const [months, setMonths] = useState<MonthSummary[]>([]);
   const [accounts, setAccounts] = useState<AccountSummary[]>([]);
-  const [batches, setBatches] = useState<ImportBatchSummary[]>([]);
-  const [reviewQueue, setReviewQueue] = useState<ReviewQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
   const [monthDetail, setMonthDetail] = useState<MonthDetail | null>(null);
@@ -187,8 +157,6 @@ export default function ExtratosPage() {
       const data = await res.json();
       setMonths(data.months ?? []);
       setAccounts(data.accounts ?? []);
-      setBatches(data.batches ?? []);
-      setReviewQueue(data.reviewQueue ?? []);
     } catch {
       // silently handle
     } finally {
@@ -379,7 +347,7 @@ export default function ExtratosPage() {
               title="Remove extratos e lançamentos gerados para testar reimportação em HML"
             >
               {cleanupLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-              Limpar teste
+              Limpar dados importados
             </button>
           )}
           <button
@@ -490,99 +458,6 @@ export default function ExtratosPage() {
         </div>
       )}
 
-      {(reviewQueue.length > 0 || batches.length > 0) && (
-        <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div className="flex items-end justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Fila de excecoes</h2>
-                <p className="text-xs text-gray-500">Linhas que ainda exigem decisao humana antes de fechar a conciliacao.</p>
-              </div>
-              <span className={cn(
-                "rounded-full px-2 py-1 text-[11px] font-semibold",
-                reviewQueue.length > 0 ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
-              )}>
-                {reviewQueue.length} pendencia(s)
-              </span>
-            </div>
-            <div className="mt-4 space-y-3">
-              {reviewQueue.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-emerald-200 bg-emerald-50 px-4 py-5 text-sm text-emerald-700">
-                  Nenhuma excecao aberta no momento.
-                </div>
-              ) : (
-                reviewQueue.slice(0, 8).map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => toggleMonth(item.monthKey)}
-                    className="flex w-full items-start justify-between rounded-lg border border-gray-100 px-4 py-3 text-left hover:border-blue-200 hover:bg-blue-50/40"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                          {item.category}
-                        </span>
-                        <span className="text-[11px] text-gray-500">{item.bankName}</span>
-                      </div>
-                      <p className="mt-1 truncate text-sm font-medium text-gray-900">{item.description}</p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {formatDate(item.date)} · {item.confidence}% · {item.statusReason ?? item.matchedRule ?? "sem regra"}
-                      </p>
-                    </div>
-                    <div className="ml-4 text-right">
-                      <p className={cn("text-sm font-semibold", item.isCredit ? "text-green-700" : "text-red-600")}>
-                        {item.isCredit ? "+" : "-"}{formatCurrency(item.amount)}
-                      </p>
-                      <p className="mt-1 text-[11px] text-blue-600">Abrir mes</p>
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-5">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">Lotes recentes</h2>
-              <p className="text-xs text-gray-500">Controle de origem, meses afetados e situacao de cada importacao.</p>
-            </div>
-            <div className="mt-4 space-y-3">
-              {batches.slice(0, 6).map((batch) => (
-                <div key={batch.id} className="rounded-lg border border-gray-100 p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-gray-900">{batch.sourceFile ?? batch.bankName}</p>
-                      <p className="text-xs text-gray-500">
-                        {batch.bankName} · {formatDate(batch.importedAt)} · {batch.months.join(", ")}
-                      </p>
-                    </div>
-                    <span className={cn(
-                      "rounded-full px-2 py-1 text-[10px] font-semibold",
-                      batch.pendingReview > 0 ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"
-                    )}>
-                      {batch.pendingReview > 0 ? `${batch.pendingReview} revisar` : `${batch.reconciledCount}/${batch.transactionCount} reconc.`}
-                    </span>
-                  </div>
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <p className="text-gray-500">Movimentos</p>
-                      <p className="font-semibold text-gray-900">{batch.transactionCount}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Entradas</p>
-                      <p className="font-semibold text-green-700">{formatCurrency(batch.totalReceitas)}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Saidas</p>
-                      <p className="font-semibold text-red-600">{formatCurrency(batch.totalDespesas)}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── Lista de meses ── */}
       {loading ? (
