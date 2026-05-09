@@ -1,139 +1,37 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { createPropertySchema } from "@/lib/validations/pessoas";
-import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
-import { authErrorResponse } from "@/server/api-response";
+import { apiCreated, apiList, handleApiError } from "@/server/api-response";
 import { requireAuth, requireElevatedRole } from "@/server/authz";
+import { createProperty, listProperties } from "@/server/property-service";
 
 export async function GET(request: Request) {
   try {
     await requireAuth();
-  } catch (error) {
-    return authErrorResponse(error);
-  }
 
-  const { searchParams } = new URL(request.url);
-  const search = searchParams.get("search") || "";
-  const status = searchParams.get("status") || "";
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "20");
-  const skip = (page - 1) * limit;
-
-  const where = {
-    is_active: true,
-    ...(status ? { status: status as "DISPONIVEL" | "LOCADO" | "VENDIDO" | "INATIVO" } : {}),
-    ...(search
-      ? {
-          OR: [
-            { address_street: { contains: search, mode: "insensitive" as const } },
-            { via_code: { contains: search } },
-            { vista_code: { contains: search } },
-            { address_neighborhood: { contains: search, mode: "insensitive" as const } },
-          ],
-        }
-      : {}),
-  };
-
-  try {
-    const [properties, total] = await Promise.all([
-      prisma.property.findMany({
-        where,
-        include: { owner: { select: { name: true } } },
-        orderBy: { created_at: "desc" },
-        skip,
-        take: limit,
-      }),
-      prisma.property.count({ where }),
-    ]);
-
-    if (properties.length > 0 || total > 0) {
-      return NextResponse.json({ properties, total, page, limit });
-    }
-    throw new Error("empty_db");
-  } catch {
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("properties.list");
-    }
-
-    const { MOCK_PROPERTIES } = await import("@/lib/mock-data");
-    let filtered = MOCK_PROPERTIES;
-    if (search) {
-      const s = search.toLowerCase();
-      filtered = filtered.filter(
-        (p) =>
-          p.address_street.toLowerCase().includes(s) ||
-          (p.via_code && p.via_code.toLowerCase().includes(s)) ||
-          p.address_neighborhood.toLowerCase().includes(s)
-      );
-    }
-    if (status) {
-      filtered = filtered.filter((p) => p.status === status);
-    }
-    return NextResponse.json({
-      properties: filtered.slice(skip, skip + limit),
-      total: filtered.length,
-      page,
-      limit,
+    const { searchParams } = new URL(request.url);
+    const result = await listProperties({
+      search: searchParams.get("search") || "",
+      status: searchParams.get("status") || "",
+      page: parseInt(searchParams.get("page") || "1", 10),
+      limit: parseInt(searchParams.get("limit") || "20", 10),
     });
+
+    return apiList("properties", result.properties, {
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    });
+  } catch (error) {
+    return handleApiError(error, "Erro ao listar imoveis.");
   }
 }
 
 export async function POST(request: Request) {
   try {
-    await requireElevatedRole();
+    const ctx = await requireElevatedRole();
+    const input = createPropertySchema.parse(await request.json());
+    const property = await createProperty(input, ctx);
+    return apiCreated({ property });
   } catch (error) {
-    return authErrorResponse(error);
-  }
-
-  const body = await request.json();
-  const parsed = createPropertySchema.safeParse(body);
-
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Dados invalidos", details: parsed.error.issues },
-      { status: 400 }
-    );
-  }
-
-  const data = parsed.data;
-
-  try {
-    const property = await prisma.property.create({
-      data: {
-        owner_id: data.owner_id,
-        via_code: data.via_code || null,
-        vista_code: data.vista_code || null,
-        address_street: data.address_street,
-        address_number: data.address_number || null,
-        address_complement: data.address_complement || null,
-        address_neighborhood: data.address_neighborhood,
-        address_city: data.address_city || "Canoas",
-        address_state: data.address_state || "RS",
-        address_cep: data.address_cep || null,
-        property_type: data.property_type,
-        rent_value: data.rent_value ? parseFloat(data.rent_value) : null,
-        sale_value: data.sale_value ? parseFloat(data.sale_value) : null,
-        area_m2: data.area_m2 ? parseFloat(data.area_m2) : null,
-        bedrooms: data.bedrooms ? parseInt(data.bedrooms) : null,
-        parking_spots: data.parking_spots ? parseInt(data.parking_spots) : null,
-        notes: data.notes || null,
-      },
-      include: { owner: { select: { name: true } } },
-    });
-
-    return NextResponse.json(property, { status: 201 });
-  } catch {
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("properties.create");
-    }
-
-    const mockProperty = {
-      id: "mock-" + Date.now(),
-      address_street: data.address_street,
-      address_neighborhood: data.address_neighborhood,
-      property_type: data.property_type,
-      owner: { name: "Proprietario Mock" }
-    };
-    return NextResponse.json(mockProperty, { status: 201 });
+    return handleApiError(error, "Erro ao cadastrar imovel.");
   }
 }

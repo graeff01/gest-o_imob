@@ -1,111 +1,36 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { createClientSchema } from "@/lib/validations/pessoas";
-import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
-import { authErrorResponse } from "@/server/api-response";
+import { apiCreated, apiList, handleApiError } from "@/server/api-response";
 import { requireAuth, requireElevatedRole } from "@/server/authz";
+import { createClient, listClients } from "@/server/people-service";
 
 export async function GET(request: Request) {
   try {
     await requireAuth();
-  } catch (error) {
-    return authErrorResponse(error);
-  }
 
-  const { searchParams } = new URL(request.url);
-  const search = searchParams.get("search") || "";
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "20");
-  const skip = (page - 1) * limit;
-
-  const where = {
-    is_active: true,
-    ...(search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" as const } },
-            { cpf_cnpj: { contains: search } },
-          ],
-        }
-      : {}),
-  };
-
-  try {
-    const [clients, total] = await Promise.all([
-      prisma.client.findMany({
-        where,
-        orderBy: { name: "asc" },
-        skip,
-        take: limit,
-      }),
-      prisma.client.count({ where }),
-    ]);
-
-    if (clients.length > 0 || total > 0) {
-      return NextResponse.json({ clients, total, page, limit });
-    }
-    throw new Error("empty_db");
-  } catch {
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("clients.list");
-    }
-
-    const { MOCK_CLIENTS } = await import("@/lib/mock-data");
-    let filtered = MOCK_CLIENTS;
-    if (search) {
-      const s = search.toLowerCase();
-      filtered = filtered.filter(
-        (c) => c.name.toLowerCase().includes(s) || c.cpf_cnpj.includes(s)
-      );
-    }
-    return NextResponse.json({
-      clients: filtered.slice(skip, skip + limit),
-      total: filtered.length,
-      page,
-      limit,
+    const { searchParams } = new URL(request.url);
+    const result = await listClients({
+      search: searchParams.get("search") || "",
+      page: parseInt(searchParams.get("page") || "1", 10),
+      limit: parseInt(searchParams.get("limit") || "20", 10),
     });
+
+    return apiList("clients", result.clients, {
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    });
+  } catch (error) {
+    return handleApiError(error, "Erro ao listar clientes.");
   }
 }
 
 export async function POST(request: Request) {
   try {
-    await requireElevatedRole();
+    const ctx = await requireElevatedRole();
+    const input = createClientSchema.parse(await request.json());
+    const client = await createClient(input, ctx);
+    return apiCreated({ client });
   } catch (error) {
-    return authErrorResponse(error);
-  }
-
-  const body = await request.json();
-  const parsed = createClientSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Dados invalidos", details: parsed.error.issues },
-      { status: 400 }
-    );
-  }
-
-  const data = parsed.data;
-
-  try {
-    const existing = await prisma.client.findUnique({
-      where: { cpf_cnpj: data.cpf_cnpj },
-    });
-    if (existing) {
-      return NextResponse.json(
-        { error: "CPF/CNPJ ja cadastrado" },
-        { status: 409 }
-      );
-    }
-
-    const client = await prisma.client.create({ data });
-
-    return NextResponse.json(client, { status: 201 });
-  } catch {
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("clients.create");
-    }
-
-    const mockClient = { ...data, id: "mock-" + Date.now() };
-    return NextResponse.json(mockClient, { status: 201 });
+    return handleApiError(error, "Erro ao cadastrar cliente.");
   }
 }

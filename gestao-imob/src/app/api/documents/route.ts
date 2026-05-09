@@ -1,98 +1,37 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
-import { DocumentType, ProcessingStatus } from "@/generated/prisma/enums";
-import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
-import { authErrorResponse } from "@/server/api-response";
-import { requireAuth } from "@/server/authz";
+import { createDocumentSchema } from "@/lib/validations/operacional";
+import { apiCreated, apiList, handleApiError } from "@/server/api-response";
+import { requireAuth, requireElevatedRole } from "@/server/authz";
+import { listDocuments, registerDocument } from "@/server/operations-service";
 
 export async function GET(request: Request) {
   try {
     await requireAuth();
+
+    const { searchParams } = new URL(request.url);
+    const result = await listDocuments({
+      type: searchParams.get("type") || "",
+      status: searchParams.get("status") || "",
+      page: parseInt(searchParams.get("page") || "1", 10),
+      limit: parseInt(searchParams.get("limit") || "20", 10),
+    });
+
+    return apiList("documents", result.documents, {
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    });
   } catch (error) {
-    return authErrorResponse(error);
-  }
-
-  const { searchParams } = new URL(request.url);
-  const type = searchParams.get("type") || "";
-  const status = searchParams.get("status") || "";
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "20");
-  const skip = (page - 1) * limit;
-  const validType = Object.values(DocumentType).includes(type as DocumentType)
-    ? (type as DocumentType)
-    : null;
-  const validStatus = Object.values(ProcessingStatus).includes(status as ProcessingStatus)
-    ? (status as ProcessingStatus)
-    : null;
-
-  const where = {
-    ...(validType ? { document_type: validType } : {}),
-    ...(validStatus ? { processing_status: validStatus } : {}),
-  };
-
-  try {
-    const [documents, total] = await Promise.all([
-      prisma.document.findMany({
-        where,
-        include: {
-          uploader: { select: { name: true } },
-        },
-        orderBy: { created_at: "desc" },
-        skip,
-        take: limit,
-      }),
-      prisma.document.count({ where }),
-    ]);
-
-    return NextResponse.json({ documents, total, page, limit });
-  } catch (error) {
-    console.error("Error fetching documents:", error);
-    return NextResponse.json({ error: "Failed to fetch documents" }, { status: 500 });
+    return handleApiError(error, "Erro ao listar documentos.");
   }
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
-  }
-
   try {
-    const body = await request.json();
-    const userId = (session.user as { id: string }).id;
-
-    // Simulate an upload for now.
-    // Real implementation would handle FormData, save to S3/Cloud Storage, then save DB record.
-    const doc = await prisma.document.create({
-      data: {
-        filename: body.filename || `doc-${Date.now()}`,
-        original_filename: body.original_filename,
-        mime_type: body.mime_type || "application/pdf",
-        file_size: body.file_size || 1024,
-        storage_url: body.storage_url || `https://storage.example.com/${Date.now()}`,
-        document_type: body.document_type || "OUTRO",
-        processing_status: "PENDENTE",
-        uploaded_by: userId,
-      },
-    });
-
-    return NextResponse.json(doc, { status: 201 });
+    const ctx = await requireElevatedRole();
+    const input = createDocumentSchema.parse(await request.json());
+    const document = await registerDocument(input, ctx);
+    return apiCreated({ document });
   } catch (error) {
-    console.error("Error creating document:", error);
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("documents.create");
-    }
-
-    // FALLBACK MOCK: If DB is offline, pretend it saved successfully
-    const mockDoc = {
-      id: "mock-" + Date.now(),
-      filename: `doc-${Date.now()}`,
-      document_type: "OUTRO",
-      processing_status: "PENDENTE",
-      created_at: new Date().toISOString(),
-      uploader: { name: "Admin (Offline)" }
-    };
-    return NextResponse.json(mockDoc, { status: 201 });
+    return handleApiError(error, "Erro ao registrar documento.");
   }
 }

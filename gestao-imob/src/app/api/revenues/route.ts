@@ -1,116 +1,34 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { auth } from "@/lib/auth";
 import { createRevenueSchema } from "@/lib/validations/financeiro";
-import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
-import { authErrorResponse } from "@/server/api-response";
-import { requireAuth } from "@/server/authz";
+import { apiCreated, apiSuccess, handleApiError } from "@/server/api-response";
+import { requireAuth, requireElevatedRole } from "@/server/authz";
+import { createRevenue, listRevenues } from "@/server/financial-service";
 
 export async function GET(request: Request) {
   try {
     await requireAuth();
-  } catch (error) {
-    return authErrorResponse(error);
-  }
 
-  const { searchParams } = new URL(request.url);
-  const month = searchParams.get("month");
-  const year = searchParams.get("year");
-  const category = searchParams.get("category");
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "50");
-  const skip = (page - 1) * limit;
-
-  const now = new Date();
-  const refMonth = month ? parseInt(month) : now.getMonth() + 1;
-  const refYear = year ? parseInt(year) : now.getFullYear();
-
-  const where = {
-    reference_month: refMonth,
-    reference_year: refYear,
-    ...(category ? { category: category as "INTERMEDIACAO" | "AGENCIAMENTO" | "CAMPANHA_SUCESSO" | "CAMPANHA_CAPTACAO" | "NFSE_ALUGUEL" | "ROYALTY" | "OUTRO" } : {}),
-  };
-
-  try {
-    const [revenues, total, totalAmount] = await Promise.all([
-      prisma.revenue.findMany({
-        where,
-        include: { contract: { select: { contract_number: true } } },
-        orderBy: { date: "desc" },
-        skip,
-        take: limit,
-      }),
-      prisma.revenue.count({ where }),
-      prisma.revenue.aggregate({ where, _sum: { amount: true } }),
-    ]);
-
-    return NextResponse.json({
-      revenues,
-      total,
-      totalAmount: Number(totalAmount._sum.amount || 0),
-      page,
-      limit,
+    const { searchParams } = new URL(request.url);
+    const result = await listRevenues({
+      month: searchParams.get("month"),
+      year: searchParams.get("year"),
+      category: searchParams.get("category"),
+      page: parseInt(searchParams.get("page") || "1", 10),
+      limit: parseInt(searchParams.get("limit") || "50", 10),
     });
-  } catch {
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("revenues.list");
-    }
 
-    return NextResponse.json({ revenues: [], total: 0, totalAmount: 0, page, limit });
+    return apiSuccess(result);
+  } catch (error) {
+    return handleApiError(error, "Erro ao listar receitas.");
   }
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Nao autorizado" }, { status: 401 });
-  }
-
-  const body = await request.json();
-  const parsed = createRevenueSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Dados invalidos", details: parsed.error.issues },
-      { status: 400 }
-    );
-  }
-
-  const data = parsed.data;
-  const userId = (session.user as { id: string }).id;
-  const date = new Date(data.date);
-
   try {
-    const revenue = await prisma.revenue.create({
-      data: {
-        contract_id: data.contract_id || null,
-        category: data.category,
-        description: data.description,
-        amount: parseFloat(data.amount),
-        date,
-        department: data.department,
-        reference_month: date.getMonth() + 1,
-        reference_year: date.getFullYear(),
-        notes: data.notes || null,
-        created_by: userId,
-      },
-    });
-
-    return NextResponse.json(revenue, { status: 201 });
+    const ctx = await requireElevatedRole();
+    const input = createRevenueSchema.parse(await request.json());
+    const revenue = await createRevenue(input, ctx);
+    return apiCreated({ revenue });
   } catch (error) {
-    console.error("Error creating revenue:", error);
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("revenues.create");
-    }
-
-    // FALLBACK MOCK
-    const mockRevenue = {
-      id: "mock-" + Date.now(),
-      description: data.description || "Receita Mock",
-      amount: parseFloat(data.amount) || 0,
-      category: data.category || "OUTRO",
-      date: date.toISOString(),
-    };
-    return NextResponse.json(mockRevenue, { status: 201 });
+    return handleApiError(error, "Erro ao cadastrar receita.");
   }
 }
