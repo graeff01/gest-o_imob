@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 /**
  * Extratos BancÃ¡rios â€” VisÃ£o Mensal Categorizada
@@ -198,7 +198,7 @@ export default function ExtratosPage() {
     priority: "100",
     scopeBankAccountId: "",
   });
-  const canClearAllStatements = appEnvironment === "homologacao";
+  const canClearAllStatements = appEnvironment !== "production";
 
   // â”€â”€ Filtros â”€â”€
   const [search, setSearch] = useState("");
@@ -452,7 +452,7 @@ export default function ExtratosPage() {
       const candidates = rawItems
         .map((item: Record<string, unknown>) => ({
           id: String(item.id),
-          label: String(item.description ?? "Lancamento"),
+          label: String(item.description ?? "Lan?amento"),
           amount: Number(item.amount ?? 0),
           date: String(item.date ?? ""),
           kind: tx.isCredit ? "REVENUE" as const : "EXPENSE" as const,
@@ -1028,7 +1028,7 @@ export default function ExtratosPage() {
                                           "text-[10px] font-medium px-1.5 py-0.5 rounded",
                                           tx.needsReview
                                             ? "bg-amber-100 text-amber-800"
-                                            : monthDetail.categorySummary.find((c) => c.category === tx.category)?.color ?? "bg-gray-100 text-gray-700"
+                                            : (monthDetail.categorySummary.find((c) => c.category === tx.category)?.color ?? "bg-gray-100 text-gray-700")
                                         )}>
                                           {tx.category}
                                         </span>
@@ -1250,7 +1250,7 @@ export default function ExtratosPage() {
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl">
             <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Conciliacao manual</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Concilia??o manual</h2>
                 <p className="text-xs text-gray-500">Vincule esta transacao a um lancamento financeiro existente.</p>
               </div>
               <button onClick={() => setReconcileModal(null)} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
@@ -1290,7 +1290,7 @@ export default function ExtratosPage() {
             <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
               <button onClick={() => setReconcileModal(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancelar</button>
               <button onClick={confirmManualReconcile} disabled={!selectedReconcileCandidate || reconcileSaving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-                {reconcileSaving ? "Conciliando..." : "Confirmar vinculacao"}
+                {reconcileSaving ? "Conciliando..." : "Confirmar vincula??o"}
               </button>
             </div>
           </div>
