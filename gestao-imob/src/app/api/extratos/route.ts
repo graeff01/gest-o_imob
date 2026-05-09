@@ -49,6 +49,7 @@ type AnalyzedTransaction = {
   tx: ParsedTransaction;
   normalizedKey: string;
   suggestion: TransactionCategorySuggestion;
+  displayCategory: string;
   learnedRuleId?: string;
   learnedCategoryId?: string | null;
   needsReview: boolean;
@@ -194,7 +195,7 @@ export async function POST(request: NextRequest) {
         amount: item.tx.amount,
         isCredit: item.tx.isCredit,
         operationType: item.tx.operationType,
-        category: item.suggestion.category,
+        category: item.displayCategory,
         confidence: item.suggestion.confidence,
         needsReview: item.needsReview,
         duplicate: item.duplicate,
@@ -226,7 +227,7 @@ export async function POST(request: NextRequest) {
     const importErrors: string[] = [];
 
     for (const item of analyzed) {
-      const { tx, normalizedKey, suggestion, learnedRuleId, needsReview, expenseCategory } = item;
+      const { tx, normalizedKey, suggestion, displayCategory, learnedRuleId, needsReview, expenseCategory } = item;
       try {
         if (item.duplicate) {
           skipped++;
@@ -247,7 +248,7 @@ export async function POST(request: NextRequest) {
             operation_type: tx.operationType,
             is_credit: tx.isCredit,
             category_id: expenseCategory?.id ?? null,
-            classification_label: suggestion.category,
+            classification_label: displayCategory,
             classification_rule: learnedRuleId ? `learned:${learnedRuleId}` : suggestion.matchedRule,
             classification_confidence: suggestion.confidence,
             processing_status: determineBankTransactionStatus({ needsReview }),
@@ -258,7 +259,7 @@ export async function POST(request: NextRequest) {
             classified_by_rule_id: learnedRuleId ?? null,
             import_batch_id: batchId,
             is_reconciled: false,
-            notes: buildTransactionNotes(suggestion, file.name, item.existingFinancialType),
+            notes: buildTransactionNotes(displayCategory, suggestion, file.name, item.existingFinancialType),
           },
         });
 
@@ -484,25 +485,30 @@ async function analyzeTransactions(
 
   for (const tx of transactions) {
     const baseSuggestion = suggestTransactionClassification(tx.description, tx.isCredit);
-    const { suggestion, learnedRuleId, learnedCategoryId } = applyLearnedRules(tx, bankAccountId, baseSuggestion, learnedRules);
-    const needsReview = shouldReview(suggestion);
+    const { suggestion: learnedSuggestion, learnedRuleId, learnedCategoryId } = applyLearnedRules(tx, bankAccountId, baseSuggestion, learnedRules);
+    const enrichedSuggestion = !tx.isCredit
+      ? enrichFallbackExpenseSuggestion(tx.description, learnedSuggestion, categories)
+      : learnedSuggestion;
+    const needsReview = shouldReview(enrichedSuggestion);
     const expenseCategory = tx.isCredit
       ? null
       : findExpenseCategory(
           categories,
           needsReview
-            ? { ...suggestion, expenseCategoryNames: ["A Classificar", ...suggestion.expenseCategoryNames, "Outros"] }
-            : suggestion,
+            ? { ...enrichedSuggestion, expenseCategoryNames: ["A Classificar", ...enrichedSuggestion.expenseCategoryNames, "Outros"] }
+            : enrichedSuggestion,
           learnedCategoryId
         );
     const normalizedKey = buildExternalId(tx);
     const existingTx = await findExistingBankTransaction(bankAccountId, tx, normalizedKey);
-    const existingFinancial = await findExistingFinancialEntry(tx, suggestion, expenseCategory);
+    const existingFinancial = await findExistingFinancialEntry(tx, enrichedSuggestion, expenseCategory);
+    const displayCategory = resolveDisplayCategoryLabel(enrichedSuggestion, expenseCategory);
 
     analyzed.push({
       tx,
       normalizedKey,
-      suggestion,
+      suggestion: enrichedSuggestion,
+      displayCategory,
       learnedRuleId,
       learnedCategoryId,
       needsReview,
@@ -735,17 +741,79 @@ async function findExistingFinancialEntry(
 }
 
 function buildTransactionNotes(
+  displayCategory: string,
   suggestion: TransactionCategorySuggestion,
   fileName?: string,
   existingFinancialType?: "EXPENSE" | "REVENUE"
 ): string {
   return [
     fileName ? `Arquivo: ${fileName}.` : null,
-    `Categoria sugerida: ${suggestion.category}; Regra: ${suggestion.matchedRule}; Confianca: ${suggestion.confidence}%.`,
+    `Categoria sugerida: ${displayCategory}; Regra: ${suggestion.matchedRule}; Confianca: ${suggestion.confidence}%.`,
     existingFinancialType ? `Conciliado com ${existingFinancialType === "EXPENSE" ? "despesa" : "receita"} existente.` : null,
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+function resolveDisplayCategoryLabel(
+  suggestion: TransactionCategorySuggestion,
+  expenseCategory: DbCategory | null
+): string {
+  if (expenseCategory?.name) {
+    return expenseCategory.name;
+  }
+
+  if (suggestion.category === "Outros" && suggestion.expenseCategoryNames.length > 0) {
+    return suggestion.expenseCategoryNames[0];
+  }
+
+  return suggestion.category;
+}
+
+function enrichFallbackExpenseSuggestion(
+  description: string,
+  suggestion: TransactionCategorySuggestion,
+  categories: DbCategory[]
+): TransactionCategorySuggestion {
+  if (suggestion.kind !== "despesa" || !suggestion.matchedRule.startsWith("fallback")) {
+    return suggestion;
+  }
+
+  const normalizedDescription = normalizeBankText(description);
+  const tokenSet = new Set(
+    normalizedDescription
+      .split(" ")
+      .filter((token) => token.length >= 4 && !/^\d+$/.test(token))
+  );
+
+  let bestCategory: DbCategory | null = null;
+  let bestScore = 0;
+
+  for (const category of categories) {
+    const parts = normalizeBankText(category.name)
+      .split(" ")
+      .filter((token) => token.length >= 4 && !/^\d+$/.test(token));
+    if (parts.length === 0) continue;
+
+    const score = parts.reduce((acc, token) => acc + (tokenSet.has(token) ? 1 : 0), 0);
+    if (score > bestScore) {
+      bestScore = score;
+      bestCategory = category;
+    }
+  }
+
+  if (!bestCategory || bestScore === 0) {
+    return suggestion;
+  }
+
+  const boostedConfidence = Math.min(78, 45 + bestScore * 12);
+  return {
+    ...suggestion,
+    category: bestCategory.name as TransactionCategorySuggestion["category"],
+    expenseCategoryNames: [bestCategory.name, ...suggestion.expenseCategoryNames],
+    confidence: boostedConfidence,
+    matchedRule: `category-match:${bestCategory.id}`,
+  };
 }
 
 function buildExternalId(tx: ParsedTransaction): string {

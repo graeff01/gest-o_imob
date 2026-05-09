@@ -648,6 +648,75 @@ export default function ExtratosPage() {
                     </div>
                   ) : monthDetail ? (
                     <div className="p-6 space-y-6">
+                      <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                        <div className="rounded-xl border border-gray-200 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-5 text-white">
+                          <div className="flex items-start justify-between gap-4">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-300">Centro do lote</p>
+                              <h3 className="mt-2 text-lg font-semibold">{monthDetail.statement.label}</h3>
+                              <p className="mt-1 text-sm text-slate-300">{monthDetail.statement.bankName}</p>
+                            </div>
+                            <span className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-slate-100">
+                              {monthDetail.statement.transactions.length} transacoes
+                            </span>
+                          </div>
+                          <div className="mt-5 grid grid-cols-3 gap-3 text-sm">
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                              <p className="text-[11px] text-slate-300">Entradas</p>
+                              <p className="mt-1 font-semibold text-emerald-300">{formatCurrency(monthDetail.statement.totalReceitas)}</p>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                              <p className="text-[11px] text-slate-300">Saidas</p>
+                              <p className="mt-1 font-semibold text-rose-300">{formatCurrency(monthDetail.statement.totalDespesas)}</p>
+                            </div>
+                            <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                              <p className="text-[11px] text-slate-300">Saldo</p>
+                              <p className={cn("mt-1 font-semibold", monthDetail.statement.saldo >= 0 ? "text-emerald-300" : "text-rose-300")}>
+                                {formatCurrency(monthDetail.statement.saldo)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-500">Operacao</p>
+                              <h3 className="mt-2 text-sm font-semibold text-gray-900">Qualidade da classificacao</h3>
+                              <p className="mt-1 text-xs text-gray-500">Resumo do que ainda depende de acao humana neste mes.</p>
+                            </div>
+                            <span className={cn(
+                              "rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                              monthDetail.statement.transactions.some((tx) => tx.needsReview)
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-emerald-100 text-emerald-700"
+                            )}>
+                              {monthDetail.statement.transactions.filter((tx) => tx.needsReview).length} revisar
+                            </span>
+                          </div>
+                          <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+                            <div className="rounded-lg bg-white p-3">
+                              <p className="text-[11px] text-gray-500">Conciliadas</p>
+                              <p className="mt-1 font-semibold text-emerald-700">
+                                {monthDetail.statement.transactions.filter((tx) => tx.processingStatus === "RECONCILED").length}
+                              </p>
+                            </div>
+                            <div className="rounded-lg bg-white p-3">
+                              <p className="text-[11px] text-gray-500">Revisadas</p>
+                              <p className="mt-1 font-semibold text-blue-700">
+                                {monthDetail.statement.transactions.filter((tx) => tx.processingStatus === "CLASSIFIED_MANUAL").length}
+                              </p>
+                            </div>
+                            <div className="rounded-lg bg-white p-3">
+                              <p className="text-[11px] text-gray-500">Automaticas</p>
+                              <p className="mt-1 font-semibold text-gray-900">
+                                {monthDetail.statement.transactions.filter((tx) => tx.processingStatus === "CLASSIFIED_AUTO").length}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                       {canClearAllStatements && (
                         <div className="flex justify-end">
                           <button
