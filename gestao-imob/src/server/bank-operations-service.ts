@@ -111,6 +111,39 @@ export async function reconcileBankTransaction(params: {
   actorEmail?: string;
   reason?: string | null;
 }) {
+  const existing = await prisma.bankTransaction.findUnique({
+    where: { id: params.transactionId },
+    select: {
+      id: true,
+      description: true,
+      is_reconciled: true,
+      reconciled_with_type: true,
+      reconciled_with_id: true,
+    },
+  });
+
+  if (!existing) {
+    throw new Error("Transacao bancaria nao encontrada.");
+  }
+  if (existing.is_reconciled) {
+    throw new Error("Esta transacao ja esta conciliada.");
+  }
+
+  if (params.reconcileWithId) {
+    const conflict = await prisma.bankTransaction.findFirst({
+      where: {
+        id: { not: params.transactionId },
+        is_reconciled: true,
+        reconciled_with_type: params.reconcileType,
+        reconciled_with_id: params.reconcileWithId,
+      },
+      select: { id: true, description: true },
+    });
+    if (conflict) {
+      throw new Error("O lancamento financeiro informado ja esta vinculado a outra transacao bancaria.");
+    }
+  }
+
   const updated = await prisma.bankTransaction.update({
     where: { id: params.transactionId },
     data: {
@@ -152,6 +185,9 @@ export async function unreconcileBankTransaction(params: {
   const existing = await prisma.bankTransaction.findUnique({ where: { id: params.transactionId } });
   if (!existing) {
     throw new Error("Transacao bancaria nao encontrada.");
+  }
+  if (!existing.is_reconciled) {
+    throw new Error("Esta transacao nao esta conciliada.");
   }
 
   const updated = await prisma.bankTransaction.update({

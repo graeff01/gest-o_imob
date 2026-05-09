@@ -11,7 +11,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Upload, Search, ArrowUpCircle, ArrowDownCircle,
   ChevronDown, ChevronRight, FileText, Loader2, X,
-  RefreshCw, AlertTriangle, Pencil, Check, Trash2,
+  RefreshCw, AlertTriangle, Pencil, Check, Trash2, Ban, RotateCcw,
 } from "lucide-react";
 import { appEnvironment } from "@/lib/app-env";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
@@ -129,6 +129,7 @@ export default function ExtratosPage() {
   const [monthDetail, setMonthDetail] = useState<MonthDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [cleanupLoading, setCleanupLoading] = useState(false);
+  const [transactionActionId, setTransactionActionId] = useState<string | null>(null);
   const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
   const canClearAllStatements = appEnvironment === "homologacao";
 
@@ -268,6 +269,33 @@ export default function ExtratosPage() {
     }
   };
 
+  const applyTransactionAction = async (
+    monthKey: string,
+    txId: string,
+    action: "ignore" | "restore" | "unreconcile"
+  ) => {
+    setTransactionActionId(`${txId}:${action}`);
+    setCleanupMessage(null);
+    try {
+      const response = await fetch(`/api/extratos/${monthKey}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ txId, action }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error ?? "Falha ao atualizar a transacao.");
+      }
+
+      await fetchMonthDetail(monthKey);
+      await fetchMonths();
+    } catch (error) {
+      setCleanupMessage(error instanceof Error ? error.message : "Falha ao atualizar a transacao.");
+    } finally {
+      setTransactionActionId(null);
+    }
+  };
+
   const handleClearStatements = async (scope?: { monthKey?: string; batchId?: string }) => {
     const label = scope?.monthKey ? `o mês ${scope.monthKey}` : scope?.batchId ? "este lote de importação" : "todos os extratos importados";
     if (!confirm(`Apagar ${label} e os lançamentos financeiros gerados? Esta ação é apenas para HML.`)) {
@@ -321,6 +349,25 @@ export default function ExtratosPage() {
   const totalReceitas = months.reduce((s, m) => s + m.totalReceitas, 0);
   const totalDespesas = months.reduce((s, m) => s + m.totalDespesas, 0);
   const totalPendentes = months.reduce((s, m) => s + (m.pendingReview ?? 0), 0);
+
+  const getStatusMeta = (status?: string) => {
+    switch (status) {
+      case "RECONCILED":
+        return { label: "Conciliada", tone: "bg-emerald-100 text-emerald-700" };
+      case "REVIEW_REQUIRED":
+        return { label: "Revisar", tone: "bg-amber-100 text-amber-800" };
+      case "CLASSIFIED_MANUAL":
+        return { label: "Revisada", tone: "bg-blue-100 text-blue-700" };
+      case "POSTED_FINANCIAL":
+        return { label: "Lancada", tone: "bg-violet-100 text-violet-700" };
+      case "IGNORED":
+        return { label: "Ignorada", tone: "bg-slate-100 text-slate-700" };
+      case "REVERSED":
+        return { label: "Reaberta", tone: "bg-orange-100 text-orange-700" };
+      default:
+        return { label: "Classificada", tone: "bg-gray-100 text-gray-700" };
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -689,11 +736,16 @@ export default function ExtratosPage() {
                                 <th className="text-left px-4 py-2.5 font-medium text-gray-600">Tipo</th>
                                 <th className="text-left px-4 py-2.5 font-medium text-gray-600">Categoria</th>
                                 <th className="text-left px-4 py-2.5 font-medium text-gray-600">Status</th>
+                                <th className="text-left px-4 py-2.5 font-medium text-gray-600">Acoes</th>
                                 <th className="text-right px-4 py-2.5 font-medium text-gray-600">Valor</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-50">
-                              {filteredTransactions.map((tx) => (
+                              {filteredTransactions.map((tx) => {
+                                const statusMeta = getStatusMeta(tx.processingStatus);
+                                const isActing = transactionActionId?.startsWith(`${tx.id}:`);
+
+                                return (
                                 <tr key={tx.id} className="hover:bg-gray-50/50 transition-colors">
                                   <td className="px-4 py-2.5 text-xs text-gray-600 whitespace-nowrap">
                                     {formatDate(tx.date)}
@@ -748,26 +800,45 @@ export default function ExtratosPage() {
                                   </td>
                                   <td className="px-4 py-2.5">
                                     <div className="space-y-1">
-                                      <span className={cn(
-                                        "inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                                        tx.processingStatus === "RECONCILED"
-                                          ? "bg-emerald-100 text-emerald-700"
-                                          : tx.processingStatus === "REVIEW_REQUIRED"
-                                            ? "bg-amber-100 text-amber-800"
-                                            : tx.processingStatus === "CLASSIFIED_MANUAL"
-                                              ? "bg-blue-100 text-blue-700"
-                                              : "bg-gray-100 text-gray-700"
-                                      )}>
-                                        {tx.processingStatus === "RECONCILED"
-                                          ? "Conciliada"
-                                          : tx.processingStatus === "REVIEW_REQUIRED"
-                                            ? "Revisar"
-                                            : tx.processingStatus === "CLASSIFIED_MANUAL"
-                                              ? "Revisada"
-                                              : "Classificada"}
+                                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold", statusMeta.tone)}>
+                                        {statusMeta.label}
                                       </span>
                                       {tx.statusReason && (
                                         <p className="max-w-[180px] truncate text-[10px] text-gray-400">{tx.statusReason}</p>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-2.5">
+                                    <div className="flex items-center gap-2">
+                                      {!tx.isReconciled && tx.processingStatus !== "IGNORED" && (
+                                        <button
+                                          onClick={() => applyTransactionAction(month.monthKey, tx.id, "ignore")}
+                                          disabled={Boolean(isActing)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[10px] font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                                        >
+                                          {isActing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+                                          Ignorar
+                                        </button>
+                                      )}
+                                      {!tx.isReconciled && (tx.processingStatus === "IGNORED" || tx.processingStatus === "REVERSED") && (
+                                        <button
+                                          onClick={() => applyTransactionAction(month.monthKey, tx.id, "restore")}
+                                          disabled={Boolean(isActing)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-orange-200 px-2 py-1 text-[10px] font-medium text-orange-700 hover:bg-orange-50 disabled:opacity-50"
+                                        >
+                                          {isActing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                                          Reabrir
+                                        </button>
+                                      )}
+                                      {tx.isReconciled && (
+                                        <button
+                                          onClick={() => applyTransactionAction(month.monthKey, tx.id, "unreconcile")}
+                                          disabled={Boolean(isActing)}
+                                          className="inline-flex items-center gap-1 rounded-md border border-amber-200 px-2 py-1 text-[10px] font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                                        >
+                                          {isActing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                                          Desfazer
+                                        </button>
                                       )}
                                     </div>
                                   </td>
@@ -778,7 +849,7 @@ export default function ExtratosPage() {
                                     {tx.isCredit ? "+" : "-"}{formatCurrency(tx.amount)}
                                   </td>
                                 </tr>
-                              ))}
+                              )})}
                             </tbody>
                           </table>
                         </div>

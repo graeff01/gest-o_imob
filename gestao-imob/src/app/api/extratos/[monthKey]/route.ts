@@ -3,7 +3,7 @@ import { authErrorResponse } from "@/server/api-response";
 import { auditEvent } from "@/server/audit";
 import { requireAuth } from "@/server/authz";
 import { ensureBankImportSchema } from "@/server/bank-import-schema";
-import { BANK_TRANSACTION_STATUSES } from "@/server/bank-operations-service";
+import { BANK_TRANSACTION_STATUSES, unreconcileBankTransaction } from "@/server/bank-operations-service";
 import { prisma } from "@/lib/prisma";
 import {
   CATEGORIES,
@@ -108,10 +108,14 @@ export async function PATCH(
 
   const { monthKey } = await params;
   const body = await request.json();
-  const { txId, category } = body as { txId?: string; category?: string };
+  const { txId, category, action } = body as {
+    txId?: string;
+    category?: string;
+    action?: "ignore" | "restore" | "unreconcile";
+  };
 
-  if (!txId || !category) {
-    return NextResponse.json({ error: "txId e category obrigatorios." }, { status: 400 });
+  if (!txId) {
+    return NextResponse.json({ error: "txId obrigatorio." }, { status: 400 });
   }
 
   const range = monthRange(monthKey);
@@ -127,6 +131,81 @@ export async function PATCH(
 
     if (!tx) {
       return NextResponse.json({ error: "Transacao nao encontrada." }, { status: 404 });
+    }
+
+    if (action === "ignore") {
+      if (tx.is_reconciled) {
+        return NextResponse.json({ error: "Nao e possivel ignorar uma transacao ja conciliada." }, { status: 409 });
+      }
+
+      await prisma.bankTransaction.update({
+        where: { id: tx.id },
+        data: {
+          needs_review: false,
+          reviewed_at: new Date(),
+          reviewed_by: authContext.dbUserId,
+          processing_status: BANK_TRANSACTION_STATUSES.IGNORED,
+          status_reason: "Transacao ignorada manualmente na revisao.",
+        },
+      });
+
+      await auditEvent({
+        action: "bank.transaction.ignored",
+        actorId: authContext.dbUserId,
+        actorEmail: authContext.email,
+        entityId: tx.id,
+        entityType: "bank_transaction",
+        entityLabel: tx.description,
+        summary: "Transacao bancaria ignorada manualmente.",
+        metadata: { monthKey },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "restore") {
+      if (tx.is_reconciled) {
+        return NextResponse.json({ error: "Nao e possivel recolocar em revisao uma transacao ja conciliada." }, { status: 409 });
+      }
+
+      await prisma.bankTransaction.update({
+        where: { id: tx.id },
+        data: {
+          needs_review: true,
+          reviewed_at: new Date(),
+          reviewed_by: authContext.dbUserId,
+          processing_status: BANK_TRANSACTION_STATUSES.REVIEW_REQUIRED,
+          status_reason: "Transacao recolocada manualmente na fila de revisao.",
+        },
+      });
+
+      await auditEvent({
+        action: "bank.transaction.restored",
+        actorId: authContext.dbUserId,
+        actorEmail: authContext.email,
+        entityId: tx.id,
+        entityType: "bank_transaction",
+        entityLabel: tx.description,
+        summary: "Transacao bancaria recolocada na fila de revisao.",
+        metadata: { monthKey },
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === "unreconcile") {
+      await unreconcileBankTransaction({
+        transactionId: tx.id,
+        userId: authContext.dbUserId,
+        actorEmail: authContext.email,
+        reason: "Conciliacao desfeita na revisao mensal do extrato.",
+      });
+
+      return NextResponse.json({ success: true });
+    }
+
+    if (!category) {
+      return NextResponse.json({ error: "category obrigatoria para recategorizacao." }, { status: 400 });
     }
 
     const categories = await prisma.expenseCategory.findMany({
