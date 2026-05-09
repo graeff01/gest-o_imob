@@ -7,6 +7,12 @@ import { ensureBankImportSchema } from "@/server/bank-import-schema";
 import { appConfig } from "@/server/env";
 import { prisma } from "@/lib/prisma";
 import {
+  BANK_TRANSACTION_STATUSES,
+  determineBankTransactionStatus,
+  listBankAccountsDashboard,
+  listBankExceptionQueue,
+} from "@/server/bank-operations-service";
+import {
   detectAndParse,
   normalizeBankText,
   suggestTransactionClassification,
@@ -29,6 +35,11 @@ type LearnedRule = {
   revenue_category: TransactionCategorySuggestion["revenueCategory"] | null;
   department: TransactionCategorySuggestion["department"];
   payment_method: TransactionCategorySuggestion["paymentMethod"] | null;
+  priority: number;
+  scope_bank_account_id: string | null;
+  match_mode: string;
+  amount_min: number | null;
+  amount_max: number | null;
   confidence: number;
 };
 
@@ -110,12 +121,18 @@ export async function GET() {
           totalReceitas: txs.filter((tx) => tx.is_credit).reduce((sum, tx) => sum + Number(tx.amount), 0),
           totalDespesas: txs.filter((tx) => !tx.is_credit).reduce((sum, tx) => sum + Number(tx.amount), 0),
           pendingReview: txs.filter((tx) => tx.needs_review).length,
+          reconciledCount: txs.filter((tx) => tx.processing_status === BANK_TRANSACTION_STATUSES.RECONCILED).length,
           sourceFile: extractNoteValue(first?.notes, "Arquivo"),
         };
       })
       .sort((a, b) => b.importedAt.localeCompare(a.importedAt));
 
-    return NextResponse.json({ months, batches });
+    const [accounts, reviewQueue] = await Promise.all([
+      listBankAccountsDashboard(),
+      listBankExceptionQueue(20),
+    ]);
+
+    return NextResponse.json({ months, batches, accounts, reviewQueue });
   } catch (error) {
     console.error("[extratos] list error:", error);
     return NextResponse.json({ error: "Erro ao listar extratos." }, { status: 500 });
@@ -189,6 +206,7 @@ export async function POST(request: NextRequest) {
         preview: true,
         bankName: parseResult.bankName,
         accountInfo: parseResult.accountInfo,
+        bankAccountId: bankAccount.id,
         transactionCount: rows.length,
         duplicates: rows.filter((row) => row.duplicate).length,
         pendingReview: rows.filter((row) => row.needsReview).length,
@@ -232,7 +250,12 @@ export async function POST(request: NextRequest) {
             classification_label: suggestion.category,
             classification_rule: learnedRuleId ? `learned:${learnedRuleId}` : suggestion.matchedRule,
             classification_confidence: suggestion.confidence,
+            processing_status: determineBankTransactionStatus({ needsReview }),
+            status_reason: needsReview
+              ? "Classificacao automatica abaixo do limiar de confianca."
+              : "Classificacao automatica aplicada com sucesso.",
             needs_review: needsReview,
+            classified_by_rule_id: learnedRuleId ?? null,
             import_batch_id: batchId,
             is_reconciled: false,
             notes: buildTransactionNotes(suggestion, file.name, item.existingFinancialType),
@@ -262,6 +285,8 @@ export async function POST(request: NextRequest) {
               is_reconciled: true,
               reconciled_with_type: tx.isCredit ? "REVENUE" : "EXPENSE",
               reconciled_with_id: linkedId,
+              processing_status: BANK_TRANSACTION_STATUSES.RECONCILED,
+              status_reason: "Lancamento financeiro criado e conciliado automaticamente.",
             },
           });
 
@@ -279,6 +304,25 @@ export async function POST(request: NextRequest) {
         importErrors.push(`${tx.date} ${tx.description}: ${message}`);
       }
     }
+
+    await auditEvent({
+      action: "bank_statement.imported",
+      actorId: authContext.dbUserId,
+      actorEmail: authContext.email,
+      entityType: "bank_import_batch",
+      entityId: batchId,
+      entityLabel: parseResult.bankName,
+      summary: "Lote de extrato importado e processado.",
+      metadata: {
+        imported,
+        skipped,
+        generatedExpenses,
+        generatedRevenues,
+        reviewRequired: analyzed.filter((item) => item.needsReview && !item.duplicate).length,
+        months: Array.from(months),
+        fileName: file.name,
+      },
+    });
 
     return NextResponse.json(
       {
@@ -404,7 +448,7 @@ export async function DELETE(request: NextRequest) {
 async function getLearnedRules(): Promise<LearnedRule[]> {
   return prisma.bankClassificationRule.findMany({
     where: { is_active: true },
-    orderBy: [{ use_count: "desc" }, { updated_at: "desc" }],
+    orderBy: [{ priority: "asc" }, { use_count: "desc" }, { updated_at: "desc" }],
     select: {
       id: true,
       normalized_pattern: true,
@@ -414,9 +458,20 @@ async function getLearnedRules(): Promise<LearnedRule[]> {
       revenue_category: true,
       department: true,
       payment_method: true,
+      priority: true,
+      scope_bank_account_id: true,
+      match_mode: true,
+      amount_min: true,
+      amount_max: true,
       confidence: true,
     },
-  });
+  }).then((rules) =>
+    rules.map((rule) => ({
+      ...rule,
+      amount_min: rule.amount_min === null ? null : Number(rule.amount_min),
+      amount_max: rule.amount_max === null ? null : Number(rule.amount_max),
+    }))
+  );
 }
 
 async function analyzeTransactions(
@@ -429,7 +484,7 @@ async function analyzeTransactions(
 
   for (const tx of transactions) {
     const baseSuggestion = suggestTransactionClassification(tx.description, tx.isCredit);
-    const { suggestion, learnedRuleId, learnedCategoryId } = applyLearnedRules(tx, baseSuggestion, learnedRules);
+    const { suggestion, learnedRuleId, learnedCategoryId } = applyLearnedRules(tx, bankAccountId, baseSuggestion, learnedRules);
     const needsReview = shouldReview(suggestion);
     const expenseCategory = tx.isCredit
       ? null
@@ -699,13 +754,18 @@ function buildExternalId(tx: ParsedTransaction): string {
 
 function applyLearnedRules(
   tx: ParsedTransaction,
+  bankAccountId: string,
   suggestion: TransactionCategorySuggestion,
   rules: LearnedRule[]
 ): { suggestion: TransactionCategorySuggestion; learnedRuleId?: string; learnedCategoryId?: string | null } {
   const normalizedDescription = normalizeBankText(tx.description);
   const kind = tx.isCredit ? "receita" : "despesa";
   const rule = rules.find((candidate) => {
-    return candidate.kind === kind && normalizedDescription.includes(candidate.normalized_pattern);
+    if (candidate.kind !== kind) return false;
+    if (candidate.scope_bank_account_id && candidate.scope_bank_account_id !== bankAccountId) return false;
+    if (candidate.amount_min !== null && tx.amount < candidate.amount_min) return false;
+    if (candidate.amount_max !== null && tx.amount > candidate.amount_max) return false;
+    return matchesRule(candidate.match_mode, normalizedDescription, candidate.normalized_pattern);
   });
 
   if (!rule) return { suggestion };
@@ -727,6 +787,20 @@ function applyLearnedRules(
 
 function shouldReview(suggestion: TransactionCategorySuggestion): boolean {
   return suggestion.confidence < REVIEW_CONFIDENCE_THRESHOLD || suggestion.matchedRule.startsWith("fallback");
+}
+
+function matchesRule(mode: string, normalizedDescription: string, pattern: string): boolean {
+  switch (mode) {
+    case "EXACT":
+      return normalizedDescription === pattern;
+    case "STARTS_WITH":
+      return normalizedDescription.startsWith(pattern);
+    case "ENDS_WITH":
+      return normalizedDescription.endsWith(pattern);
+    case "CONTAINS":
+    default:
+      return normalizedDescription.includes(pattern);
+  }
 }
 
 function extractCounterparty(description: string): string | undefined {

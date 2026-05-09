@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authErrorResponse } from "@/server/api-response";
+import { auditEvent } from "@/server/audit";
 import { requireAuth } from "@/server/authz";
 import { ensureBankImportSchema } from "@/server/bank-import-schema";
+import { BANK_TRANSACTION_STATUSES } from "@/server/bank-operations-service";
 import { prisma } from "@/lib/prisma";
 import {
   CATEGORIES,
@@ -62,6 +64,8 @@ export async function GET(
         needsReview: tx.needs_review,
         confidence: tx.classification_confidence || suggestion.confidence,
         matchedRule: tx.classification_rule ?? suggestion.matchedRule,
+        processingStatus: tx.processing_status,
+        statusReason: tx.status_reason ?? undefined,
         importBatchId: tx.import_batch_id ?? undefined,
         sourceFile: extractNoteValue(tx.notes, "Arquivo"),
       };
@@ -95,8 +99,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ monthKey: string }> }
 ) {
+  let authContext;
   try {
-    await requireAuth();
+    authContext = await requireAuth();
   } catch (error) {
     return authErrorResponse(error);
   }
@@ -146,6 +151,7 @@ export async function PATCH(
         revenue_category: tx.is_credit ? selectedSuggestion.revenueCategory : null,
         department: expenseCategory?.department ?? selectedSuggestion.department,
         payment_method: selectedSuggestion.paymentMethod ?? null,
+        priority: 20,
         confidence: 100,
         is_active: true,
       },
@@ -158,7 +164,9 @@ export async function PATCH(
         revenue_category: tx.is_credit ? selectedSuggestion.revenueCategory : null,
         department: expenseCategory?.department ?? selectedSuggestion.department,
         payment_method: selectedSuggestion.paymentMethod ?? null,
+        priority: 20,
         confidence: 100,
+        created_by: authContext.dbUserId,
       },
     });
 
@@ -171,6 +179,10 @@ export async function PATCH(
         classification_confidence: 100,
         needs_review: false,
         reviewed_at: new Date(),
+        reviewed_by: authContext.dbUserId,
+        classified_by_rule_id: learnedRule.id,
+        processing_status: tx.is_reconciled ? BANK_TRANSACTION_STATUSES.RECONCILED : BANK_TRANSACTION_STATUSES.CLASSIFIED_MANUAL,
+        status_reason: "Categoria revisada manualmente no detalhe mensal.",
         notes: appendManualCategoryNote(tx.notes, category),
       },
     });
@@ -196,6 +208,22 @@ export async function PATCH(
         },
       });
     }
+
+    await auditEvent({
+      action: "bank.transaction.reclassified",
+      actorId: authContext.dbUserId,
+      actorEmail: authContext.email,
+      entityId: tx.id,
+      entityType: "bank_transaction",
+      entityLabel: tx.description,
+      summary: "Transacao bancaria recategorizada manualmente.",
+      metadata: {
+        monthKey,
+        category,
+        reconciledWithType: tx.reconciled_with_type,
+        reconciledWithId: tx.reconciled_with_id,
+      },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

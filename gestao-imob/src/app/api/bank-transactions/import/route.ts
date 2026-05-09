@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth } from "@/server/authz";
 import { prisma } from "@/lib/prisma";
 import { detectAndParse, suggestCategory } from "@/lib/utils/bank-parsers";
 
 export async function POST(request: NextRequest) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File | null;

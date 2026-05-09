@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { authErrorResponse } from "@/server/api-response";
+import { requireAuth } from "@/server/authz";
 import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
+  try {
+    await requireAuth();
+  } catch (error) {
+    return authErrorResponse(error);
+  }
+
   const { searchParams } = new URL(request.url);
   const bankAccountId = searchParams.get("bank_account_id");
   const month = searchParams.get("month");

@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authErrorResponse } from "@/server/api-response";
+import { auditEvent } from "@/server/audit";
 import { requireAuth } from "@/server/authz";
 import { ensureBankImportSchema } from "@/server/bank-import-schema";
+import { BANK_TRANSACTION_STATUSES, listBankExceptionQueue } from "@/server/bank-operations-service";
 import { prisma } from "@/lib/prisma";
 import {
   normalizeBankText,
@@ -18,28 +20,8 @@ export async function GET() {
 
   try {
     await ensureBankImportSchema();
-    const transactions = await prisma.bankTransaction.findMany({
-      where: { needs_review: true },
-      include: { bank_account: true, category: true },
-      orderBy: [{ date: "desc" }, { created_at: "desc" }],
-      take: 300,
-    });
-
-    return NextResponse.json({
-      transactions: transactions.map((tx) => ({
-        id: tx.id,
-        monthKey: `${tx.date.getUTCFullYear()}-${String(tx.date.getUTCMonth() + 1).padStart(2, "0")}`,
-        batchId: tx.import_batch_id,
-        date: tx.date.toISOString(),
-        description: tx.description,
-        amount: Number(tx.amount),
-        isCredit: tx.is_credit,
-        category: tx.classification_label ?? tx.category?.name ?? "A Classificar",
-        confidence: tx.classification_confidence,
-        matchedRule: tx.classification_rule,
-        bankName: tx.bank_account.bank_name,
-      })),
-    });
+    const transactions = await listBankExceptionQueue(300);
+    return NextResponse.json({ transactions });
   } catch (error) {
     console.error("[extratos/revisao] list error:", error);
     return NextResponse.json({ error: "Erro ao listar pendencias." }, { status: 500 });
@@ -47,8 +29,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
+  let authContext;
   try {
-    await requireAuth();
+    authContext = await requireAuth();
   } catch (error) {
     return authErrorResponse(error);
   }
@@ -82,6 +65,9 @@ export async function PATCH(request: NextRequest) {
           classification_confidence: 100,
           needs_review: false,
           reviewed_at: new Date(),
+          reviewed_by: authContext.dbUserId,
+          processing_status: tx.is_reconciled ? BANK_TRANSACTION_STATUSES.RECONCILED : BANK_TRANSACTION_STATUSES.CLASSIFIED_MANUAL,
+          status_reason: "Fila de excecoes revisada manualmente.",
           notes: appendManualCategoryNote(tx.notes, category),
         },
       });
@@ -100,6 +86,19 @@ export async function PATCH(request: NextRequest) {
         });
       }
     }
+
+    await auditEvent({
+      action: "bank.review.bulk-classified",
+      actorId: authContext.dbUserId,
+      actorEmail: authContext.email,
+      entityType: "bank_transaction",
+      summary: "Fila de excecoes revisada em massa.",
+      metadata: {
+        txIds,
+        category,
+        total: transactions.length,
+      },
+    });
 
     return NextResponse.json({ updated: transactions.length });
   } catch (error) {

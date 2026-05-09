@@ -554,6 +554,7 @@ model BankAccount {
   updated_at      DateTime        @updatedAt
 
   transactions BankTransaction[]
+  classification_rules BankClassificationRule[]
 
   @@map("bank_accounts")
 }
@@ -575,12 +576,16 @@ model BankTransaction {
   classification_label String?
   classification_rule  String?
   classification_confidence Int             @default(0)
+  processing_status    String              @default("IMPORTED")
+  status_reason        String?
   needs_review         Boolean             @default(false)
   reviewed_at          DateTime?
+  reviewed_by          String?
   is_credit            Boolean
   is_reconciled        Boolean             @default(false)
   reconciled_with_type ReconciliationType?
   reconciled_with_id   String?
+  classified_by_rule_id String?
   source_document_id   String?
   import_batch_id      String?
   notes                String?             @db.Text
@@ -597,6 +602,7 @@ model BankTransaction {
   @@index([bank_account_id])
   @@index([is_reconciled])
   @@index([needs_review])
+  @@index([processing_status])
   @@index([import_batch_id])
   @@map("bank_transactions")
 }
@@ -611,6 +617,11 @@ model BankClassificationRule {
   revenue_category  RevenueCategory?
   department        Department
   payment_method    PaymentMethod?
+  priority          Int       @default(100)
+  scope_bank_account_id String?
+  match_mode        String    @default("CONTAINS")
+  amount_min        Decimal?  @db.Decimal(14, 2)
+  amount_max        Decimal?  @db.Decimal(14, 2)
   confidence        Int       @default(100)
   use_count         Int       @default(0)
   is_active         Boolean   @default(true)
@@ -619,9 +630,12 @@ model BankClassificationRule {
   updated_at        DateTime  @updatedAt
 
   category ExpenseCategory? @relation(fields: [category_id], references: [id])
+  scope_bank_account BankAccount? @relation(fields: [scope_bank_account_id], references: [id])
 
   @@unique([normalized_pattern, kind])
   @@index([is_active])
+  @@index([priority])
+  @@index([scope_bank_account_id])
   @@map("bank_classification_rules")
 }
 
