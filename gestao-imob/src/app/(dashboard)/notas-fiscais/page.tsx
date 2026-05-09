@@ -964,7 +964,7 @@ export default function NotasFiscaisPage() {
   };
 
   // ── CEP lookup ──
-  const lookupCep = async (addressOverride?: string) => {
+  const lookupCep = useCallback(async (addressOverride?: string) => {
     const targetAddress = addressOverride ?? emitModal?.property_address;
     if (!targetAddress) return;
     setCepLoading(true);
@@ -984,7 +984,7 @@ export default function NotasFiscaisPage() {
         setEmitCep(validResults[0].cep_formatted);
       }
     } catch { /* falha silenciosa */ } finally { setCepLoading(false); }
-  };
+  }, [emitModal?.property_address]);
 
   useEffect(() => {
     if (!emitModal?.property_address) {
@@ -997,7 +997,7 @@ export default function NotasFiscaisPage() {
 
     autoCepLookupRef.current = emitModal.property_address;
     void lookupCep(emitModal.property_address);
-  }, [emitModal, emitCep]);
+  }, [emitModal, emitCep, lookupCep]);
 
   // ── Import DW: parse (preview) ──
   const handleFileSelect = async (file: File) => {

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { RouteAccessGate } from "@/components/layout/route-access-gate";
 import { auth, type Role } from "@/lib/auth";
 
 export default async function DashboardLayout({
@@ -20,7 +21,10 @@ export default async function DashboardLayout({
       <Sidebar userName={userName} role={role} />
       <div className="lg:pl-64">
         <Header />
-        <main className="p-6 lg:p-8">{children}</main>
+        <main className="p-6 lg:p-8">
+          <RouteAccessGate role={role} />
+          {children}
+        </main>
       </div>
     </div>
   );

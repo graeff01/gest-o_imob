@@ -1,111 +1,36 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { createPropertyOwnerSchema } from "@/lib/validations/pessoas";
-import { canUseMockFallback, mockFallbackBlockedResponse } from "@/server/mock-policy";
-import { authErrorResponse } from "@/server/api-response";
+import { apiCreated, apiList, handleApiError } from "@/server/api-response";
 import { requireAuth, requireElevatedRole } from "@/server/authz";
+import { createPropertyOwner, listPropertyOwners } from "@/server/people-service";
 
 export async function GET(request: Request) {
   try {
     await requireAuth();
-  } catch (error) {
-    return authErrorResponse(error);
-  }
 
-  const { searchParams } = new URL(request.url);
-  const search = searchParams.get("search") || "";
-  const page = parseInt(searchParams.get("page") || "1");
-  const limit = parseInt(searchParams.get("limit") || "20");
-  const skip = (page - 1) * limit;
-
-  const where = {
-    is_active: true,
-    ...(search
-      ? {
-          OR: [
-            { name: { contains: search, mode: "insensitive" as const } },
-            { cpf_cnpj: { contains: search } },
-          ],
-        }
-      : {}),
-  };
-
-  try {
-    const [owners, total] = await Promise.all([
-      prisma.propertyOwner.findMany({
-        where,
-        orderBy: { name: "asc" },
-        skip,
-        take: limit,
-      }),
-      prisma.propertyOwner.count({ where }),
-    ]);
-
-    if (owners.length > 0 || total > 0) {
-      return NextResponse.json({ owners, total, page, limit });
-    }
-    throw new Error("empty_db");
-  } catch {
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("property-owners.list");
-    }
-
-    const { MOCK_OWNERS } = await import("@/lib/mock-data");
-    let filtered = MOCK_OWNERS;
-    if (search) {
-      const s = search.toLowerCase();
-      filtered = filtered.filter(
-        (o) => o.name.toLowerCase().includes(s) || o.cpf_cnpj.includes(s)
-      );
-    }
-    return NextResponse.json({
-      owners: filtered.slice(skip, skip + limit),
-      total: filtered.length,
-      page,
-      limit,
+    const { searchParams } = new URL(request.url);
+    const result = await listPropertyOwners({
+      search: searchParams.get("search") || "",
+      page: parseInt(searchParams.get("page") || "1", 10),
+      limit: parseInt(searchParams.get("limit") || "20", 10),
     });
+
+    return apiList("owners", result.owners, {
+      total: result.total,
+      page: result.page,
+      limit: result.limit,
+    });
+  } catch (error) {
+    return handleApiError(error, "Erro ao listar proprietarios.");
   }
 }
 
 export async function POST(request: Request) {
   try {
-    await requireElevatedRole();
+    const ctx = await requireElevatedRole();
+    const input = createPropertyOwnerSchema.parse(await request.json());
+    const owner = await createPropertyOwner(input, ctx);
+    return apiCreated({ owner });
   } catch (error) {
-    return authErrorResponse(error);
-  }
-
-  const body = await request.json();
-  const parsed = createPropertyOwnerSchema.safeParse(body);
-
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Dados invalidos", details: parsed.error.issues },
-      { status: 400 }
-    );
-  }
-
-  const data = parsed.data;
-
-  try {
-    const existing = await prisma.propertyOwner.findUnique({
-      where: { cpf_cnpj: data.cpf_cnpj },
-    });
-    if (existing) {
-      return NextResponse.json(
-        { error: "CPF/CNPJ ja cadastrado" },
-        { status: 409 }
-      );
-    }
-
-    const owner = await prisma.propertyOwner.create({ data });
-
-    return NextResponse.json(owner, { status: 201 });
-  } catch {
-    if (!canUseMockFallback()) {
-      return mockFallbackBlockedResponse("property-owners.create");
-    }
-
-    const mockOwner = { ...data, id: "mock-" + Date.now() };
-    return NextResponse.json(mockOwner, { status: 201 });
+    return handleApiError(error, "Erro ao cadastrar proprietario.");
   }
 }

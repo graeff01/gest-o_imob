@@ -3,22 +3,7 @@ import type { InputJsonValue } from "@prisma/client/runtime/client";
 import { prisma } from "@/lib/prisma";
 import { ensureFoundationSchema } from "@/server/foundation-schema";
 
-type AuditAction =
-  | "invoice.created"
-  | "invoice.updated"
-  | "invoice.emit.attempted"
-  | "invoice.emit.succeeded"
-  | "invoice.emit.failed"
-  | "invoice.import.previewed"
-  | "invoice.import.confirmed"
-  | "invoice.import.cleaned"
-  | "bank_statement.cleaned"
-  | "record.created"
-  | "record.updated"
-  | "record.deleted"
-  | "system.hml_reset"
-  | "system.hml_seeded"
-  | "settings.updated";
+type AuditAction = string;
 
 interface AuditPayload {
   action: AuditAction;
